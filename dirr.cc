@@ -20,7 +20,6 @@
 #include <ctime>
 #include <cerrno>
 #include <csignal>
-#include <dirent.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -32,49 +31,39 @@
 #include "strfun.hh"
 #include "cons.hh"
 #include "colouring.hh"
+#include "getname.hh"
+#include "getsize.hh"
+#include "totals.hh"
 
 #include <algorithm>
 #include <vector>
 #include <string>
 
-#ifndef MAJOR
- #define MAJOR(dev) ((dev) >> 8)
- #define MINOR(dev) ((dev) & 255)
-#endif
-
 #ifdef HAVE_DIR_H
 #include <dir.h>
 #endif
+#ifdef HAVE_DIRENT_H
+#include <dirent.h>
+#endif
+#ifdef HAVE_DIRECT_H
+#include <direct.h>
+#endif
 
-static const char SLinkArrow[] = " -> ";
-static const char HLinkArrow[] = " = ";
+static int RowLen;
 
 static int LongestName;
 static int LongestSize;
 static int LongestUID;
 static int LongestGID;
 
-enum {SumDir=1,SumFifo,SumSock,SumFile,SumLink,SumChrDev,SumBlkDev};
-
-static unsigned long SumCnt[10] = {0};
-static unsigned long Summa[10]  = {0};
-
-static bool Contents, PreScan, Sara, Totals;
-static int DateTime, Compact;
-static int TotalSep;
-#ifdef S_ISLNK
-static int Links;
-#endif
-static string BlkStr, ChrStr;
+static bool Contents, PreScan, Sara;
+static int DateTime;
 
 static string Sorting; /* n,d,s,u,g */
 static string DateForm;
 static string FieldOrder;
 
-static int RowLen;
-
 static void EstimateFields();
-static void Summat();
 
 static void SetDefaultOptions()
 {
@@ -106,257 +95,6 @@ static void SetDefaultOptions()
 	
 	BlkStr = "<B%u,%u>";	// Modify with -db
 	ChrStr = "<C%u,%u>";	// Modify with -dc
-}
-
-/***********************************************
- *
- * GetName(fn, Stat, Space, Fill)
- *
- *   Prints the filename
- *
- *     fn:     Filename
- *     Stat:   stat-bufferi, jonka modesta riippuen
- *             saatetaan tulostaa perään merkkejä
- *             =,|,?,/,*,@. Myös ->:t katsotaan.
- *     Space:  Maximum usable printing space
- *     Fill:   Jos muu kuin nolla, ylimääräinen tila
- *             täytetään spaceilla oikealta puolelta
- * 
- *   Return value: True (not necessarily printed) length
- *
- **********************************************************/
- 
-static int GetName(const string &fn, const struct stat &sta, int Space, int Fill, bool nameonly,
-                   const char *hardlinkfn = NULL)
-{
-    string Puuh, Buf, s=fn;
-    const struct stat *Stat = &sta;
-
-    unsigned Len = 0;
-    int i;
-    
-    bool maysublink = true;
-    bool wasinvalid = false;
-
-    Puuh = nameonly ? NameOnly(s) : s;
-#ifdef S_ISLNK
-Redo:
-#endif
-	// Tähän kohtaan hypätään tulostamaan nimi.
-	// Tekstin väri on säädetty jo valmiiksi siellä
-	// mistä tähän funktioon (tai Redo-labeliin) tullaan.
-
-    Buf = Puuh;
-    Len += (i = Buf.size());
-    
-    if(i > Space && nameonly)i = Space;
-    Buf.erase(i);
-    Gprintf("%*s", -i, Buf.c_str());
-    Space -= i;
-
-    #define PutSet(c) do if((++Len,Space)&&GetModeColor("info", c))Gputch(c),--Space;while(0)
-    
-    if(wasinvalid)
-    {
-    	PutSet('?');
-    }
-    else
-    {
-	    #ifdef S_ISSOCK
-    	if(S_ISSOCK(Stat->st_mode)) PutSet('=');
-	    #endif
-    	#ifdef S_ISFIFO
-	    if(S_ISFIFO(Stat->st_mode)) PutSet('|');
-    	#endif
-    }
-
-    #ifdef S_ISLNK
-    if(!wasinvalid && S_ISLNK(Stat->st_mode))
-    {
-        if(Links >= 2 && maysublink)
-        {
-        	int a;
-            
-            Buf = SLinkArrow;
-
-            Len += (a = Buf.size());
-            
-            if(a > Space)a = Space;
-            if(a)
-            {
-            	Buf.erase(a);
-                GetModeColor("info", '@');
-                Gprintf("%*s", -a, Buf.c_str());
-            }
-            Space -= a;
-            
-            struct stat Stat1;
-            Buf = LinkTarget(s, true);
-
-            /* Target status */
-	        if(stat(Buf.c_str(), &Stat1) < 0)
-    	    {
-    	    	if(lstat(Buf.c_str(), &Stat1) < 0)
-    	    	{
-    	        	wasinvalid = true;
-    	        	if(Space)GetModeColor("type", '?');
-    	        }
-    	        else
-    	        {
-    	        	if(Space)GetModeColor("type", 'l');
-    	        }
-    	        maysublink = false;
-			}
-	        else if(Space)
-    	    {
-    	    	struct stat Stat2;
-    	    	if(lstat(Buf.c_str(), &Stat2) >= 0 && S_ISLNK(Stat2.st_mode))
-   	    	    	GetModeColor("type", 'l');
-	   	        else
-   		        	SetAttr(GetNameAttr(Stat1, Buf));
-  	        }
-            
-            Puuh = s = LinkTarget(s, false); // Unfixed link.
-            Stat = &Stat1;
-            goto Redo;
-        }
-        PutSet('@');
-    }
-    else
-    #endif
-    {
-	    if(S_ISDIR(Stat->st_mode))  PutSet('/');
-	    else if(Stat->st_mode & 00111)PutSet('*');
-	}
-    
-    if(hardlinkfn && Space)
-    {
-        struct stat Stat1;
-        
-    	SetAttr(GetModeColor("info", '&'));
-    	
-    	Len += Gprintf("%s", HLinkArrow);
-    	Space -= strlen(HLinkArrow);
-    	
-    	Puuh = Relativize(s, hardlinkfn);
-    	
-    	stat(hardlinkfn, &Stat1);
-    	SetAttr(GetNameAttr(Stat1, NameOnly(hardlinkfn)));
-    	hardlinkfn = NULL;
-    	Stat = &Stat1;
-    	
-    	maysublink = false;
-    	wasinvalid = false;
-    	
-    	if(Space < 0)Space = 0;
-    	
-    	goto Redo;
-    }
-
-    #undef PutSet
-
-    if(Fill)
-        while(Space)
-        {
-            Gputch(' ');
-            Space--;
-        }
-
-    return Len;
-}
-
-static string GetSize(const string &s, const struct stat &Sta, int Space, int Seps)
-{
-	char *Buf = new char[Space];
-    const char *descr = "descr";
-    
-    const struct stat *Stat = &Sta;
-
-#ifdef S_ISLNK
-GotSize:
-#endif
-		 if(S_ISDIR (Stat->st_mode))sprintf(Buf, "%*s", -Space, "<DIR>");
-    #ifdef S_ISFIFO
-    else if(S_ISFIFO(Stat->st_mode))sprintf(Buf, "%*s", -Space, "<PIPE>");
-    #endif
-    #ifdef S_ISSOCK
-    else if(S_ISSOCK(Stat->st_mode))sprintf(Buf, "%*s", -Space, "<SOCKET>");
-    #endif
-    else if(S_ISCHR (Stat->st_mode))
-    {
-    	char *e;
-    	sprintf(Buf, ChrStr.c_str(),
-    		(unsigned)MAJOR(Stat->st_rdev),
-    		(unsigned)MINOR(Stat->st_rdev));
-    	if(Space)
-    	{
-		    e = strchr(Buf, 0);
-    		memset(e, ' ', (Buf+(sizeof(Buf)))-e);
-    		Buf[Space] = 0;
-    	}
-    }
-    else if(S_ISBLK (Stat->st_mode))
-    {
-    	char *e;
-    	sprintf(Buf, BlkStr.c_str(),
-    		(unsigned)MAJOR(Stat->st_rdev),
-    		(unsigned)MINOR(Stat->st_rdev));
-    	if(Space)
-    	{
-	    	e = strchr(Buf, 0);
-	    	memset(e, ' ', (Buf+(sizeof(Buf)))-e);
-    		Buf[Space] = 0;
-    	}
-    }
-    #ifdef S_ISLNK
-    else if(S_ISLNK (Stat->st_mode))
-    {
-        if(Links != 1 && Links != 4)goto P1;
-LinkProblem:
-        sprintf(Buf, "%*s", -Space, "<LINK>");
-    }
-    #endif
-    else
-    {
-        long l;
-
-#ifdef S_ISLNK
-P1:
-		if(S_ISLNK(Stat->st_mode))
-		{
-			if(Links==2)descr = NULL;
-			if(Links==3)
-			{
-				static struct stat Stat1;
-				string Buf = LinkTarget(s);
-       	     	
-    	        // Target status
-	    	    if(stat(Buf.c_str(), &Stat1) >= 0)
-	    	    {
-    		    	Stat = &Stat1;
-    	    		goto GotSize;
-				}
-				goto LinkProblem;
-			}
-		}
-#endif
-        l = Stat->st_size;
-        
-        string TmpBuf;
-        PrintNum(TmpBuf, Seps, "%lu", l);
-        sprintf(Buf, "%*s", Space, TmpBuf.c_str());
-        
-        if(descr)descr = "size";
-    }
-    
-    if(descr)
-	    GetDescrColor(descr, 1);
-	else
-    	GetModeColor("info", '@');
-
-	string tmp(Buf);
-	delete[] Buf;
-    return tmp;
 }
 
 #include <map>
@@ -482,17 +220,14 @@ static void TellMe(const struct stat &Stat, const string &Name
                 {
                     case 'a':
                     {
-                        int i = 0;
                         s++;
                         Len = '1';
                         if((*s>='0')&&(*s<='9'))Len = *s;
-                        PrintAttr(Stat, Len, i,
+                        int i = PrintAttr(Stat, Len
 						#ifdef DJGPP
-                        	dosattr
-                        #else
-                        	0
+                        	, dosattr
 						#endif
-                        	);
+                    	);
                         ItemLen += i;
                         RowLen += i;
                         break;
@@ -553,7 +288,8 @@ static void TellMe(const struct stat &Stat, const string &Name
                         	hardlinkfn = NULL;
                         
                         GetName(Name, Stat, LongestName,
-                                (Sara||s[1]) && (*s=='f'), *s=='f',
+                                (Sara||s[1]) && (*s=='f'),
+                                *s=='f',
                                 hardlinkfn);
                         
                         ItemLen += LongestName;
@@ -892,7 +628,7 @@ static void SingleFile(const string &Buffer, struct stat &Stat)
         const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
         if(hardlinkfn && Buffer == hardlinkfn)hardlinkfn = NULL;
         
-        int i = GetName(Buffer, Stat, 0, 0, true, hardlinkfn);
+        int i = GetName(Buffer, Stat, 0, false, true, hardlinkfn);
         
         if(i > LongestName)LongestName = i;
         i = s.size();
@@ -917,9 +653,6 @@ static void SingleFile(const string &Buffer, struct stat &Stat)
     }
 }
 
-static string LastDir;
-/* impossible, or at least improbable filename */
-
 static void DirChangeCheck(string Source)
 {
 	register unsigned ss = Source.size();
@@ -940,6 +673,7 @@ static void DirChangeCheck(string Source)
         	if(WhereX)Gprintf("\n");
         	if(!Eka)
         	{
+        		if(RowLen > 0)Gprintf("\n");
         		Summat();
         		Gprintf("\n");
         	}
@@ -1031,214 +765,6 @@ P1:			string Tmp = DirOnly(Source);
 
 End_ScanDir:
     return;
-}
-
-#ifdef HAVE_SYS_VFS_H
-#include <sys/vfs.h>
-#endif
-#ifdef HAVE_SYS_STATFS_H
-#include <sys/statfs.h>
-#endif
-#ifdef HAVE_SYS_MOUNT_H
-#include <sys/mount.h>
-#endif
-
-static void Summat()
-{
-#if HAVE_STATFS
-#if defined(SUNOS)||defined(__sun)||defined(SOLARIS)
-#define STATFS(mountpoint, structp) statvfs(mountpoint, structp)
-#define STATFST statvfs
-#define STATFREEKB(tmp) ((tmp).f_bavail / 1024.0 * (tmp).f_frsize)
-#else
-#define STATFS(mountpoint, structp) statfs(mountpoint, structp)
-#define STATFST statfs
-#define STATFREEKB(tmp) ((tmp).f_bavail / 1024.0 * (tmp).f_bsize)
-#endif
-	struct STATFST tmp;
-#endif
-	unsigned long Koko;
-	
-	string NumBuf;
-    
-    Dumping = true;
-    GetDescrColor("txt", 1);
-
-    if(RowLen > 0)Gprintf("\n");
-    if(!Totals)
-    {
-        if(Colors)Gprintf("\r \r"); /* Ensure color */
-        return;
-    }
-
-    Koko = /* Grand total */
-        Summa[SumDir]
-      + Summa[SumFifo]
-      + Summa[SumFile]
-      + Summa[SumLink]
-      + Summa[SumChrDev]
-      + Summa[SumBlkDev];
-
-    ColorNums = GetDescrColor("num", -1);
-    
-#if HAVE_STATFS
-    if(STATFS(LastDir.c_str(), &tmp))tmp.f_bavail = 0;
-#endif
-        	
-    if(Compact)
-    {
-		unsigned long Tmp = SumCnt[SumChrDev] + SumCnt[SumBlkDev];
-		unsigned long Tmp2= SumCnt[SumFifo]+SumCnt[SumSock]+SumCnt[SumLink];
-		
-        PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumDir]);
-        Gprintf(" \1%s\1 dir%s%s", NumBuf.c_str(),
-#if HAVE_STATFS
-        	(tmp.f_bavail > 0 && Tmp)?"":
-#endif        	
-        	"ector",
-        	SumCnt[SumDir]==1?"y":
-#if HAVE_STATFS
-        	(tmp.f_bavail > 0 && Tmp)?"s":
-#endif        	
-        	"ies");
-        		
-        if(SumCnt[SumFile])
-        {
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumFile]);
-        	Gprintf(", \1%s\1 file%s",
-        		NumBuf.c_str(),
-        		SumCnt[SumFile]==1?"":"s");
-       	}
-        		
-        if(Tmp)
-        {
-        	PrintNum(NumBuf, TotalSep, "%lu", Tmp);
-        	Gprintf(", \1%s\1 device%s", NumBuf.c_str(), Tmp==1?"":"s");
-        }
-        if(Tmp2)
-        {
-        	PrintNum(NumBuf, TotalSep, "%lu", Tmp2);
-        	Gprintf(", \1%s\1 other%s", NumBuf.c_str(), Tmp2==1?"":"s");
-        }
-        		
-        PrintNum(NumBuf, TotalSep, "%lu", Koko);
-        Gprintf(", \1%s\1 bytes", NumBuf.c_str());
-        
-#if HAVE_STATFS
-        if(tmp.f_bavail > 0)
-        {
-            // Size = kilobytes
-        	double Size = STATFREEKB(tmp);
-        	
-        	if(Compact == 2)
-        	{
-        		PrintNum(NumBuf, TotalSep, "%.0f", Size*1024.0);
-        		Gprintf(", \1%s\1 bytes", NumBuf.c_str());
-        	}
-        	else if(Size >= 1024)
-        	{
-        		PrintNum(NumBuf, TotalSep, "%.1f", Size/1024.0);
-        		Gprintf(", \1%s\1 MB", NumBuf.c_str());
-        	}
-        	else if(Size >= 1048576*10)
-        	{
-        		PrintNum(NumBuf, TotalSep, "%.1f", Size/1048576.0);
-        		Gprintf(", \1%s\1 GB", NumBuf.c_str());
-        	}
-       		else
-       		{
-       			PrintNum(NumBuf, TotalSep, "%.1f", Size);
-        		Gprintf(", \1%s\1 kB", NumBuf.c_str());
-        	}
-        		
-        	Gprintf(" free(\1%.1f\1%%)",
-        		(double)tmp.f_bavail * 100.0 / tmp.f_blocks);
-        }
-#endif	    
-	    Gprintf("\n");
-    }
-    else
-    {
-		unsigned long Tmp = SumCnt[SumChrDev] + SumCnt[SumBlkDev];
-		
-        if(Tmp)
-        {
-        	PrintNum(NumBuf, TotalSep, "%lu", Tmp);
-            Gprintf("\1%5s\1 device%s (", NumBuf.c_str(), (Tmp==1)?"":"s");
-    
-            if(SumCnt[SumChrDev])
-            {
-            	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumChrDev]);
-            	Gprintf("\1%s\1 char", NumBuf.c_str());
-            }
-            if(SumCnt[SumChrDev]
-            && SumCnt[SumBlkDev])Gprintf(", ");    
-            if(SumCnt[SumBlkDev])
-            {
-            	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumBlkDev]);
-            	Gprintf("\1%s\1 block", NumBuf.c_str());
-            }
-            Gprintf(")\n");
-        }
-
-        if(SumCnt[SumDir])
-        {
-        	string TmpBuf;
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumDir]);
-        	PrintNum(TmpBuf, TotalSep, "%lu", Summa[SumDir]);
-            Gprintf("\1%5s\1 directories,\1%11s\1 bytes\n",
-                NumBuf.c_str(), TmpBuf.c_str());
-        }
-    
-        if(SumCnt[SumFifo])
-        {
-        	string TmpBuf;
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumFifo]);
-        	PrintNum(TmpBuf, TotalSep, "%lu", Summa[SumFifo]);
-            Gprintf("\1%5s\1 fifo%s\1%17s\1 bytes\n",
-                NumBuf.c_str(), (SumCnt[SumFifo]==1)?", ":"s,", TmpBuf.c_str());
-        }    
-        if(SumCnt[SumFile])
-        {
-        	string TmpBuf;
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumFile]);
-        	PrintNum(TmpBuf, TotalSep, "%lu", Summa[SumFile]);
-            Gprintf("\1%5s\1 file%s\1%17s\1 bytes\n",
-                NumBuf.c_str(), (SumCnt[SumFile]==1)?", ":"s,", TmpBuf.c_str());
-    	}
-        if(SumCnt[SumLink])
-        {
-        	string TmpBuf;
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumLink]);
-        	PrintNum(TmpBuf, TotalSep, "%lu", Summa[SumLink]);
-            Gprintf("\1%5s\1 link%s\1%17s\1 bytes\n",
-                NumBuf.c_str(), (SumCnt[SumLink]==1)?", ":"s,", TmpBuf.c_str());
-		}
-		PrintNum(NumBuf, TotalSep, "%lu", Koko);
-        Gprintf("Total\1%24s\1 bytes\n", NumBuf.c_str());
-#if HAVE_STATFS
-        if(tmp.f_bavail > 0)
-        {
-        	double Size = STATFREEKB(tmp) * 1024.0;
-        	
-        	/* FIXME: Thousand separators for free space also      *
-        	 *        Currently not implemented, because there     *
-        	 *        may be more free space than 'unsigned long'  *
-        	 *        is able to express.                          */
-        	
-        	PrintNum(NumBuf, TotalSep, "%.0f", Size);
-        	
-        	Gprintf("Free space\1%19s\1 bytes (\1%.1f\1%%)\n",
-        		NumBuf.c_str(),
-        		(double)((double)tmp.f_bavail * 100.0 / tmp.f_blocks));
-        }
-#endif
-    }
-    
-    ColorNums = -1;
-
-    memset(&SumCnt, 0, sizeof SumCnt);
-    memset(&Summa, 0, sizeof Summa);
 }
 
 #if defined(SIGINT) || defined(SIGTERM)
@@ -1653,11 +1179,6 @@ ThisIsOk:;
             #endif
             "Usage: %s [options] { dirs | files }\n\n"
             "Options:\n"
-            "\t-c  Disables colors.\n"
-            "\t-w  Short for -HCm1l1f.f -opcm\n"
-            "\t-W  Same as -w, but reverse sort order\n"
-            "\t-H  Disables verbose hardlink display.\n"
-            "\t-H1 Enables verbose hardlink display (default).\n"
             "\t-a0 Short for -wf.f_.s.d| -F%%z\n"
             "\t-a1 Short for -f.xF|.a1.xF|.f.s.xF|.d.xF|.o_.g.xF|\n"
             "\t-a2 Short for -l0Cf.f_.a4_.o_.g.xF|\n"
@@ -1665,29 +1186,22 @@ ThisIsOk:;
             "\t-a4 Short for -l1Cf_.s_.d_.o.xF| -F%%z\n"
             "\t-al Short for -f.a1_.h__.o_.g_.s_.d_.f -F%%u\n"
             "\t-at Short for -alodn\n"
-            "\t-m0 Selects verbose \"total\" list. This is the default.\n"
-            "\t-m1 Compactifies the \"total\" list.\n"
-            "\t-m2 Disables total sums.\n"
-            "\t    Instead of -mx you can use -Mxn and specify n\n"
-            "\t    as the thousand separator in total sums.\n"
-            "\t-m3 Compactified \"total\" list with exact free space.\n"
-            "\t-p  Enables page pauses.\n"
-            "\t-P  Disables the vt100 code optimization.\n"
-            "\t-D  Show directory names instead of contents.\n"
-            "\t-e  Quick list (uses space estimation). Disables sorting.\n"
-            "\t-r  Undoes all options, including the DIRR environment variable.\n"
-            "\t-on Sort the list (disables -e), with n as combination of:\n"
-            "\t    (n)ame, (s)ize, (d)ate, (u)id, (g)id, (h)linkcount\n"
-            "\t    (c)olor, na(m)e case insensitively\n"
-            "\t    g(r)oup dirs,files,links,chrdevs,blkdevs,fifos,socks\n"
-            "\t    grou(p) dirs,links=files,chrdevs,blkdevs,fifos,socks\n"
-            "\t    Use Uppercase for reverse order.\n"
-            "\t    Default is `-o%s'\n"
-           	"\t-X# Force screen width\n"
+            "\t-c  Disables colors.\n"
             "\t-C  Enables multicolumn mode.\n"
             "\t-d1 Use atime, last access datetime (disables -d2 and -d3)\n"
             "\t-d2 Use mtime, last modification datetime (default, disables -d1 and -d3)\n"
-            "\t-d3 Use ctime, creation datetime (disables -d1 and -d2)\n"
+            "\t-d3 Use ctime, creation datetime (disables -d1 and -d2)\n",
+            argv[0]);
+        Gprintf(
+            "\t-dbx Specify how the blockdevices are shown\n"
+            "\t     Example: `-db<B%%u,%%u>'\n"
+            "\t     Default is `-db%s'\n"
+            "\t-dcx Specify how the character devices are shown\n"
+            "\t     Example: `-dc<C%%u,%%u>'\n"
+            "\t     Default is `-dc%s'\n", BlkStr.c_str(), ChrStr.c_str());
+        Gprintf(
+            "\t-D  Show directory names instead of contents.\n"
+            "\t-e  Quick list (uses space estimation). Disables sorting.\n"
             "\t-fx Output format\n"
             "\t    .s=Size,    .f=File,   .d=Datetime,     .o=Owner,   .g=Group,\n"
             "\t    .S#=size with thsep #, .x##=Color 0x##, .h=Number of hard links\n"
@@ -1702,19 +1216,12 @@ ThisIsOk:;
             "\t    Default is `-f%s'\n"
             "\t-Fx Specify new date format. Result maxlen 64.\n"
             "\t    Default is `-F%s'\n",
-            argv[0],
-            Sorting.c_str(),
             FieldOrder.c_str(),
             DateForm.c_str());
-                    Gprintf(
-            "\t-dbx Specify how the blockdevices are shown\n"
-            "\t     Example: `-db<B%%u,%%u>'\n"
-            "\t     Default is `-db%s'\n"
-            "\t-dcx Specify how the character devices are shown\n"
-            "\t     Example: `-dc<C%%u,%%u>'\n"
-            "\t     Default is `-dc%s'\n", BlkStr.c_str(), ChrStr.c_str());
+        Gprintf(
+            "\t-H  Disables verbose hardlink display.\n"
+            "\t-H1 Enables verbose hardlink display (default).\n"
 #ifdef S_ISLNK
-                    Gprintf(
             "\t-ln Specify how the links are shown\n"
             "\t  0 Show link name and stats of target\n"
             "\t  1 Show link name and <LINK>\n"
@@ -1722,9 +1229,30 @@ ThisIsOk:;
             "\t  3 Show link name, link's target and stats of target\n"
             "\t  4 Show link name, link's target and <LINK>\n"
 #else
-					Gprintf(
 			"\n-l# Does nothing in this environment.\n"
 #endif
+            "\t-m0 Selects verbose \"total\" list. This is the default.\n"
+            "\t-m1 Compactifies the \"total\" list.\n"
+            "\t-m2 Disables total sums.\n"
+            "\t    Instead of -mx you can use -Mxn and specify n\n"
+            "\t    as the thousand separator in total sums.\n"
+            "\t-m3 Compactified \"total\" list with exact free space.\n");
+        Gprintf(            
+            "\t-on Sort the list (disables -e), with n as combination of:\n"
+            "\t    (n)ame, (s)ize, (d)ate, (u)id, (g)id, (h)linkcount\n"
+            "\t    (c)olor, na(m)e case insensitively\n"
+            "\t    g(r)oup dirs,files,links,chrdevs,blkdevs,fifos,socks\n"
+            "\t    grou(p) dirs,links=files,chrdevs,blkdevs,fifos,socks\n"
+            "\t    Use Uppercase for reverse order.\n"
+            "\t    Default is `-o%s'\n", Sorting.c_str());
+        Gprintf(
+            "\t-p  Enables page pauses.\n"
+            "\t-P  Disables the vt100 code optimization.\n"
+            "\t-r  Undoes all options, including the DIRR environment variable.\n");
+        Gprintf(
+            "\t-w  Short for -HCm1l1f.f -opcm\n"
+            "\t-W  Same as -w, but reverse sort order\n"
+           	"\t-X# Force screen width\n"
             "You can set environment variable 'DIRR' for the options.\n"
             "You can also use 'DIRR_COLORS' -variable for color settings.\n"
             "Current DIRR_COLORS:\n"

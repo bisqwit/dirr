@@ -1,4 +1,4 @@
-VERSION = 3.21
+VERSION = 3.22
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -32,7 +32,8 @@ BINDIR=/usr/local/bin
 INSTALL=install
 
 PROG=dirr
-OBJS=dirr.o pwfun.o wildmatch.o cons.o setfun.o strfun.o colouring.o
+OBJS=dirr.o pwfun.o wildmatch.o cons.o setfun.o strfun.o colouring.o \
+     getname.o getsize.o totals.o
 
 ARCHDIR=archives/
 ARCHNAME=dirr-$(VERSION)
@@ -40,8 +41,11 @@ ARCHFILES=dirr.cc COPYING ChangeLog README dirrsets.hh \
           configure config.sub1 config.sub2 config.sub3 \
           wildmatch.cc wildmatch.hh \
           colouring.cc colouring.hh \
+          getname.cc getname.hh \
+          getsize.cc getsize.hh \
           setfun.cc setfun.hh \
           strfun.cc strfun.hh \
+          totals.cc totals.hh \
           pwfun.cc pwfun.hh \
           cons.cc cons.hh \
           TODO

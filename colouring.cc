@@ -29,34 +29,41 @@ int GetNameAttr(const struct stat &Stat, const string &fn)
     return NameAttr;
 }
 
-void PrintAttr(const struct stat &Stat, char Attrs, int &Len, unsigned int dosattr)
+int PrintAttr(const struct stat &Stat, char Attrs
+#ifdef DJGPP
+	, unsigned int dosattr
+#endif
+)
 {
+    #define PutSet(c) {GetModeColor("mode", c);Gputch(c);Len++;}
+	int Len = 0;
     switch(Attrs)
     {
         case '0':
-            #define PutSet(c) {GetModeColor("mode", c);Gputch(c);Len++;}
+#ifdef DJGPP
         	if(dosattr&0x20)PutSet('A')else PutSet('-')
         	if(dosattr&0x02)PutSet('H')else PutSet('-')
         	if(dosattr&0x04)PutSet('S')else PutSet('-')
         	if(dosattr&0x01)PutSet('R')else PutSet('-')
+#endif
             break;
         case '1':
         {
-        #ifndef DJGPP
+#ifndef DJGPP
         	int Viva = GetModeColor("mode", '-');
-            #ifdef S_ISLNK
+# ifdef S_ISLNK
                  if(S_ISLNK(Stat.st_mode))  PutSet('l')
             else
-            #endif
+# endif
                  if(S_ISDIR(Stat.st_mode))  PutSet('d')
             else if(S_ISCHR(Stat.st_mode))  PutSet('c')
             else if(S_ISBLK(Stat.st_mode))  PutSet('b')
-            #ifdef S_ISFIFO
+# ifdef S_ISFIFO
             else if(S_ISFIFO(Stat.st_mode)) PutSet('p')
-            #endif
-            #ifdef S_ISSOCK
+# endif
+# ifdef S_ISSOCK
             else if(S_ISSOCK(Stat.st_mode)) PutSet('s')
-            #endif
+# endif
             else if(S_ISREG(Stat.st_mode))  PutSet('-')
             else
             {
@@ -94,10 +101,9 @@ void PrintAttr(const struct stat &Stat, char Attrs, int &Len, unsigned int dosat
 
             Len += 9;
 
-        #endif /* not djgpp */
+#endif /* not djgpp */
             break;
 
-           	#undef PutSet
         }
         case '2':
             Attrs = '3';
@@ -110,4 +116,8 @@ void PrintAttr(const struct stat &Stat, char Attrs, int &Len, unsigned int dosat
             Len += Gprintf("%s", Buf+100-Attrs);
         }
 	}
+	
+	#undef PutSet
+	
+	return Len;
 }

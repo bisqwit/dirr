@@ -14,7 +14,7 @@ else
   exit 1
 fi
 
-AC_INCLUDES="sys/vfs.h sys/mount.h dir.h crt0.h conio.h termio.h sys/ioctl.h sys/statvfs.h"
+AC_INCLUDES="sys/vfs.h sys/mount.h dir.h crt0.h conio.h termio.h sys/ioctl.h sys/statvfs.h dirent.h direct.h"
 
 . ./config.sub3
 
@@ -25,7 +25,7 @@ if test "$os_type" = Linux || \
    test "$os_type" = HP-UX || \
    test "$os_type" = SunOS; then
   echo 'HAVE_STATFS=1' >Makefile.cfg
-  echo "It seems like you're running $os_type... Hmm."
+  echo "It seems like you're running $os_type... Ok."
 else
   echo 'HAVE_STATFS=0' >Makefile.cfg
 fi

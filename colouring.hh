@@ -5,6 +5,17 @@
 #include <sys/stat.h>
 
 extern int GetNameAttr(const struct stat &Stat, const string &fn);
-extern void PrintAttr(const struct stat &Stat, char Attrs, int &Len, unsigned int dosattr);
+
+// Case of Attrs:
+//    0: AHSR
+//    1: drwxrwxrwx
+//   >2: 0755, with Attr decimals.
+
+// Return value: length
+extern int PrintAttr(const struct stat &Stat, char Attrs
+#ifdef DJGPP
+	, unsigned int dosattr
+#endif
+);
 
 #endif
