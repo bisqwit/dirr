@@ -11,8 +11,9 @@
 
 #define VERSIONSTR \
     "DIRR "VERSION" copyright (C) 1992,2000 Bisqwit (http://iki.fi/bisqwit/)\n" \
-    "This program is under GPL. dirr-"VERSION".tar.gz is available at the\n" \
-    "homepage of the author. About some ideas about this program, thanks to Warp.\n"
+    "This program is under GPL. dirr-"VERSION".tar.gz\n" \
+    "is available at the homepage of the author.\n" \
+    "About some ideas about this program, thanks to Warp.\n"
 
 #include <cstdio>
 #include <cstdarg>
@@ -755,11 +756,27 @@ static void PrintSettings()
         Gprintf("\n");
 }
 
-static const char *NameOnly(const char *Name)
+static string NameOnly(const string &Name)
 {
-    const char *s;
-    while((s = strchr(Name, '/')) != NULL)Name = s+1;
-    return Name;
+    const char *q, *s = Name.c_str();
+    
+    while((q = strchr(s, '/')) && q[1])s = q+1;
+    
+    q = strchr(s, '/');
+    if(!q)q = strchr(s, 0);
+    
+    return string(s, 0, q-s);
+}
+
+// Ends with '/'.
+// If no directory, returns empty string.
+static string DirOnly(const string &Name)
+{
+	const char *q, *s = Name.c_str();
+	q = strchr(s, '/');
+	if(!q)return "";
+	
+	return string(s, 0, q-s+1);
 }
 
 /***********************************************
@@ -767,7 +784,7 @@ static const char *NameOnly(const char *Name)
  * Getpwuid(uid)
  * Getgrgid(gid)
  *
- *   Get user and group name, quickly using half seek
+ *   Get user and group name, quickly using binary search
  *
  * ReadGidUid()
  *
@@ -1260,6 +1277,26 @@ static void PrintAttr(const struct stat &Stat, char Attrs, int *Len, unsigned in
         }
 }   }
 
+static string LinkTarget(const string &link, bool fixit=false)
+{
+	char Target[PATH_MAX+1];
+
+    int a = readlink(link.c_str(), Target, sizeof Target);
+	if(a < 0)a = 0;
+	Target[a] = 0;
+	
+	if(!fixit)return Target;
+ 
+	if(Target[0] == '/')
+	{
+		// Absolute link
+		return Target;
+	}
+
+	// Relative link
+	return DirOnly(link) + Target;
+}
+
 /***********************************************
  *
  * GetName(fn, Stat, Space, Fill)
@@ -1286,7 +1323,7 @@ static int GetName(const string &fn, const struct stat &sta, int Space, int Fill
     unsigned Len = 0;
     int i;
 
-    Puuh = nameonly ? NameOnly(s.c_str()) : s.c_str();
+    Puuh = nameonly ? NameOnly(s) : s;
 #ifdef S_ISLNK
 Redo:
 #endif
@@ -1314,8 +1351,6 @@ Redo:
         if(Links >= 2)
         {
         	int a;
-            struct stat Stat1;
-            string Target;
             
             Buf = " -> ";
 
@@ -1330,21 +1365,8 @@ Redo:
             }
             Space -= a;
             
-            Target.resize(2048);
-            a = readlink(s.c_str(), (char *)Target.c_str(), 2048);
-            if(a < 0)a=0;
-            Target.erase(a);
-            
-            /* Buf = Absolute target address */
-            Buf.erase();
-            if(Target[0] != '/')
-            {
-            	Buf = s;
-            	const char *a = Buf.c_str();
-            	const char *q = NameOnly(a);
-            	Buf.erase(q-a);
-            }
-            Buf += Target;
+            struct stat Stat1;
+            Buf = LinkTarget(s, true);
 
             /* Target status */
 	        if(stat(Buf.c_str(), &Stat1) < 0)
@@ -1355,7 +1377,7 @@ Redo:
 	        else
     	        if(Space)SetAttr(GetNameAttr(Stat1, Buf));
             
-            Puuh = s = Target;
+            Puuh = s = LinkTarget(s, false); // Unfixed link.
             Stat = &Stat1;
             goto Redo;
         }
@@ -1480,26 +1502,11 @@ P1:
 			if(Links==2)descr=NULL;
 			if(Links==3)
 			{
-				char Buf[PATH_MAX+1];
-				char Target[PATH_MAX+1];
 				static struct stat Stat1;
-				
-	            int a = readlink(s.c_str(), Target, sizeof Target);
-    	        if(a < 0)a=0;
-	       	    Target[a] = 0;
-       	     
-       	     	/* Buf = Absolute target address */
-       	     
-       	     	Buf[0] = 0;
-	            if(Target[0] != '/')
-	            {
-	                strcpy(Buf, s.c_str());
-    	            *((char *)NameOnly(Buf)) = 0;
-        	    }
-	            strcat(Buf, Target);
-	
-    	        /* Target status */
-	    	    if(stat(Buf, &Stat1) >= 0)
+				string Buf = LinkTarget(s);
+       	     	
+    	        // Target status
+	    	    if(stat(Buf.c_str(), &Stat1) >= 0)
 	    	    {
     		    	Stat = &Stat1;
     	    		goto GotSize;
@@ -1578,7 +1585,7 @@ static void TellMe(const struct stat &Stat, const string &Name
         Summa[SumFile] += Stat.st_size;
     }
 
-    NameAttr = GetNameAttr(Stat, NameOnly(Name.c_str()));
+    NameAttr = GetNameAttr(Stat, NameOnly(Name));
 
     Passwd = Getpwuid((int)Stat.st_uid);
     Group  = Getgrgid((int)Stat.st_gid);
@@ -2086,9 +2093,8 @@ R1: if((dir = opendir(Source)) == NULL)
         	errno==ENOENT ||	/* Piti lisätä linkkejä varten */
         	errno==ENOTDIR)
         {
-P1:
-	    	string Tmp(Source, 0, NameOnly(Source)-Source);
-	    	if(!Tmp.size())Tmp = "./";
+P1:			string Tmp = DirOnly(Source);
+			if(!Tmp.size())Tmp = "./";
 	    	DirChangeCheck(Tmp.c_str());
 
 			SingleFile(Source, Stat);

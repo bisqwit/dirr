@@ -1,4 +1,4 @@
-VERSION = 3.13
+VERSION = 3.14
 
 # Explanations:
 #   CACHE_GETSET     Recommended, adds speed
@@ -27,7 +27,7 @@ LDFLAGS=-g
 BINDIR=/usr/local/bin
 
 ARCHNAME=dirr-$(VERSION)
-ARCHFILES=dirr.cc oldversions COPYING
+ARCHFILES=dirr.cc oldversions COPYING ChangeLog
 
 dirr: dirr.o
 	$(CXX) $(LDFLAGS) -o $@ $^

@@ -1,0 +1,19 @@
+Sun 2000-08-20 21:24 Bisqwit <bisqwit@iki.fi>
+
+	* Version 3.14
+	    - Some rewrites.
+	    - Finally a tar-archive, instead of
+	      plain source file distribution.
+	    - GPL.
+	  
+??? Bisqwit <bisqwit@iki.fi>
+	
+	* Version 3.00
+	    - C++.
+	    
+	* Version 2.00
+	    - Completely rewritten.
+	    - Freeware.
+	    
+	* Version 1.00
+	    - Initial version.
