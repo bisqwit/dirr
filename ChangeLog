@@ -1,3 +1,13 @@
+Wed 2000-09-06 18:43 Bisqwit <bisqwit@iki.fi>
+
+	* Version 3.23
+	
+	    - Completely new parameter handler
+	      (argh.cc, argh.hh).
+	      Now it's C++ style.
+	    - Added support for SunOS doors.
+	      See file dirrsets.hh
+	    
 Thu 2000-08-31 18:40 Bisqwit <bisqwit@iki.fi>
 
 	* Version 3.22

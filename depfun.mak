@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.1.6
+# depfun.mak version 1.1.7
 # 
 # Required vars:
 #
@@ -25,7 +25,7 @@
 include .depend
 
 .depend: ${ARCHFILES}
-	@ touch .depend
+	touch .depend
 	@ ${MAKE} --silent dep
 
 depend: dep

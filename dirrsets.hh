@@ -6,13 +6,10 @@
      " S,H,R,A         are for dos attributes
 	 * l,d,x,c,b,p,s,- are the corresponding characters
 	 *                 in the mode string respectively
+	 * D               is door. It's used in SunOS.
      **************************************************************/
 
-    #ifdef DJGPP
-    "mode(SB,H8,R9,A3,-7,#3)"
-    #else
-    "mode(lB,d9,x9,cE,bE,p6,sD,-7,?C,#3)"
-    #endif
+    "mode(SB,H8,R9,A3,DC,lB,d9,x9,cE,bE,p6,sD,-7,?C,#3)"
     
     /**************************************************************
      * info() - How to color the type characters
@@ -46,9 +43,10 @@
      * l=links, d=directories, x=executable
      * c=character devices, s=sockets
      * b=block devices, p=pipes.
+     * D=door (used in SunOS).
      * ? is for file/link names which were not stat()able.
      **************************************************************/
-    "type(lB,d9,xA,cE,bE,p6,sD,?3)"
+    "type(lB,d9,xA,cE,bE,p6,sD,?3,DC)"
     
     /**************************************************************
      * descr() - How to color the <DIR>, <PIPE> etc texts

@@ -24,6 +24,9 @@ int GetNameAttr(const struct stat &Stat, const string &fn)
     #ifdef S_ISSOCK
     else if(S_ISSOCK(Stat.st_mode)) NameAttr = GetModeColor("type", -'s');
     #endif
+    #ifdef S_ISDOOR
+    else if(S_ISDOOR(Stat.st_mode)) NameAttr = GetModeColor("type", -'D');
+    #endif
     else if(Stat.st_mode&00111)     NameAttr = GetModeColor("type", -'x');
 
     return NameAttr;
@@ -64,12 +67,14 @@ int PrintAttr(const struct stat &Stat, char Attrs
 # ifdef S_ISSOCK
             else if(S_ISSOCK(Stat.st_mode)) PutSet('s')
 # endif
+# ifdef S_ISDOOR
+            else if(S_ISDOOR(Stat.st_mode)) PutSet('D')
+# endif
             else if(S_ISREG(Stat.st_mode))  PutSet('-')
             else
             {
-            	SetAttr(7);
-                Gprintf("\n\n\nThis should never happen.\n");
-                exit(-1);
+            	// not dir, not link, not chr, not blk, not fifo, not sock, not file...
+            	// not even a door (?)... what is it then???
                 PutSet('?')
             }
 

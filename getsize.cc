@@ -15,6 +15,15 @@
 
 string BlkStr, ChrStr;
 
+static bool LinkFormatWithoutSize()
+{
+	return Links==1 || Links==4;
+}
+static bool LinkFormatStatsOfTarget()
+{
+	return Links==3 || Links==5;
+}
+
 string GetSize(const string &s, const struct stat &Sta, int Space, int Seps)
 {
 	unsigned Bufsize = Space<256 ? 256 : Space;
@@ -62,21 +71,24 @@ GotSize:
     #ifdef S_ISLNK
     else if(S_ISLNK (Stat->st_mode))
     {
-        if(Links != 1 && Links != 4)goto P1;
+    	if(!LinkFormatWithoutSize())goto P1;
 LinkProblem:
         sprintf(Buf, "%*s", -Space, "<LINK>");
     }
     #endif
     else
     {
+    	/* Tähän päädytään, jos kyseessä oli tavanomainen tiedosto */
         long l;
 
 #ifdef S_ISLNK
 P1:
+		/* Tämä iffi on tässä siksi uudestaan, kun tähän voidaan päätyä
+		 * sekä gotolla, että myös jos oli tavanomainen tiedosto.
+		 */		
 		if(S_ISLNK(Stat->st_mode))
 		{
-			if(Links==2)descr = NULL;
-			if(Links==3)
+			if(LinkFormatStatsOfTarget())
 			{
 				static struct stat Stat1;
 				string Buf = LinkTarget(s);
@@ -89,6 +101,8 @@ P1:
 				}
 				goto LinkProblem;
 			}
+			/* different colour */
+			descr = NULL;
 		}
 #endif
         l = Stat->st_size;

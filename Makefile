@@ -1,4 +1,4 @@
-VERSION = 3.22
+VERSION = 3.23
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -26,14 +26,16 @@ DEFINES = -DCACHE_GETSET=1 \
 CPP=gcc
 CXX=g++
 CPPFLAGS=-Wall -W -pedantic -DVERSION=\"$(VERSION)\" $(DEFINES) -pipe
-CXXFLAGS=-O3 -fomit-frame-pointer
-LDFLAGS=-s
+CXXFLAGS=-g
+#-O3 -fomit-frame-pointer
+LDFLAGS=
+#-s
 BINDIR=/usr/local/bin
 INSTALL=install
 
 PROG=dirr
 OBJS=dirr.o pwfun.o wildmatch.o cons.o setfun.o strfun.o colouring.o \
-     getname.o getsize.o totals.o
+     getname.o getsize.o totals.o argh.o
 
 ARCHDIR=archives/
 ARCHNAME=dirr-$(VERSION)
@@ -48,6 +50,7 @@ ARCHFILES=dirr.cc COPYING ChangeLog README dirrsets.hh \
           totals.cc totals.hh \
           pwfun.cc pwfun.hh \
           cons.cc cons.hh \
+          argh.cc argh.hh \
           TODO
 
 INSTALLPROGS=$(PROG)

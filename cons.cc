@@ -7,7 +7,7 @@
 
 #ifndef linux
 // In SunOS, sys/ioctl.h doesn't define ioctl()
-// funktion, but it's instead in unistd.h.
+// function, but it's instead in unistd.h.
 #include <unistd.h>
 #endif
 
