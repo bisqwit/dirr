@@ -659,7 +659,7 @@ static string NameOnly(const string &Name)
 static string DirOnly(const string &Name)
 {
 	const char *q, *s = Name.c_str();
-	q = strchr(s, '/');
+	q = strrchr(s, '/');
 	if(!q)return "";
 	
 	return string(s, 0, q-s+1);
@@ -1451,12 +1451,12 @@ static void TellMe(const struct stat &Stat, const string &Name
     else if(S_ISCHR(Stat.st_mode))
     {
         SumCnt[SumChrDev]++;
-        Summa[SumChrDev] += Stat.st_size;
+        Summa[SumChrDev] += 0; //Stat.st_size;
     }
     else if(S_ISBLK(Stat.st_mode))
     {
         SumCnt[SumBlkDev]++;
-        Summa[SumBlkDev] += Stat.st_size;
+        Summa[SumBlkDev] += 0; //Stat.st_size;
     }
     #ifdef S_ISLNK
     else if(S_ISLNK(Stat.st_mode))
@@ -1972,6 +1972,8 @@ static void ScanDir(const char *Dirrikka)
 
 R1: if((dir = opendir(Source)) == NULL)
     {
+    	/* It was not a directory, or could not be read */
+    	
     	if(
 	    #ifdef DJGPP
     		errno==EACCES ||
@@ -1981,6 +1983,7 @@ R1: if((dir = opendir(Source)) == NULL)
         {
 P1:			string Tmp = DirOnly(Source);
 			if(!Tmp.size())Tmp = "./";
+			
 	    	DirChangeCheck(Tmp.c_str());
 
 			SingleFile(Source, Stat);
