@@ -1,4 +1,4 @@
-VERSION = 3.27.2
+VERSION = 3.27.3
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -27,7 +27,7 @@ OBJS=main.o pwfun.o wildmatch.o cons.o setfun.o strfun.o colouring.o \
 
 ARCHDIR=archives/
 ARCHNAME=dirr-$(VERSION)
-ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh \
+ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh config.h \
           configure config.sub1 config.sub2 config.sub3 \
           wildmatch.cc wildmatch.hh \
           colouring.cc colouring.hh \
