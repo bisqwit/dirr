@@ -1,4 +1,4 @@
-VERSION = 3.20
+VERSION = 3.21
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -25,25 +25,34 @@ DEFINES = -DCACHE_GETSET=1 \
 
 CPP=gcc
 CXX=g++
-CPPFLAGS=-Wall -W -pedantic -DVERSION=\"$(VERSION)\" $(DEFINES)
+CPPFLAGS=-Wall -W -pedantic -DVERSION=\"$(VERSION)\" $(DEFINES) -pipe
 CXXFLAGS=-O3 -fomit-frame-pointer
 LDFLAGS=-s
 BINDIR=/usr/local/bin
 INSTALL=install
 
 PROG=dirr
+OBJS=dirr.o pwfun.o wildmatch.o cons.o setfun.o strfun.o colouring.o
 
 ARCHDIR=archives/
 ARCHNAME=dirr-$(VERSION)
 ARCHFILES=dirr.cc COPYING ChangeLog README dirrsets.hh \
-          configure config.sub1 config.sub2 config.sub3
+          configure config.sub1 config.sub2 config.sub3 \
+          wildmatch.cc wildmatch.hh \
+          colouring.cc colouring.hh \
+          setfun.cc setfun.hh \
+          strfun.cc strfun.hh \
+          pwfun.cc pwfun.hh \
+          cons.cc cons.hh \
+          TODO
+
 INSTALLPROGS=$(PROG)
 
-$(PROG): dirr.o
+${PROG}: ${OBJS}
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 clean:
-	rm -f $(PROG) dirr.o
+	rm -f $(PROG) ${OBJS}
 distclean: clean
 	rm -f Makefile.cfg config.h *~
 realclean: distclean

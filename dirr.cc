@@ -14,26 +14,25 @@
     "About some ideas about this program, thanks to Warp.\n"
 
 #include <cstdio>
-#include <cstdarg>
 #include <cstring>
 #include <cstdlib>
 #include <cctype>
 #include <ctime>
 #include <cerrno>
 #include <csignal>
-#include <pwd.h>
-#include <grp.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #include "config.h"
+#include "pwfun.hh"
+#include "wildmatch.hh"
+#include "setfun.hh"
+#include "strfun.hh"
+#include "cons.hh"
+#include "colouring.hh"
 
-#ifdef HAVE_SYS_IOCTL_H
-#include <sys/ioctl.h>
-#endif
-
-#include <map>
 #include <algorithm>
 #include <vector>
 #include <string>
@@ -47,16 +46,8 @@
 #include <dir.h>
 #endif
 
-#ifndef NAME_MAX
- #define NAME_MAX 255  /* Chars in a file name */
-#endif
-#ifndef PATH_MAX
- #define PATH_MAX 1023 /* Chars in a path name */
-#endif
-
-#define STRANGE 077642 /* May not have & 0111 */
-
-#define DEFAULTATTR 7
+static const char SLinkArrow[] = " -> ";
+static const char HLinkArrow[] = " = ";
 
 static int LongestName;
 static int LongestSize;
@@ -68,8 +59,7 @@ enum {SumDir=1,SumFifo,SumSock,SumFile,SumLink,SumChrDev,SumBlkDev};
 static unsigned long SumCnt[10] = {0};
 static unsigned long Summa[10]  = {0};
 
-static bool Contents, Colors, PreScan, Sara, Totals, AnsiOpt;
-static bool Pagebreaks;
+static bool Contents, PreScan, Sara, Totals;
 static int DateTime, Compact;
 static int TotalSep;
 #ifdef S_ISLNK
@@ -81,10 +71,10 @@ static string Sorting; /* n,d,s,u,g */
 static string DateForm;
 static string FieldOrder;
 
-static int TextAttr = DEFAULTATTR;
-static bool Dumping = false; // If 0, save some time
-static int LINES=25, COLS=80;
-#define MAX_COLS 512 // Expect no bigger COLS-values
+static int RowLen;
+
+static void EstimateFields();
+static void Summat();
 
 static void SetDefaultOptions()
 {
@@ -118,1071 +108,6 @@ static void SetDefaultOptions()
 	ChrStr = "<C%u,%u>";	// Modify with -dc
 }
 
-/***
- *** Settings - This is the default DIRR_COLORS
- ***
- *** The colour codes are one- or two-digit hexadecimal
- *** numbers, which consist of the following values:
- ***
- ***   80 = blink
- ***   40 = background color red
- ***   20 = background color green
- ***   10 = background color blue
- ***   08 = foreground high intensity
- ***   04 = foreground color red
- ***   02 = foreground color green
- ***   01 = foreground color blue
- ***
- *** Add those to make combination colors:
- ***
- ***   09 = 9 = 8+1         = bright blue
- ***   4E = 40+E = 40+8+4+2 = bright yellow (red + green) on red background
- ***    2 = 02              = green.
- ***
- *** I hope you understand the basics of hexadecimal arithmetic.
- *** If you have ever played with textattr() function in
- *** Borland/Turbo C++ or with TextAttr variable in
- *** Borland/Turbo Pascal or assigned colour values directly
- *** into the PC textmode video memory, you should understand
- *** how the color codes work.
- ***/
- 
-static string Settings =
-#include SETTINGSFILE
-;
-
-/* Setting separator marks */
-#define SetSep(c) ((c)== ')'|| \
-                   (c)=='\t'|| \
-                   (c)=='\n'|| \
-                   (c)=='\r')
-
-#define ALLOCATE(p, type, len) \
-	if((p = (type)malloc((size_t)(len))) == NULL) \
-    { \
-    	SetAttr(7); \
-		fprintf(stderr, \
-			"\nOut of memory at line %d\n" \
-			"\tALLOCATE(%s, %s, %s);\n", __LINE__, #p, #type, #len); \
-        exit(EXIT_FAILURE); \
-    }
-
-static int RowLen;
-
-#ifndef __GNUC__
- #define __attribute__
-#endif
-
-#ifdef DJGPP
-#include <crt0.h>
-#include <conio.h>
-int __opendir_flags =
-	__OPENDIR_PRESERVE_CASE
-  | __OPENDIR_FIND_HIDDEN;
-int _crt0_startup_flags =
-	_CRT0_FLAG_PRESERVE_UPPER_CASE
-  | _CRT0_FLAG_PRESERVE_FILENAME_CASE;
-#define Ggetch getch
-#endif
-
-static int WhereX=0;
-
-static int OldAttr=DEFAULTATTR;
-static void FlushSetAttr();
-static void EstimateFields();
-static void SetAttr(int newattr);
-static void Summat();
-static int GetDescrColor(const string &descr, int index);
-
-static int Gprintf(const char *fmt, ...) __attribute__((format(printf,1,2)));
-
-static int Gputch(int x)
-{
-	static int Mask[MAX_COLS]={0};
-	int TmpAttr = TextAttr;
-    if(x=='\n' && (TextAttr&0xF0))GetDescrColor("txt", 1);
-    
-    if(x!=' ' || ((TextAttr&0xF0) != (OldAttr&0xF0)))
-		FlushSetAttr();
-		
-	#ifdef DJGPP
-	(Colors?putch:putchar)(x);
-	#else
-	if(x=='\a')
-	{
-		putchar(x);
-		return x;
-	}
-	if(AnsiOpt && Colors)
-	{
-		static int Spaces=0;
-		if(x==' ')
-		{
-			Spaces++;
-			return x;
-		}
-		while(Spaces)
-		{
-			int a=WhereX, Now, mask=Mask[a];
-			
-			for(Now=0; Now<Spaces && Mask[a]==mask; Now++, a++);
-			
-			Spaces -= Now;
-			if(mask)
-			{
-			Fill:
-				while(Now>0){Now--;putchar(' ');}
-			}
-			else if(Spaces || !(x=='\r' || x=='\n'))
-			{
-				if(Now<=4)goto Fill;
-				printf("\33[%dC", Now);
-			}
-			WhereX += Now;
-		}
-	}
-	putchar(x);	
-	#endif	
-	if(x=='\n')SetAttr(TmpAttr);
-	if(x=='\r')
-		WhereX=0;
-	else if(x!='\b')
-    {
-		if(x >= ' ')Mask[WhereX++] = 1;
-		else		memset(Mask, WhereX=0, sizeof Mask);
-    }
-	else if(WhereX)
-		WhereX--;	
-		
-	return x;
-}
-
-#ifndef DJGPP
-#ifdef HAVE_TERMIO_H
-#include <termio.h>
-#endif
-static int Ggetch()
-{
-	struct termio term, back;
-	int c;
-	ioctl(STDIN_FILENO, TCGETA, &term);
-	ioctl(STDIN_FILENO, TCGETA, &back);
-	term.c_lflag &= ~(ECHO | ICANON);
-	term.c_cc[VMIN] = 1;
-	ioctl(STDIN_FILENO, TCSETA, &term);
-	c = getchar();
-	ioctl(STDIN_FILENO, TCSETA, &back);
-	return c;
-}
-#endif
-
-static string GetError(int e)
-{
-    return strerror(e); /*
-	int a;
-	static char Buffer[64];
-	strncpy(Buffer, strerror(e), 63);
-	Buffer[63] = 0;
-	a=strlen(Buffer);
-	while(a && Buffer[a-1]=='\n')Buffer[--a]=0;
-	return Buffer; */
-}
-
-static void SetAttr(int newattr)
-{
-	TextAttr = newattr;
-}
-static void FlushSetAttr()
-{
-    if(TextAttr == OldAttr)return;
-    if(!Colors)goto Ret;
-
-    #ifdef DJGPP
-
-    textattr(TextAttr);
-
-    #else
-
-    printf("\33[");
-
-    if(TextAttr != 7)
-    {
-    	static const char Swap[] = "04261537";
-    	
-    	if(AnsiOpt)
-    	{
-	    	int pp=0;
-	    	
-	    	if((OldAttr&0x80) > (TextAttr&0x80)
-	    	|| (OldAttr&0x08) > (TextAttr&0x08))
-	    	{
-	    		putchar('0'); pp=1;
-	    		OldAttr = 7;
-	    	}    	
-	    	
-	    	if((TextAttr&0x08) && !(OldAttr&0x08)){if(pp)putchar(';');putchar('1');pp=1;}
-	    	if((TextAttr&0x80) && !(OldAttr&0x80)){if(pp)putchar(';');putchar('5');pp=1;}
-	       	
-	       	if((TextAttr&0x70) != (OldAttr&0x70))
-	       	{
-	   	   		if(pp)putchar(';');
-	       		putchar('4');
-	       		putchar(Swap[(TextAttr>>4)&7]);
-	       		pp=1;
-	       	}
-	       	
-	      	if((TextAttr&7) != (OldAttr&7))
-	      	{
-	       		if(pp)putchar(';');
-	       		putchar('3');
-	       		putchar(Swap[TextAttr&7]);
-	       	}
-       	}
-       	else
-	    	printf("0%s%s;4%c;3%c",
-    			(TextAttr&8)?";1":"",
-    			(TextAttr&0x80)?";5":"",
-    			Swap[(TextAttr>>4)&7],
-	    		Swap[TextAttr&7]);
-    }
-
-    putchar('m');
-    #endif
-Ret:OldAttr = TextAttr;
-}
-
-static int ColorNums = -1;
-static int ColorNumToggle = 0;
-static int Gprintf(const char *fmt, ...)
-{
-    static int Line=2;
-    char Buf[2048];
-
-    va_list ap;
-    va_start(ap, fmt);
-    int a = vsprintf(Buf, fmt, ap);
-    va_end(ap);
-    
-    for(char *s=Buf; *s; s++)
-    {
-    	if(*s=='\1')ColorNumToggle ^= 1;
-    	else if(*s=='\t')Gprintf("   ");
-        else
-        {
-#ifdef DJGPP
-            if(*s=='\n')Gputch('\r');
-#endif
-            if(ColorNumToggle)
-            {
-            	int ta = TextAttr;
-            	SetAttr(ColorNums);
-            	Gputch(*s);
-            	SetAttr(ta);
-            }
-            else
-            	Gputch(*s);
-            if(*s=='\n')
-            {
-                if(++Line >= LINES)
-                {
-                    if(Pagebreaks)
-                    {
-                    	int More=LINES-2;
-                        int ta = TextAttr;
-                        SetAttr(0x70);
-                        Gprintf("\r--More--");
-					    GetDescrColor("txt", 1);
-                        Gprintf(" \b");
-                        fflush(stdout);
-                        for(;;)
-                        {
-                        	int Key = Ggetch();
-                        	if(Key=='q' 
-                        	|| Key=='Q'
-                        	|| Key==3){More=-1;break;}
-                        	if(Key=='\r'|| Key=='\n'){More=1;break;}
-                        	if(Key==' ')break;
-                        	Gputch('\a');
-                       	}
-                        Gprintf("\r        \r");
-                        if(More<0)exit(0);
-                        SetAttr(ta);
-                        Line -= More;
-    }	}	}	}	}
-    return a;
-}
-
-#if CACHE_GETSET
-static map <int, map<string, string> > gscache;
-static const string sNULL = "\1";
-#endif
-
-static string GetSet(const char **S, const string &name, int index)
-{
-#if CACHE_GETSET
-    map<int, map<string, string> >::const_iterator i = gscache.find(index);
-    if(i != gscache.end())
-    {
-    	map<string, string>::const_iterator j = i->second.find(name);
-    	if(j != i->second.end())return j->second;
-    }
-#else
-	index=index;
-#endif
-    const char *s = *S;
-    string t;
-    
-    if(s)
-    {
-        /* Setting string separators */
-        unsigned namelen = name.size();
-        
-        for(;;)
-        {
-        	while(SetSep(*s))s++;
-
-            if(!*s)break;
-
-            if(!memcmp(s, name.c_str(), namelen) && s[namelen] == '(')
-            {
-            	const char *p;
-                int Len;
-                for(Len=0, p=s; *p && !SetSep(*p); ++Len)++p;
-        
-                *S = *p?p+1:NULL;
-                if(!**S)*S=NULL;
-                
-                t.assign(s, 0, Len);
-                goto Retu;
-            }
-        
-            while(*s && !SetSep(*s))s++;
-        }
-    }
-    t = sNULL;
-    *S = NULL;
-Retu:
-#if CACHE_GETSET
-	gscache[index][name] = t;
-#endif
-    return t;
-}
-
-static int GetHex(int Default, const char **S)
-{
-    int eka, Color = Default;
-    const char *s = *S;
-
-    for(eka=1; *s && isxdigit((int)*s); eka=0, s++)
-    {
-        if(eka)Color=0;else Color<<=4;
-
-        if(*s > '9')
-            Color += 10 + toupper(*s) - 'A';
-        else
-            Color += *s - '0';
-    }
-
-    *S = s;
-    return Color;
-}
-
-static int GetModeColor(const string &text, int Chr)
-{
-    int Dfl = 7;
-
-    const char *s = Settings.c_str();
-
-    int Char = Chr<0?-Chr:Chr;
-
-    for(;;)
-    {
-    	string T = GetSet(&s, text, 0);
-        if(T == sNULL)break;
-
-        const char *t = T.c_str() + text.size() + 1; /* skip 'text=' */
-
-        while(*t)
-        {
-            int C, c=*t++;
-
-            C = GetHex(Dfl, &t);
-
-            if(c == Char)
-            {
-                if(Chr > 0)SetAttr(C);
-                return C;
-            }
-            if(*t == ',')t++;
-        }
-    }
-
-    Gprintf("DIRR_COLORS error: No color for '%c' found in '%s'\n", Char, text.c_str());
-
-    return Dfl;
-}
-
-static int GetDescrColor(const string &descr, int index)
-{
-    int Dfl = 7;
-    if(!Colors || !Dumping)return Dfl;
-    
-    int ind = index<0 ? -index : index;
-    
-    const char *s = Settings.c_str();    
-    string t = GetSet(&s, descr, 0);
-    
-    if(t == sNULL)
-        Gprintf("DIRR_COLORS error: No '%s'\n", descr.c_str());
-    else
-    {
-        const char *S = t.c_str() + descr.size();
-        for(; ind; ind--)
-        {	
-        	++S;
-        	Dfl = GetHex(Dfl, &S);
-        }
-        if(index>0)SetAttr(Dfl);
-    }
-    return Dfl;
-}
-
-static void PrintSettings()
-{
-    const char *s = Settings.c_str();
-    int LineLen, Dfl;
-    
-    Dfl = GetDescrColor("txt", -1);
-    
-    for(LineLen=0;;)
-    {
-        while(SetSep(*s))s++;
-        if(!*s)break;
-        
-        int Len;
-        const char *t = s;
-        for(Len=0; *t && !SetSep(*t); Len++)t++;
-
-        string T(s, 0, Len);
-        T += ')';
-
-        if(LineLen && LineLen+strlen(t) > 75)
-        {
-            Gprintf("\n");
-            LineLen=0;
-        }
-        if(!LineLen)Gprintf("\t");
-
-        LineLen += T.size();
-        const char *n = t = T.c_str();
-
-        while(*t!='(')Gputch(*t++);
-        Gputch(*t++);
-
-        if(n[4]=='('
-        && (!strncmp(n, "mode", 4)
-         || !strncmp(n, "type", 4)
-         || !strncmp(n, "info", 4)))
-        {
-            while(*t)
-            {
-                int c;
-                const char *k;
-                int len;
-
-                c = *t++;
-
-                k=t;    
-                SetAttr(GetHex(Dfl, &k));
-
-                Gputch(c);
-
-                SetAttr(Dfl);
-
-                for(len=k-t; len; len--)Gputch(*t++);
-
-                if(*t != ',')break;
-                Gputch(*t++);
-            }
-            Gprintf("%s", t);
-        }
-        else
-        {
-            int C=Dfl, len;
-            const char *k;
-            for(;;)
-            {
-                k = t;
-                SetAttr(C=GetHex(C, &k));
-                for(len=k-t; len; len--)Gputch(*t++);
-                SetAttr(Dfl);
-                if(*t != ',')break;
-                Gputch(*t++);
-            }
-            if(*t!=')')Gputch(*t++);
-            SetAttr(C);
-            while(*t!=')')
-            {
-            	if(!*t)
-            	{
-            		SetAttr(0x0C);
-            		Gprintf("(Error:unterminated)");
-            		SetAttr(Dfl);
-            		break;
-            	}
-            	Gputch(*t++);
-          	}
-            SetAttr(Dfl);
-            Gputch(')');
-        }
-        
-        while(*s && !SetSep(*s))s++;
-    }
-    if(LineLen)
-        Gprintf("\n");
-}
-
-static string NameOnly(const string &Name)
-{
-    const char *q, *s = Name.c_str();
-    
-    while((q = strchr(s, '/')) && q[1])s = q+1;
-    
-    q = strchr(s, '/');
-    if(!q)q = strchr(s, 0);
-    
-    return string(s, 0, q-s);
-}
-
-// Ends with '/'.
-// If no directory, returns empty string.
-static string DirOnly(const string &Name)
-{
-	const char *q, *s = Name.c_str();
-	q = strrchr(s, '/');
-	if(!q)return "";
-	
-	return string(s, 0, q-s+1);
-}
-
-/***********************************************
- *
- * Getpwuid(uid)
- * Getgrgid(gid)
- *
- *   Get user and group name, quickly using binary search
- *
- * ReadGidUid()
- *
- *   Builds the data structures for Getpwuid() and Getgrgid()
- *
- *************************************************************/
-
-#if PRELOAD_UIDGID||CACHE_UIDGID
-
-typedef map<int, string> idCache;
-static idCache GidItems, UidItems;
-
-#endif
-
-#if PRELOAD_UIDGID
-
-static char *Getpwuid(int uid)
-{
-	return UidItems[uid].c_str();
-}
-static char *Getgrgid(int gid)
-{
-	return GidItems[gid].c_str();
-}
-static void ReadGidUid()
-{
-	int a;
-	
-	for(setpwent(); ;)
-	{
-		struct passwd *p = getpwent();
-		UidItems[p->pw_uid] = p->pw_name;
-	}
-	endpwent();
-	
-	for(setgrent(); ;)
-	{
-		struct group *p = getgrent();
-		UidItems[p->gr_gid] = p->gr_name;
-	}
-	endgrent();
-}
-#else /* no PRELOAD_UIDGID */
-#define ReadGidUid()
-#if CACHE_UIDGID
-static const char *Getpwuid(int uid)
-{
-	idCache::iterator i;
-	i = UidItems.find(uid);
-	if(i==UidItems.end())
-	{
-		const char *s;
-		struct passwd *tmp = getpwuid(uid);
-		s = tmp ? tmp->pw_name : "";
-		UidItems[uid] = s;
-		return s;
-	}
-	return i->second.c_str();
-}
-static const char *Getgrgid(int gid)
-{
-	idCache::iterator i;
-	i = GidItems.find(gid);
-	if(i==GidItems.end())
-	{
-		const char *s;
-		struct group *tmp = getgrgid(gid);
-		s = tmp ? tmp->gr_name : "";
-		GidItems[gid] = s;
-		return s;
-	}
-	return i->second.c_str();
-}
-#else
-static char *Getpwuid(int uid)
-{
-	struct passwd *tmp = getpwuid(uid);
-	if(!tmp)return NULL;
-	return tmp->pw_name;
-}
-static char *Getgrgid(int gid)
-{
-	struct group *tmp = getgrgid(gid);
-	if(!tmp)return NULL;
-	return tmp->gr_name;
-}
-#endif
-#endif
-
-/***********************************************
- *
- * WildMatch(Pattern, What)
- *
- *   Compares with wildcards.
- *
- *   This routine is a descendant of the fnmatch()
- *   function in the GNU fileutils-3.12 package.
- *
- *   Supported wildcards:
- *       *
- *           matches multiple characters
- *       ?
- *           matches one character
- *       [much]
- *           "much" may have - (range) and ^ or ! (negate)
- *       \d
- *           matches a digit (same as [0-9])
- *       \w
- *           matches alpha (same as [a-zA-Z])
- *       \
- *           quote next wildcard
- *
- *   Global variable IgnoreCase controls the case
- *   sensitivity of the operation as 0=case sensitive, 1=not.
- *
- *   Return value: 0=no match, 1=match
- *
- **********************************************************/
- 
-static int IgnoreCase;
-
-#if NEW_WILDMATCH
-static int WildMatch(const char *pattern, const char *what)
-{
-	for(;;)
-	{
-		#define cc(x) (IgnoreCase ? tolower((int)(x)) : (x))
-		if(*pattern == '*')
-		{
-			while(*++pattern == '*');
-			for(;;)
-			{
-				register int a = WildMatch(pattern, what);
-				if(a != 0)return a; /* Täystäsmä(1) tai meni ohi(-1) */
-				what++;
-			}
-			return 0;
-		}
-		if(*pattern == '?' && *what)goto AnyMerk;
-		#if SUPPORT_BRACKETS
-		if(*pattern == '[')
-		{
-			int Not=0;
-			register int mrk=*what;
-			if(*++pattern=='^')++pattern, Not=1;
-			while(*pattern != ']')
-			{
-				register int a, left = cc(*pattern++), m = cc(mrk);
-				if(*pattern=='-')
-					a = m >= left && m <= cc(pattern[1]), pattern += 2;
-				else
-					a = m == left;
-				if(Not ^ !a)return 0;
-			}
-		}
-		else
-		#endif
-		{
-			if(*pattern == '\\')
-			{
-				++pattern;
-				if(*pattern=='d') { if(!isdigit((int)*what))return 0; goto AnyMerk; }
-				if(*pattern=='w') { if(!isalpha((int)*what))return 0; goto AnyMerk; }
-			}
-			if(!*what)return *pattern
-				? -1		/* nimi loppui, patterni ei (meni ohi) */
-				: 1;		/* molemmat loppui, hieno juttu        */
-			if(cc(*pattern) != cc(*what))return 0; /* Epätäsmä.    */
-		}
-	AnyMerk:
-		what++;
-		pattern++;
-		#undef cc
-	}
-}
-#else
-static int WildMatch(const char *Pattern, const char *What)
-{
-	register const char *p=Pattern, *n = What;
-	register char c;
-	
-	while((c = *p++) != 0)
-    {
-    	#define FOLD(c) (IgnoreCase ? toupper(c) : (c))
-    	c = FOLD(c);
-		switch(c)
-		{
-			case '?':
-				if(!*n || *n=='/')return 0;
-				break;
-			case '\\':
-				if(FOLD(*n) != c)return 0;
-				break;
-			case '*':
-				for(c=*p++; c=='?' || c=='*'; c=*p++, ++n)
-					if(*n == '/' || (c == '?' && *n == 0))return 0;
-				if(!c)return 1;
-				{
-					char c1 = FOLD(c);
-					for(--p; *n; n++)
-						if((c == '[' || FOLD(*n) == c1) && WildMatch(p, n))
-							return 1;
-					return 0;
-				}
-			case '[':
-			{
-				/* Nonzero if the sense of the character class is inverted.  */
-				register int Not;
-				if(!*n)return 0;
-				Not = (*p == '!' || *p == '^');
-				if(Not)p++;
-				c = *p++;
-				for(;;)
-				{
-					register char cstart, cend;
-					cstart = cend = FOLD(c);
-					if(!c)return 0;
-					c = FOLD(*p);
-					p++;
-					if(c=='/')return 0;
-					if(c=='-' && *p!=']')
-					{
-						if(!(cend = *p++))return 0;
-						cend = FOLD(cend);
-						c = *p++;
-					}
-					if(FOLD(*n) >= cstart && FOLD(*n) <= cend)
-					{
-						while(c != ']')
-						{
-							if(!c)return 0;
-							c = *p++;
-						}
-						if(Not)return 0;
-						break;
-					}
-					if(c == ']')break;
-				}
-				if(!Not)return 0;
-				break;
-			}
-			default:
-				if(c != FOLD(*n))return 0;
-		}
-		n++;
-	}
-	return !*n;
-}
-#endif
-
-#if !CACHE_NAMECOLOR
-/*
- * rmatch(Name, Items)
- *
- *   Finds a name from the space-separated wildcard list
- *   Uses WildMatch() to compare.
- *
- *   Return value: 0=no match, >0=index of matched string
- */
-static int rmatch(const char *Name, const char *Items)
-{
-    char Buffer[PATH_MAX+1];
-
-	int Index;
-    char *s, *n;
-    if(!Name || !Items)return 0;
-
-    strcpy(Buffer, Items);
-
-    for(n=Buffer, Index=1; (s=strtok(n, " ")) != NULL; Index++)
-    {
-        if(WildMatch(s, Name) > 0)goto Ret;
-        n=NULL;
-    }
-
-    Index=0;
-
-Ret:return Index;
-}
-#endif
-
-/*
-18:35|>Warp= 1) int NameColor(const char *s) - palauttaa
-                nimeä vastaavan värin.
-18:36|>Warp= 2) NameColor() käy kaikki byext():t läpi, tai siihen asti
-                kunnes sieltä löytyy joku patterni johon annettu nimi menee.
-18:36|>Warp= 3) Jokaisen byext():n sisällä on läjä patterneja.
-                Stringi annetaan rmatch() -funktiolle.
-18:36|>Warp= 4) rmatch() pilkkoo stringin ja testaa jokaista patternia
-                erikseen wildmatch:lla.
-18:37|>Warp= 5) wildmatch() palauttaa >0 jos täsmäsi.
-18:37|>Warp= 6) rmatch() lopettaa testauksen jos wildmatch täsmäsi.
-18:37|>Warp= 7) Jos rmatch() palautti 0 (ei täsmännyt) ja viimeinen
-                byext() on käyty läpi, palautetaan default-väri.
-18:38|>Warp= Ja byext():t tässä ovat niitä asetusstringejä, ei funktioita
-
-*/
-
-static int WasNormalColor;
-
-#if CACHE_NAMECOLOR
-class NameColorItem
-{
-public:
-	string pat;
-	int ignorecase;
-	int colour;
-	NameColorItem(const string &p, int i, int c) : pat(p), ignorecase(i), colour(c) { }
-};
-static vector<NameColorItem> nccache;
-static map<string, int> NameColorCache2;
-
-static void BuildNameColorCache()
-{
-    const char *DirrVar = getenv("DIRR_COLORS");
-    if(DirrVar)Settings = DirrVar;
-
-	const char *s = Settings.c_str();
-	int Normal = GetDescrColor("txt", -1);
-	int index=0;
-	
-	for(;;)
-	{
-		int c;
-		string T = GetSet(&s, "byext", index++);
-		if(T == sNULL)break;
-		const char *t = T.c_str() + 6;
-		c = GetHex(Normal, &t);
-		IgnoreCase = *t++ == 'i';
-		string Buffer = t;
-		char *Q, *q = (char *)Buffer.c_str();
-		for(; (Q=strtok(q, " ")) != NULL; q=NULL)
-		{
-			NameColorItem tmp(Q, IgnoreCase, c);
-			nccache.push_back(tmp);
-		}
-	}
-}
-static int NameColor(const string &Name)
-{
-	map<string, int>::const_iterator i = NameColorCache2.find(Name);
-	if(i != NameColorCache2.end())return i->second;
-	int colo;
-	WasNormalColor=0;
-	unsigned a, b=nccache.size();
-	for(a=0; a<b; ++a)
-	{
-		IgnoreCase = nccache[a].ignorecase;
-		if(WildMatch(nccache[a].pat.c_str(), Name.c_str()) > 0)
-		{
-			colo = nccache[a].colour;
-			goto Done;
-		}
-	}
-	WasNormalColor=1;
-	colo = GetDescrColor("txt", -1);
-Done:
-	return NameColorCache2[Name] = colo;
-}
-#else
-static int NameColor(const string &Name)
-{
-    const char *s = Settings.c_str();
-    int Normal = GetDescrColor("txt", -1);
-    int index = 0;
-
-    for(WasNormalColor=0;;)
-    {
-        int c, result;
-        const char *t, *T = GetSet(&s, "byext", index++);
-
-        if(!T)break;
-
-        t = T+6; /* skip "byext" */
-
-        c = GetHex(Normal, &t);
-
-        IgnoreCase = *t++ == 'i';
-
-        result = rmatch(Name, t);
-
-        /* free(T); */
-
-        if(result)return c;
-    }
-
-    WasNormalColor=1;
-
-    return Normal;
-}
-#endif
-
-static int GetNameAttr(const struct stat &Stat, const string &fn)
-{
-    int NameAttr = NameColor(fn);
-
-    if(!WasNormalColor)return NameAttr;
-
-    #ifdef S_ISLNK
-    if(S_ISLNK(Stat.st_mode))       NameAttr=GetModeColor("type", -'l');
-    else
-    #endif
-         if(S_ISDIR(Stat.st_mode))  NameAttr=GetModeColor("type", -'d');
-    else if(S_ISCHR(Stat.st_mode))  NameAttr=GetModeColor("type", -'c');
-    else if(S_ISBLK(Stat.st_mode))  NameAttr=GetModeColor("type", -'b');
-    #ifdef S_ISFIFO
-    else if(S_ISFIFO(Stat.st_mode)) NameAttr=GetModeColor("type", -'p');
-    #endif
-    #ifdef S_ISSOCK
-    else if(S_ISSOCK(Stat.st_mode)) NameAttr=GetModeColor("type", -'s');
-    #endif
-    else if(Stat.st_mode&00111)     NameAttr=GetModeColor("type", -'x');
-
-    return NameAttr;
-}
-
-static void PrintAttr(const struct stat &Stat, char Attrs, int *Len, unsigned int dosattr)
-{
-    switch(Attrs)
-    {
-        case '0':
-            #define PutSet(c) {GetModeColor("mode", c);Gputch(c);(*Len)++;}
-        	if(dosattr&0x20)PutSet('A')else PutSet('-')
-        	if(dosattr&0x02)PutSet('H')else PutSet('-')
-        	if(dosattr&0x04)PutSet('S')else PutSet('-')
-        	if(dosattr&0x01)PutSet('R')else PutSet('-')
-            break;
-        case '1':
-        {
-        #ifndef DJGPP
-        	int Viva = GetModeColor("mode", '-');
-            #ifdef S_ISLNK
-                 if(S_ISLNK(Stat.st_mode))  PutSet('l')
-            else
-            #endif
-                 if(S_ISDIR(Stat.st_mode))  PutSet('d')
-            else if(S_ISCHR(Stat.st_mode))  PutSet('c')
-            else if(S_ISBLK(Stat.st_mode))  PutSet('b')
-            #ifdef S_ISFIFO
-            else if(S_ISFIFO(Stat.st_mode)) PutSet('p')
-            #endif
-            #ifdef S_ISSOCK
-            else if(S_ISSOCK(Stat.st_mode)) PutSet('s')
-            #endif
-            else if(S_ISREG(Stat.st_mode))  PutSet('-')
-            else                             PutSet('?')
-
-            SetAttr(Viva);
-            Gputch((Stat.st_mode&00400)?'r':'-');
-            Gputch((Stat.st_mode&00200)?'w':'-');
-
-            GetModeColor("mode", (Stat.st_mode&00100)?'x':'-');
-            
-            Gputch("-xSs"[((Stat.st_mode&04000)>>10)|((Stat.st_mode&00100)>>6)]);
-
-            SetAttr(Viva);
-            Gputch((Stat.st_mode&00040)?'r':'-');
-            Gputch((Stat.st_mode&00020)?'w':'-');
-
-            GetModeColor("mode", (Stat.st_mode&00010)?'x':'-');
-        #if defined(SUNOS)||defined(__sun)||defined(SOLARIS)
-            Gputch("-xls"[((Stat.st_mode&02000)>>9)|((Stat.st_mode&00010)>>3)]);
-        #else
-            Gputch("-xSs"[((Stat.st_mode&02000)>>9)|((Stat.st_mode&00010)>>3)]);
-        #endif
-
-            SetAttr(Viva);
-            Gputch((Stat.st_mode&00004)?'r':'-');
-            Gputch((Stat.st_mode&00002)?'w':'-');
-
-            GetModeColor("mode", (Stat.st_mode&00001)?'x':'-');
-            Gputch("-xTt"[((Stat.st_mode&01000)>>8)|((Stat.st_mode&00001))]);
-
-            (*Len) += 9;
-
-        #endif /* not djgpp */
-            break;
-
-           	#undef PutSet
-        }
-        case '2':
-            Attrs = '3';
-        default:
-        {
-    		char Buf[104]; /* 4 is max extra */
-            Attrs -= '0';
-            sprintf(Buf, "%0100o", (int)Stat.st_mode);
-            GetModeColor("mode", '#');
-            (*Len) += Gprintf("%s", Buf+100-Attrs);
-        }
-}   }
-
-static string LinkTarget(const string &link, bool fixit=false)
-{
-	char Target[PATH_MAX+1];
-
-    int a = readlink(link.c_str(), Target, sizeof Target);
-	if(a < 0)a = 0;
-	Target[a] = 0;
-	
-	if(!fixit)return Target;
- 
-	if(Target[0] == '/')
-	{
-		// Absolute link
-		return Target;
-	}
-
-	// Relative link
-	return DirOnly(link) + Target;
-}
-
 /***********************************************
  *
  * GetName(fn, Stat, Space, Fill)
@@ -1201,18 +126,26 @@ static string LinkTarget(const string &link, bool fixit=false)
  *
  **********************************************************/
  
-static int GetName(const string &fn, const struct stat &sta, int Space, int Fill, bool nameonly)
+static int GetName(const string &fn, const struct stat &sta, int Space, int Fill, bool nameonly,
+                   const char *hardlinkfn = NULL)
 {
     string Puuh, Buf, s=fn;
     const struct stat *Stat = &sta;
 
     unsigned Len = 0;
     int i;
+    
+    bool maysublink = true;
+    bool wasinvalid = false;
 
     Puuh = nameonly ? NameOnly(s) : s;
 #ifdef S_ISLNK
 Redo:
 #endif
+	// Tähän kohtaan hypätään tulostamaan nimi.
+	// Tekstin väri on säädetty jo valmiiksi siellä
+	// mistä tähän funktioon (tai Redo-labeliin) tullaan.
+
     Buf = Puuh;
     Len += (i = Buf.size());
     
@@ -1222,23 +155,29 @@ Redo:
     Space -= i;
 
     #define PutSet(c) do if((++Len,Space)&&GetModeColor("info", c))Gputch(c),--Space;while(0)
-
-    #ifdef S_ISSOCK
-    if(S_ISSOCK(Stat->st_mode)) PutSet('=');
-    #endif
-    #ifdef S_ISFIFO
-    if(S_ISFIFO(Stat->st_mode)) PutSet('|');
-    #endif
-    if(Stat->st_mode==STRANGE)  PutSet('?');
+    
+    if(wasinvalid)
+    {
+    	PutSet('?');
+    }
+    else
+    {
+	    #ifdef S_ISSOCK
+    	if(S_ISSOCK(Stat->st_mode)) PutSet('=');
+	    #endif
+    	#ifdef S_ISFIFO
+	    if(S_ISFIFO(Stat->st_mode)) PutSet('|');
+    	#endif
+    }
 
     #ifdef S_ISLNK
-    if(S_ISLNK(Stat->st_mode))
+    if(!wasinvalid && S_ISLNK(Stat->st_mode))
     {
-        if(Links >= 2)
+        if(Links >= 2 && maysublink)
         {
         	int a;
             
-            Buf = " -> ";
+            Buf = SLinkArrow;
 
             Len += (a = Buf.size());
             
@@ -1257,11 +196,25 @@ Redo:
             /* Target status */
 	        if(stat(Buf.c_str(), &Stat1) < 0)
     	    {
-        	    Stat1.st_mode = STRANGE;
-            	if(Space)GetModeColor("type", '?');
+    	    	if(lstat(Buf.c_str(), &Stat1) < 0)
+    	    	{
+    	        	wasinvalid = true;
+    	        	if(Space)GetModeColor("type", '?');
+    	        }
+    	        else
+    	        {
+    	        	if(Space)GetModeColor("type", 'l');
+    	        }
+    	        maysublink = false;
 			}
-	        else
-    	        if(Space)SetAttr(GetNameAttr(Stat1, Buf));
+	        else if(Space)
+    	    {
+    	    	struct stat Stat2;
+    	    	if(lstat(Buf.c_str(), &Stat2) >= 0 && S_ISLNK(Stat2.st_mode))
+   	    	    	GetModeColor("type", 'l');
+	   	        else
+   		        	SetAttr(GetNameAttr(Stat1, Buf));
+  	        }
             
             Puuh = s = LinkTarget(s, false); // Unfixed link.
             Stat = &Stat1;
@@ -1271,9 +224,34 @@ Redo:
     }
     else
     #endif
+    {
+	    if(S_ISDIR(Stat->st_mode))  PutSet('/');
+	    else if(Stat->st_mode & 00111)PutSet('*');
+	}
     
-    if(S_ISDIR(Stat->st_mode))  PutSet('/');
-    else if(Stat->st_mode & 00111)PutSet('*');
+    if(hardlinkfn && Space)
+    {
+        struct stat Stat1;
+        
+    	SetAttr(GetModeColor("info", '&'));
+    	
+    	Len += Gprintf("%s", HLinkArrow);
+    	Space -= strlen(HLinkArrow);
+    	
+    	Puuh = Relativize(s, hardlinkfn);
+    	
+    	stat(hardlinkfn, &Stat1);
+    	SetAttr(GetNameAttr(Stat1, NameOnly(hardlinkfn)));
+    	hardlinkfn = NULL;
+    	Stat = &Stat1;
+    	
+    	maysublink = false;
+    	wasinvalid = false;
+    	
+    	if(Space < 0)Space = 0;
+    	
+    	goto Redo;
+    }
 
     #undef PutSet
 
@@ -1287,50 +265,10 @@ Redo:
     return Len;
 }
 
-static void PrintNum(string &Dest, int Seps, const char *fmt, ...)
-	__attribute__((format(printf,3,4)));
-	
-static void PrintNum(string &Dest, int Seps, const char *fmt, ...)
+static string GetSize(const string &s, const struct stat &Sta, int Space, int Seps)
 {
-	int Len;
-	
-	Dest.resize(2048);
-	
-	va_list ap;
-	va_start(ap, fmt);
-	Dest.erase(vsprintf((char *)Dest.c_str(), fmt, ap));
-	va_end(ap);
-	
-	if(Seps)
-    {
-        int SepCount;
-        /* 7:2, 6:1, 5:1, 4:1, 3:0, 2:0, 1:0, 0:0 */
-
-		const char *End = strchr(Dest.c_str(), '.');
-		if(!End)End = Dest.c_str() + Dest.size();
-		
-		Len = (int)(End-Dest.c_str());
-		
-		SepCount = (Len - 1) / 3;
-	
-        for(; SepCount>0; SepCount--)
-        {
-        	Len -= 3;
-        	Dest.insert(Len, " ");
-        }
-    }
-}
- 
-static char *GetSize(const string &s, const struct stat &Sta, int Space, int Seps)
-{
-    static char Buf[128];
-    char *descr = "descr";
-
-    if(Space >= (int)(sizeof Buf))
-    {
-    	fprintf(stderr, "\ndirr: FATAL internal error - line %d\n", __LINE__);
-        exit(EXIT_FAILURE);
-    }
+	char *Buf = new char[Space];
+    const char *descr = "descr";
     
     const struct stat *Stat = &Sta;
 
@@ -1373,7 +311,8 @@ GotSize:
     #ifdef S_ISLNK
     else if(S_ISLNK (Stat->st_mode))
     {
-        if((Links!=1)&&(Links!=4))goto P1;
+        if(Links != 1 && Links != 4)goto P1;
+LinkProblem:
         sprintf(Buf, "%*s", -Space, "<LINK>");
     }
     #endif
@@ -1385,7 +324,7 @@ GotSize:
 P1:
 		if(S_ISLNK(Stat->st_mode))
 		{
-			if(Links==2)descr=NULL;
+			if(Links==2)descr = NULL;
 			if(Links==3)
 			{
 				static struct stat Stat1;
@@ -1396,7 +335,10 @@ P1:
 	    	    {
     		    	Stat = &Stat1;
     	    		goto GotSize;
-		}	}	}
+				}
+				goto LinkProblem;
+			}
+		}
 #endif
         l = Stat->st_size;
         
@@ -1412,8 +354,56 @@ P1:
 	else
     	GetModeColor("info", '@');
 
-    return Buf;
+	string tmp(Buf);
+	delete[] Buf;
+    return tmp;
 }
+
+#include <map>
+static class Inodemap
+{
+	typedef map<ino_t, string> inomap;
+	typedef map<dev_t, inomap> devmap;
+	devmap items;
+	bool enabled;
+public:
+	Inodemap() : enabled(true) { }
+	void disable()
+	{
+		enabled = false;
+		items.clear();
+	}
+	void enable()
+	{
+		enabled = true;	
+	}
+	void insert(dev_t dev, ino_t ino, const string &name)
+	{
+		if(enabled && !has(dev, ino))
+			items[dev][ino] = name;
+	}
+	bool has(dev_t dev, ino_t ino) const
+	{
+		devmap::const_iterator i = items.find(dev);
+		if(i != items.end())
+		{
+			inomap::const_iterator j = i->second.find(ino);
+			if(j != i->second.end())return true;
+		}
+		return false;
+	}
+	const char *get(dev_t dev, ino_t ino) const
+	{
+		devmap::const_iterator i = items.find(dev);
+		if(i != items.end())
+		{
+			inomap::const_iterator j = i->second.find(ino);
+			if(j != i->second.end())
+				return j->second.c_str();
+		}
+		return NULL;
+	}
+} Inodemap;
 
 static void TellMe(const struct stat &Stat, const string &Name
 #ifdef DJGPP
@@ -1496,7 +486,7 @@ static void TellMe(const struct stat &Stat, const string &Name
                         s++;
                         Len = '1';
                         if((*s>='0')&&(*s<='9'))Len = *s;
-                        PrintAttr(Stat, Len, &i,
+                        PrintAttr(Stat, Len, i,
 						#ifdef DJGPP
                         	dosattr
                         #else
@@ -1554,13 +544,24 @@ static void TellMe(const struct stat &Stat, const string &Name
 #endif
                     case 'F':
                     case 'f':
+                    {
                         SetAttr(NameAttr);
-                        GetName(Name, Stat, LongestName, (Sara||s[1]) && (*s=='f'), *s=='f');
+                        
+                        const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
+                        
+                        if(hardlinkfn && Name == hardlinkfn)
+                        	hardlinkfn = NULL;
+                        
+                        GetName(Name, Stat, LongestName,
+                                (Sara||s[1]) && (*s=='f'), *s=='f',
+                                hardlinkfn);
+                        
                         ItemLen += LongestName;
                         RowLen += LongestName;
                         break;
+                    }
                     case 's':
-                        Gprintf("%s", GetSize(Name, Stat, LongestSize, 0));
+                        Gprintf("%s", GetSize(Name, Stat, LongestSize, 0).c_str());
                         ItemLen += LongestSize;
                         RowLen += LongestSize;
                         break;
@@ -1568,7 +569,7 @@ static void TellMe(const struct stat &Stat, const string &Name
                     {
                         int i;
                         s++; /* 's' on sepittömälle versiolle */
-                        i = Gprintf("%s", GetSize(Name, Stat, LongestSize+3, *s?*s:' '));
+                        i = Gprintf("%s", GetSize(Name, Stat, LongestSize+3, *s?*s:' ').c_str());
                         ItemLen += i;
                         RowLen += i;
                         break;
@@ -1643,6 +644,7 @@ static void TellMe(const struct stat &Stat, const string &Name
         }
         if(*s)s++;
     }
+    
     if(FieldOrder.size())
     {
         if(!Sara)goto P1;
@@ -1655,20 +657,9 @@ P1:         Gprintf("\n");
         {
 			if(NeedSpace)Gputch(' ');
             RowLen++;
-}   }   }
-
-#ifndef DJGPP
-static int stricmp(const char *eka, const char *toka)
-{
-	while(toupper(*eka) == toupper(*toka))
-	{
-		if(!*eka)return 0;
-		eka++;
-		toka++;
+		}
 	}
-	return toupper((int)*eka) - toupper((int)*toka);
 }
-#endif
 
 class StatItem
 {
@@ -1712,7 +703,7 @@ public:
 	bool operator> (const StatItem &toka) const { return compare(toka, true); }
 	bool operator< (const StatItem &toka) const { return compare(toka, false); }
 	
-	bool compare(const StatItem &toka, bool suur) const
+	bool compare (const StatItem &toka, bool suur) const
     {
     	register const class StatItem &eka = *this;
     	
@@ -1730,7 +721,7 @@ public:
        		 		Result = strcmp(eka.Name.c_str(), toka.Name.c_str());
        				break;
     	   	 	case 'm':
-       		 		Result = stricmp(eka.Name.c_str(), toka.Name.c_str());
+       		 		Result = strcasecmp(eka.Name.c_str(), toka.Name.c_str());
        				break;
     	   	 	case 's':
         			Result = eka.Stat.st_size - toka.Stat.st_size;
@@ -1779,7 +770,7 @@ public:
     }
 };
 
-static vector<StatItem> StatPuu;
+static vector <StatItem> StatPuu;
 
 static void Puuhun(const struct stat &Stat, const string &Name
 #ifdef DJGPP
@@ -1884,7 +875,7 @@ static void SingleFile(const string &Buffer, struct stat &Stat)
     }
     #endif
 
-    if((stat(Buffer.c_str(), &Stat) == -1) && !Links)
+    if((lstat(Buffer.c_str(), &Stat) == -1) && !Links)
         Gprintf("%s - stat() error: %d (%s)\n", Buffer.c_str(), errno, GetError(errno).c_str());
     #ifdef S_ISLNK
     else if((lstat(Buffer.c_str(), &Stat) == -1) && Links)
@@ -1897,11 +888,19 @@ static void SingleFile(const string &Buffer, struct stat &Stat)
 	    const char *Group, *Passwd;
     	
         string s = GetSize(Buffer, Stat, 0, 0);
-        int i = GetName(Buffer, Stat, 0, 0, true);
+        
+        const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
+        if(hardlinkfn && Buffer == hardlinkfn)hardlinkfn = NULL;
+        
+        int i = GetName(Buffer, Stat, 0, 0, true, hardlinkfn);
+        
         if(i > LongestName)LongestName = i;
         i = s.size();
         if(i > LongestSize)LongestSize = i;
         
+	    if(!S_ISDIR(Stat.st_mode))
+		    Inodemap.insert(Stat.st_dev, Stat.st_ino, Buffer);
+		
         Passwd = Getpwuid((int)Stat.st_uid);
 		Group  = Getgrgid((int)Stat.st_gid);
 	    if(Passwd && *Passwd)strcpy(OwNam, Passwd);else sprintf(OwNam,"%d",(int)Stat.st_uid);
@@ -1976,16 +975,18 @@ R1: if((dir = opendir(Source)) == NULL)
     	
     	if(
 	    #ifdef DJGPP
-    		errno==EACCES ||
+    		errno==EACCES  ||
         #endif
-        	errno==ENOENT ||	/* Piti lisätä linkkejä varten */
-        	errno==ENOTDIR)
+        	errno==ENOENT  ||	/* Piti lisätä linkkejä varten */
+        	errno==ENOTDIR ||
+        	errno==ELOOP        /* Tämä myös, ln -s a a varten */
+       	)
         {
 P1:			string Tmp = DirOnly(Source);
 			if(!Tmp.size())Tmp = "./";
 			
 	    	DirChangeCheck(Tmp.c_str());
-
+			
 			SingleFile(Source, Stat);
 			goto End_ScanDir;
         }
@@ -2253,34 +1254,6 @@ static void Term(int dummy)
 }
 #endif
 
-void GetScreenGeometry()
-{
-#if defined(DJGPP) || defined(__BORLANDC__)
-    struct text_info w;
-    gettextinfo(&w);
-    LINES=w.screenheight;
-    COLS =w.screenwidth;
-#else
-#ifdef TIOCGWINSZ
-    struct winsize w;
-    if(ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) >= 0)
-    {
-        LINES=w.ws_row;
-        COLS =w.ws_col;
-    }
-#else
-#ifdef WIOCGETD
-    struct uwdata w;
-    if(ioctl(STDOUT_FILENO, WIOCGETD, &w) >= 0)
-    {
-        LINES = w.uw_height / w.uw_vs;
-        COLS  = w.uw_width / w.uw_hs;
-    }
-#endif
-#endif
-#endif
-}
-
 const char *GetNextArg(int argc, const char *const *argv)
 {
     static char *DirrBuf = NULL;
@@ -2294,10 +1267,11 @@ const char *GetNextArg(int argc, const char *const *argv)
         DirrVar = getenv("DIRR");
         if(DirrVar)
         {
-        	ALLOCATE(DirrBuf, char *, strlen(DirrVar)+1);
+        	DirrBuf = new char[strlen(DirrVar)+1];
             DirrVar = strcpy(DirrBuf, DirrVar);
             Ekastrtok=1;
-    }   }
+    	}
+    }
 
 Retry:
     if(DirrVar)
@@ -2487,6 +1461,7 @@ int main(int argc, const char *const *argv)
                         break;
                     case 'r':
                     	SetDefaultOptions();
+                    	Inodemap.enable();
                     	break;
                     case 'd':
                     	switch(*++s)
@@ -2520,6 +1495,18 @@ int main(int argc, const char *const *argv)
                         COLS=strtol(s, (char **)&s, 10);
                         s--;
                         break;
+                    case 'H':
+                    	if(s[1]=='1')
+                    	{
+                    		++s;
+                    		Inodemap.enable();
+                    	}
+                    	else
+                    	{
+                    		if(s[1]=='0')++s;
+	                    	Inodemap.disable();
+	                    }
+                    	break;
                     case 'h':
                     case '?': Help = 1; break;
                     case 'C': Sara = true; break;
@@ -2587,6 +1574,7 @@ int main(int argc, const char *const *argv)
                     		case 'l':
                     VipuAL:		FieldOrder = ".a1_.h__.o_.g_.s_.d_.f";
                     			DateForm = "%u";
+                    			Inodemap.enable();
                     			break;
                     		default:
                     			goto VirheParam;
@@ -2623,6 +1611,7 @@ int main(int argc, const char *const *argv)
                     	Totals = true;
                     	FieldOrder = ".f";
                         Sorting = (isupper((int)*s)?"PCM":"pcm");
+                        Inodemap.disable();
                     #ifdef S_ISLNK
                         Links = 1;
                     #endif
@@ -2665,8 +1654,10 @@ ThisIsOk:;
             "Usage: %s [options] { dirs | files }\n\n"
             "Options:\n"
             "\t-c  Disables colors.\n"
-            "\t-w  Short for -Cm1l1f.f -opcm\n"
+            "\t-w  Short for -HCm1l1f.f -opcm\n"
             "\t-W  Same as -w, but reverse sort order\n"
+            "\t-H  Disables verbose hardlink display.\n"
+            "\t-H1 Enables verbose hardlink display (default).\n"
             "\t-a0 Short for -wf.f_.s.d| -F%%z\n"
             "\t-a1 Short for -f.xF|.a1.xF|.f.s.xF|.d.xF|.o_.g.xF|\n"
             "\t-a2 Short for -l0Cf.f_.a4_.o_.g.xF|\n"

@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.1.4
+# depfun.mak version 1.1.6
 # 
 # Required vars:
 #
@@ -25,16 +25,16 @@
 include .depend
 
 .depend: ${ARCHFILES}
-	touch .depend
-	${MAKE} dep
+	@ touch .depend
+	@ ${MAKE} --silent dep
 
 depend: dep
 dep:
-	- ${CPP} ${CPPFLAGS} -MM *.c *.cc > .depend
+	- ${CPP} ${CPPFLAGS} -MM *.c *.cc >.depend 2>/dev/null
 
 # Makes the packages of various types...
 pak: ${ARCHFILES}
-	- mkdir ${ARCHNAME} ${ARCHDIR}
+	- mkdir ${ARCHNAME} ${ARCHDIR} 2>/dev/null
 	cp -lfr ${ARCHFILES} depfun.mak Makefile ${ARCHNAME}/
 	- rm -f ${ARCHDIR}${ARCHNAME}.zip
 	- zip -9rq ${ARCHDIR}${ARCHNAME}.zip ${ARCHNAME}/

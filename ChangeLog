@@ -1,3 +1,15 @@
+Wed 2000-08-31 06:15 Bisqwit <bisqwit@iki.fi>
+
+	* Version 3.21
+	
+	    - Code reorganized a lot, towards
+	      modularized style.
+	  
+	    - Hardlinks described. This is
+	      a really awesome feature :)
+	    
+	    - Added info[&], a new setting.
+
 Wed 2000-08-30 21:16 Bisqwit <bisqwit@iki.fi>
 
 	* Version 3.20

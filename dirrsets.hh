@@ -21,6 +21,7 @@
      * / is for directories
      * * for executables
      * @ for links
+     * & is for arrows in hardlinks
      * = for sockets
      * | for pipes
      * ? for links which of destinations does not exist
@@ -28,7 +29,7 @@
      * Note: Colour 0 disables the character being printed.
      *
      **************************************************************/
-    "info(/1,*2,@3,=5,|8,?C)"
+    "info(/1,*2,@3,=5,|8,?C,&F)"
     
     /**************************************************************
      * owner() - How to color the file owner name.
@@ -105,10 +106,10 @@
      **************************************************************/
      
     "byext(2i *.so *.o *.vxd *.dll *.drv *.obj *.dll *.a)"
-    "byext(3i *.txt *.htm *.html *.1st *.wri *.ps *.doc readme quickstart)"
+    "byext(3i *.txt *.htm *.html *.1st *.wri *.ps *.doc readme quickstart install)"
     "byext(4i core DEADJOE)"
     "byext(5i *.m?d *.mtm *.s3m *.xm* *.mp\\d *.wav *.smp *.au *.ult *.669)"
-    "byext(6i *.?as *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p)"
+    "byext(6i *.?as *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak)"
     "byext(8i *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
     "byext(Ai *.exe *.com *.bat)"
     "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.a\\d\\d)"
