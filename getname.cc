@@ -14,6 +14,24 @@ static const char HLinkArrow[] = " = ";
 int Links;
 #endif
 
+static void TulostaNimi(unsigned maxlen, const string &buf)
+{
+	const unsigned char *s = (const unsigned char *)buf.c_str();
+	
+	while(*s)
+	{
+		if(!maxlen)break;
+		if(*s < 32 || (*s >= 127 && *s <= 160))
+			Gputch('?');
+		else
+			Gputch(*s);
+		--maxlen;
+		++s;
+	}
+
+	while(maxlen>0)Gputch(' ');
+}
+
 int GetName(const string &fn, const struct stat &sta, int Space,
             bool Fill, bool nameonly,
             const char *hardlinkfn)
@@ -40,7 +58,8 @@ Redo:
     
     if(i > Space && nameonly)i = Space;
     Buf.erase(i);
-    Gprintf("%*s", -i, Buf.c_str());
+    
+    TulostaNimi(i, Buf);
     Space -= i;
 
     #define PutSet(c) do if((++Len,Space)&&GetModeColor("info", c))Gputch(c),--Space;while(0)

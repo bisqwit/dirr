@@ -1,3 +1,12 @@
+Mon 2000-11-06 17:54 Bisqwit <bisqwit@iki.fi>
+
+	* Version 3.24
+	
+	    - Some modifications (undocumented)
+	    - Update filename displaying, works
+	      now somehow even if the files contain
+	      undisplayable characters.
+	    
 Wed 2000-09-06 18:43 Bisqwit <bisqwit@iki.fi>
 
 	* Version 3.23

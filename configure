@@ -1,5 +1,10 @@
 #!/bin/sh
 
+if test "$*" = "--help"; then
+  echo "Prepares dirr for compilation."
+  exit 1
+fi
+
 . ./config.sub1
 . ./config.sub2
 
@@ -14,21 +19,62 @@ else
   exit 1
 fi
 
-AC_INCLUDES="sys/vfs.h sys/mount.h dir.h crt0.h conio.h termio.h sys/ioctl.h sys/statvfs.h dirent.h direct.h"
+AC_INCLUDES="sys/vfs.h sys/mount.h dir.h crt0.h conio.h sys/ioctl.h sys/statvfs.h dirent.h direct.h grp.h pwd.h termio.h termios.h sys/stat.h sys/types.h"
 
 . ./config.sub3
 
 cp -pf conftest.h config.h
 rm -f conftest.[ch]
 
+cat >>config.h <<EOF
+// These settings can be changed by user.
+
+// Recommended, adds speed
+#define CACHE_GETSET 1
+
+// This too
+#define CACHE_NAMECOLOR 1
+
+// This too
+#define CACHE_UIDGID 1
+
+// Recommended. Disable if it bugs you...
+#define NEW_WILDMATCH 1
+
+// They can be disabled if you do not want them.
+#define SUPPORT_BRACKETS 1
+
+// Enable this if you want a progress meter. Slows down.
+#define STARTUP_COUNTER 0
+
+// Set this to 1 if your passwd file is quick to load.
+#define PRELOAD_UIDGID 0
+
+// File containing the settings. Can be changed.
+#define SETTINGSFILE "dirrsets.hh"
+
+// statfs() support. It was automatically configured,
+// and _could_ be incorrect. Change it if you suspect
+// an error.
+EOF
 if test "$os_type" = Linux || \
    test "$os_type" = HP-UX || \
    test "$os_type" = SunOS; then
-  echo 'HAVE_STATFS=1' >Makefile.cfg
+  echo '#define HAVE_STATFS 1' >>config.h
   echo "It seems like you're running $os_type... Ok."
 else
-  echo 'HAVE_STATFS=0' >Makefile.cfg
+  echo '#define HAVE_STATFS 0' >>config.h
 fi
 
-echo "Configuration finished."
-echo "Now do 'make'. Preferably GNU make."
+cat << EOF
+
+Configuration finished.
+
+You may want to edit "config.h" now.
+
+After done, issue 'make'. Preferably GNU make.
+
+You can install by typing 'make install'.
+You can uninstall later by typing 'make uninstall'.
+
+EOF

@@ -1,4 +1,4 @@
-VERSION = 3.23
+VERSION = 3.24
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -11,21 +11,9 @@ VERSION = 3.23
 #   HAVE_STATFS      Disable it if you have no statfs() function.
 #   SETTINGSFILE     File containing the settings. Default: dirrsets.hh
 
-include Makefile.cfg
-
-DEFINES = -DCACHE_GETSET=1 \
-          -DCACHE_NAMECOLOR=1 \
-          -DCACHE_UIDGID=1 \
-          -DNEW_WILDMATCH=1 \
-          -DSUPPORT_BRACKETS=1 \
-          -DSTARTUP_COUNTER=0 \
-          -DPRELOAD_UIDGID=0 \
-          -DHAVE_STATFS=$(HAVE_STATFS) \
-          -DSETTINGSFILE=\"dirrsets.hh\"
-
 CPP=gcc
 CXX=g++
-CPPFLAGS=-Wall -W -pedantic -DVERSION=\"$(VERSION)\" $(DEFINES) -pipe
+CPPFLAGS=-Wall -W -pedantic -DVERSION=\"$(VERSION)\" -pipe
 CXXFLAGS=-g
 #-O3 -fomit-frame-pointer
 LDFLAGS=

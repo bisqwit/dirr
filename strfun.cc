@@ -4,6 +4,7 @@
 #include <cstring>
 #include <unistd.h>
 
+#include "config.h"
 #include "strfun.hh"
 
 string NameOnly(const string &Name)

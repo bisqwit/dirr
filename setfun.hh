@@ -10,10 +10,6 @@ extern int GetModeColor(const string &text, int Chr);
 extern int GetDescrColor(const string &descr, int index);
 extern void PrintSettings();
 
-#if CACHE_NAMECOLOR
-extern void BuildNameColorCache();
-#endif
-
 extern int WasNormalColor;
 extern int NameColor(const string &Name);
 

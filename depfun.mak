@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.1.7
+# depfun.mak version 1.1.11
 # 
 # Required vars:
 #
@@ -30,18 +30,19 @@ include .depend
 
 depend: dep
 dep:
-	- ${CPP} ${CPPFLAGS} -MM *.c *.cc >.depend 2>/dev/null
+	- ${CPP} ${CPPFLAGS} -MM -MG *.c *.cc >.depend 2>/dev/null
 
 # Makes the packages of various types...
 pak: ${ARCHFILES}
+	@if [ "${ARCHNAME}" = "" ]; then echo ARCHNAME not set\!;false;fi
 	- mkdir ${ARCHNAME} ${ARCHDIR} 2>/dev/null
-	cp -lfr ${ARCHFILES} depfun.mak Makefile ${ARCHNAME}/
+	cp -lPfr ${ARCHFILES} depfun.mak Makefile ${ARCHNAME}/
 	- rm -f ${ARCHDIR}${ARCHNAME}.zip
 	- zip -9rq ${ARCHDIR}${ARCHNAME}.zip ${ARCHNAME}/
 	- rar a ${ARCHDIR}${ARCHNAME}.rar -mm -m5 -r -s -inul ${ARCHNAME}/
 	tar cf ${ARCHDIR}${ARCHNAME}.tar ${ARCHNAME}/
 	rm -rf ${ARCHNAME}
-	- bzip2 -c9 >${ARCHDIR}${ARCHNAME}.tar.bz2 < ${ARCHDIR}${ARCHNAME}.tar
+	- bzip2 -9 >${ARCHDIR}${ARCHNAME}.tar.bz2 < ${ARCHDIR}${ARCHNAME}.tar
 	gzip -f9 ${ARCHDIR}${ARCHNAME}.tar
 
 # This is Bisqwit's method to install the packages to web-server...

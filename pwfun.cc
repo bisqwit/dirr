@@ -1,13 +1,20 @@
-#include <pwd.h>
-#include <grp.h>
-#include <map>
-#include <string>
-
+#include "config.h"
 #include "pwfun.hh"
+
+#ifdef HAVE_PWD_H
+#include <pwd.h>
+#endif
+#ifdef HAVE_GRP_H
+#include <grp.h>
+#endif
+#include <string>
 
 #if PRELOAD_UIDGID||CACHE_UIDGID
 
+#include <map>
+
 typedef map<int, string> idCache;
+
 static idCache GidItems, UidItems;
 
 #endif
@@ -22,29 +29,34 @@ const char *Getgrgid(int gid)
 {
 	return GidItems[gid].c_str();
 }
-void ReadGidUid()
+
+static class ReadGidUid
 {
-	int a;
-	
-	for(setpwent(); ;)
+public:
+	ReadGidUid()
 	{
-		struct passwd *p = getpwent();
-		UidItems[p->pw_uid] = p->pw_name;
+    	int a;
+    	
+    	for(setpwent(); ;)
+    	{
+    		struct passwd *p = getpwent();
+    		UidItems[p->pw_uid] = p->pw_name;
+    	}
+    	endpwent();
+    	
+    	for(setgrent(); ;)
+    	{
+    		struct group *p = getgrent();
+    		UidItems[p->gr_gid] = p->gr_name;
+    	}
+    	endgrent();
 	}
-	endpwent();
-	
-	for(setgrent(); ;)
-	{
-		struct group *p = getgrent();
-		UidItems[p->gr_gid] = p->gr_name;
-	}
-	endgrent();
-}
+} PwLoader;
+
 #else /* no PRELOAD_UIDGID */
-void ReadGidUid()
-{
-}
+
 #if CACHE_UIDGID
+
 const char *Getpwuid(int uid)
 {
 	idCache::iterator i;
@@ -73,7 +85,9 @@ const char *Getgrgid(int gid)
 	}
 	return i->second.c_str();
 }
+
 #else
+
 const char *Getpwuid(int uid)
 {
 	struct passwd *tmp = getpwuid(uid);
@@ -86,5 +100,6 @@ const char *Getgrgid(int gid)
 	if(!tmp)return NULL;
 	return tmp->gr_name;
 }
+
 #endif
 #endif

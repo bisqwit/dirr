@@ -5,12 +5,10 @@
 	
 */
 
-#define _BSD_SOURCE 1
-
 #define VERSIONSTR \
     "DIRR "VERSION" copyright (C) 1992,2000 Bisqwit (http://iki.fi/bisqwit/)\n" \
-    "This program is under GPL. dirr-"VERSION".tar.gz\n" \
-    "is available at the homepage of the author.\n" \
+    "This program is under GPL. dirr-"VERSION".{rar,zip,tar.{gz,bz2}}\n" \
+    "are available at the homepage of the author.\n" \
     "About some ideas about this program, thanks to Warp.\n"
 
 #include <cstdio>
@@ -20,9 +18,6 @@
 #include <ctime>
 #include <cerrno>
 #include <csignal>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 #include "config.h"
 #include "pwfun.hh"
@@ -40,6 +35,10 @@
 #include <vector>
 #include <string>
 
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#include <unistd.h>
 #ifdef HAVE_DIR_H
 #include <dir.h>
 #endif
@@ -48,6 +47,9 @@
 #endif
 #ifdef HAVE_DIRECT_H
 #include <direct.h>
+#endif
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
 #endif
 
 static int RowLen;
@@ -768,19 +770,6 @@ End_ScanDir:
     return;
 }
 
-#if defined(SIGINT) || defined(SIGTERM)
-static void Term(int dummy)
-{
-	Gprintf("^C\n");
-    dummy=dummy;
-
-    RowLen=1;
-    Summat();
-    
-    exit(0);
-}
-#endif
-
 static void EstimateFields()
 {
     int RowLen;
@@ -866,13 +855,7 @@ static void EstimateFields()
     	LongestName = RowLen;
 }
 
-static vector<string> Dirpuu, Argpuu;
-
-static unsigned RememberParam(vector<string> &Dirs, const char *s)
-{
-	Dirs.push_back(s);
-	return Dirs.size();
-}
+static vector<string> Dirpuu;
 
 static void DumpDirs()
 {
@@ -892,95 +875,7 @@ class Handle : public arghandler
 {
 	bool Files;
 	bool Help;
-public:
-	Handle(const char *defopts, int argc, const char *const *argv)
-	: arghandler(defopts, argc, argv), Files(false), Help(false)
-	{
-        add("-a0", NULL,          "One predefined format", (argfun)&(Handle::opt_a0));
-        add("-a1", NULL,          "One predefined format", (argfun)&(Handle::opt_a1));
-        add("-a2", NULL,          "One predefined format", (argfun)&(Handle::opt_a2));
-        add("-a3", NULL,          "One predefined format", (argfun)&(Handle::opt_a3));
-        add("-a4", NULL,          "One predefined format", (argfun)&(Handle::opt_a4));
-        add("-al", "--long",      "One predefined format", (argfun)&(Handle::opt_al));
-        add("-c",  "--nocolor",   "Disables colours.", (argfun)&(Handle::opt_c));
-        add("-C",  "--columns",   "Enables multiple column mode.", (argfun)&(Handle::opt_C));
-		add("-d1", "--useatime", "Use atime, last access datetime (disables -d2 and -d3)", (argfun)&(Handle::opt_d1));
-		add("-d2", "--usemtime", "Use mtime, last modification datetime (default, disables -d1 and -d3)", (argfun)&(Handle::opt_d2));
-		add("-d3", "--usectime", "Use ctime, creation datetime (disables -d1 and -d2)", (argfun)&(Handle::opt_d3));
-		add("-db", "--blkdev",   "Specify how the blockdevices are shown\n"
-                                    " Example: `-db<B%u,%u>'\n"
-                                    " Default is `-db" + BlkStr + "'",
-                                    (argfun)&(Handle::opt_db));
-		add("-dc", "--chrdev",   "Specify how the character devices are shown\n"
-                                    " Example: `-dc<C%u,%u>'\n"
-                                    " Default is `-dc" + ChrStr + "'",
-                                    (argfun)&(Handle::opt_dc));
-        add("-D",  "--notinside", "Show directory names instead of contents.", (argfun)&(Handle::opt_D));
-        add("-e",  "--noprescan", "Evil option. Messes everything.", (argfun)&(Handle::opt_e));
-        add("-f",  "--format",    "Output format\n"
-                                  "  .s=Size,    .f=File,   .d=Datetime,     .o=Owner,   .g=Group,\n"
-                                  "  .S#=size with thsep #, .x##=Color 0x##, .h=Number of hard links\n"
-#ifdef DJGPP
-                                  "  .a0=SHRA style attributes      "
-#else
-                                  "  .a1=drwxrwxrwx style attributes"
-#endif
-                                                                   "         .a#=Mode as #-decimal octal\n"
-                                  "  .F and .G and .O are respectively, without space fitting\n"
-                                  "   anything else=printed\n"
-                                  "   Default is `-f"+FieldOrder+"'",
-                                  (argfun)&(Handle::opt_f));
-        add("-F",  "--dates",     "Specify new date format.\n"
-                                  "Default is `-F"+DateForm+"'",
-                                  (argfun)&(Handle::opt_F));
-		add("-h",  "--help",     "This help.", (argfun)&(Handle::opt_h));
-        add("-H1", "--with-inodemap",
-                                  "Enables mapping hardlinks (default)", (argfun)&(Handle::opt_H1));
-        add("-H",  "--without-inodemap",
-                                  "Disables mapping hardlinks", (argfun)&(Handle::opt_H));
-		add("-?",  NULL,          "Alias to -h", (argfun)&(Handle::opt_h));
-        add("-la", NULL,          "Alias to -al", (argfun)&(Handle::opt_la));
-#ifdef S_ISLNK
-        add("-l",  "--links",     "Specify how the links are shown:\n"
-                                    "  0 Show link name and stats of link\n"
-                                    "  1 Show link name and <LINK>\n"
-                                    "  2 Show link name, link's target and stats of link\n"
-                                    "  3 Show link name, link's target and stats of target\n"
-                                    "  4 Show link name, link's target and <LINK>\n"
-                                    "  5 Show link name and stats of target\n",
-                                    (argfun)&(Handle::opt_l));
-#endif
-        add("-m0", NULL,          "Selects verbose \"total\" list. This is the default.\n", (argfun)&(Handle::opt_m0));
-        add("-m1", NULL,          "Compactifies the \"total\" list.\n", (argfun)&(Handle::opt_m1));
-        add("-m2", NULL,          "Disables total sums.\n", (argfun)&(Handle::opt_m2));
-        add("-m3", NULL,          "Compactified \"total\" list with exact free space.\n", (argfun)&(Handle::opt_m3));
-        add("-M0", NULL,          "Like -m0, but with a thousand separator. Example: -M0,", (argfun)&(Handle::opt_M0));
-        add("-M1", NULL,          "Like -m1, ...", (argfun)&(Handle::opt_M1));
-        add("-M2", NULL,          "Like -m2, ...", (argfun)&(Handle::opt_M2));
-        add("-M3", NULL,          "Like -m3, ...", (argfun)&(Handle::opt_M3));
-        add("-o",  "--sort",      "Sort the list (disables -e), with n as combination of:\n"
-                                  "(n)ame, (s)ize, (d)ate, (u)id, (g)id, (h)linkcount\n"
-                                  "(c)olor, na(m)e case insensitively\n"
-                                  "g(r)oup dirs,files,links,chrdevs,blkdevs,fifos,socks\n"
-                                  "grou(p) dirs,links=files,chrdevs,blkdevs,fifos,socks\n"
-                                  "Use Uppercase for reverse order.\n"
-                                  "Default is `-o"+Sorting+"'\n", (argfun)&(Handle::opt_o));
-        add("-p",  "--paged",     "Enables pager.", (argfun)&(Handle::opt_p));
-        add("-P",  "--dummyansi", "Disables colour code optimizations.", (argfun)&(Handle::opt_P));
-		add("-r",  "--restore",   "Undoes all options, including the DIRR environment variable.", (argfun)&(Handle::opt_r));
-        add("-v",  "--version",   "Displays the version.", (argfun)&(Handle::opt_V));
-        add("-V",  NULL,          "Alias to -v.", (argfun)&(Handle::opt_V));
-        add("-w",  "--wide",      "Equal to -HCm1l1f.f -opcm", (argfun)&(Handle::opt_w));
-        add("-W",  "--ediw",      "Same as -w, but with reverse sort order", (argfun)&(Handle::opt_W));
-        add("-X",  "--width",     "Force screen width", (argfun)&(Handle::opt_X));
-        
-        parse();
-	}
-	virtual void defarg(const string &s)
-	{
-	    RememberParam(Dirpuu, s.c_str());
-	    Files = true;
-	}
+private:
     string opt_h(const string &s)
     {
     	Help = true;
@@ -997,13 +892,13 @@ public:
     string opt_d3(const string &s) { DateTime = 3; return s; }
     string opt_db(const string &s) { BlkStr = s; return ""; }
     string opt_dc(const string &s) { ChrStr = s; return ""; }
-    string opt_la(const string &s) { return opt_al(s); }
 #ifdef S_ISLNK
     string opt_l(const string &s)
     {
     	const char *q = s.c_str();
     	const char *p = q;
     	Links = strtol(p, (char **)&p, 10);
+    	if(Links < 0 || Links > 5)argerror(s);
     	return s.substr(p-q);
     }
 #endif
@@ -1026,9 +921,10 @@ public:
     	if(s.size() && s[0]=='0')return s.substr(1);
     	return s;
     }
+    string opt_c1(const string &s) { Colors = true;    return s; }
+    string opt_c(const string &s) { Colors = false;    return s; }
     string opt_C(const string &s) { Sara = true;       return s; }
     string opt_D(const string &s) { Contents = false;  return s; }
-    string opt_c(const string &s) { Colors = false;    return s; }
     string opt_p(const string &s) { Pagebreaks = true; return s; }
     string opt_P(const string &s) { AnsiOpt = false;   return s; }
     string opt_e(const string &s) { PreScan = false; Sorting = ""; return s; }
@@ -1040,49 +936,50 @@ public:
 		printf(VERSIONSTR);
 		exit(0);
     }
-    string opt_a0(const string &s)
+    string opt_a(const string &s)
     {
-		FieldOrder = ".f_.s.d|";
-        DateForm = "%z";
+    	const char *q = s.c_str();
+    	const char *p = q;
+    	switch(strtol(p, (char **)&p, 10))
+    	{
+    		case 0:
+				FieldOrder = ".f_.s.d|";
+		        DateForm = "%z";
 #ifdef S_ISLNK
-        Links = 1;
+		        Links = 1;
 #endif
-        Sara = true;
-        Compact = 1;
-        return s;
-    }
-    string opt_a1(const string &s)
-    {
-		FieldOrder = ".xF|.a1.xF|.f.s.xF|.d.xF|.o_.g.xF|";
-		return s;
-    }    
-    string opt_a2(const string &s)
-    {
+		        Sara = true;
+		        Compact = 1;
+		        break;
+		    case 1:
+				FieldOrder = ".xF|.a1.xF|.f.s.xF|.d.xF|.o_.g.xF|";
+				break;
+			case 2:
 #ifdef S_ISLNK
-		Links = 0;
+				Links = 0;
 #endif
-		Sara = true;
-		FieldOrder = ".f_.a4_.o_.g.xF|";
-        return s;
-    }
-    string opt_a3(const string &s)
-    {
+				Sara = true;
+				FieldOrder = ".f_.a4_.o_.g.xF|";
+				break;
+			case 3:
 #ifdef S_ISLNK
-		Links = 0;
+				Links = 0;
 #endif
-		Sara = true;
-        FieldOrder = ".f_.s_.o.xF|";
-        return s;
-    }
-    string opt_a4(const string &s)
-    {
+				Sara = true;
+        		FieldOrder = ".f_.s_.o.xF|";
+        		break;
+        	case 4:
 #ifdef S_ISLNK
-		Links = 1;
+				Links = 1;
 #endif
-		Sara = true;
-		FieldOrder = ".f_.s_.d_.o.xF|";
-		DateForm = "%z";
-		return s;
+				Sara = true;
+				FieldOrder = ".f_.s_.d_.o.xF|";
+				DateForm = "%z";
+				break;
+    		default:
+    			argerror(s);
+		}
+    	return s.substr(p-q);
     }
     string opt_al(const string &s)
     {
@@ -1091,14 +988,28 @@ public:
         Inodemap.enable();
         return s;
     }
-    string opt_m0(const string &s) { Compact = 0; Totals = true; return s; }
-    string opt_m1(const string &s) { Compact = 1; Totals = true; return s; }
-    string opt_m2(const string &s) { Totals = false; return s; }
-    string opt_m3(const string &s) { Compact = 2; Totals = true; return s; }
-    string opt_M0(const string &s) { opt_m0(s); TotalSep = s[0]; return s.substr(1); }
-    string opt_M1(const string &s) { opt_m1(s); TotalSep = s[0]; return s.substr(1); }
-    string opt_M2(const string &s) { opt_m2(s); TotalSep = s[0]; return s.substr(1); }
-    string opt_M3(const string &s) { opt_m3(s); TotalSep = s[0]; return s.substr(1); }
+    string opt_m(const string &s)
+    {
+    	const char *q = s.c_str();
+    	const char *p = q;
+    	switch(strtol(p, (char **)&p, 10))
+    	{
+    		case 0: Compact=0; Totals=true; break;
+    		case 1: Compact=1; Totals=true; break;
+    		case 2: Totals=false; break;
+    		case 3: Compact=2; Totals=true; break;
+    		default:
+    			argerror(s);
+    	}
+    	return s.substr(p-q);
+    }
+    string opt_M(const string &s)
+    {
+    	string q = opt_m(s);
+    	if(!q.size())argerror(s);
+    	TotalSep = q[0];
+    	return q.substr(1);
+    }
     string opt_w(const string &s)
     {
     	Compact = 1;
@@ -1125,71 +1036,169 @@ public:
         Sara = true;
     	return s;
     }
+public:
+	Handle(const char *defopts, int argc, const char *const *argv)
+	: arghandler(defopts, argc, argv), Files(false), Help(false)
+	{
+        add("-al", "--long",      "\"Standard\" listing format", &(Handle::opt_al));
+        add("-a",  "--predef",    "-a0 to -a4: Some predefined formats. "
+                                  "You may want to play with them to find out "
+                                  "how extensive this program is :)",
+                                  &(Handle::opt_a));
+        add("-c1", "--colours",   "Enables colours (default, if tty output).", &(Handle::opt_c1));
+        add("-c",  "--nocolor",   "Disables colours.", &(Handle::opt_c));
+        add("-C",  "--columns",   "Enables multiple column mode.", &(Handle::opt_C));
+		add("-d1", "--useatime",  "Use atime, last access datetime for date fields.", &(Handle::opt_d1));
+		add("-d2", "--usemtime",  "Use mtime, last modification datetime.", &(Handle::opt_d2));
+		add("-d3", "--usectime",  "Use ctime, file creation datetime.", &(Handle::opt_d3));
+		add("-db", "--blkdev",    "Specify how the blockdevices are shown\n"
+                                    " Example: `--blkdev=<B%u,%u>'\n"
+                                    " Default is `-db" + BlkStr + "'",
+                                    &(Handle::opt_db));
+		add("-dc", "--chrdev",    "Specify how the character devices are shown\n"
+                                    " Example: `--chrdev=<C%u,%u>'\n"
+                                    " Default is `-dc" + ChrStr + "'",
+                                    &(Handle::opt_dc));
+        add("-D",  "--notinside", "Show directory names instead of contents.", &(Handle::opt_D));
+        add("-e",  "--noprescan", "Undocumented evil option.", &(Handle::opt_e));
+        add("-f",  "--format",    "Output format\n"
+                                  "  .s=Size,    .f=File,   .d=Datetime,     .o=Owner,   .g=Group,\n"
+                                  "  .S#=size with thsep #, .x##=Color 0x##, .h=Number of hard links\n"
+#ifdef DJGPP
+                                  "  .a0=SHRA style attributes      "
+#else
+                                  "  .a1=drwxrwxrwx style attributes"
+#endif
+                                                                   "         .a#=Mode as #-decimal octal\n"
+                                  "  .F and .G and .O are respectively, without space fitting\n"
+                                  "   anything else=printed\n"
+                                  "   Default is `--format="+FieldOrder+"'",
+                                  &(Handle::opt_f));
+        add("-F",  "--dates",     "Specify new date format. man strftime.\n"
+                                  "Default is `-F"+DateForm+"'",
+                                  &(Handle::opt_F));
+		add("-h",  "--help",      "mm.. familiar?", &(Handle::opt_h));
+        add("-H1", "--hl",        "Enables mapping hardlinks (default)", &(Handle::opt_H1));
+        add("-H",  "--nohl",      "Disables mapping hardlinks", &(Handle::opt_H));
+		add("-?",  NULL,          "Alias to -h", &(Handle::opt_h));
+        add("-la", NULL,          "Alias to -al", &(Handle::opt_al));
+#ifdef S_ISLNK
+        add("-l",  "--links",     "Specify how the links are shown:\n"
+                                    "  0 Show link name and stats of link\n"
+                                    "  1 Show link name and <LINK>\n"
+                                    "  2 Show link name, link's target and stats of link\n"
+                                    "  3 Show link name, link's target and stats of target\n"
+                                    "  4 Show link name, link's target and <LINK>\n"
+                                    "  5 Show link name and stats of target\n",
+                                    &(Handle::opt_l));
+#endif
+		add("-m", "--tstyle",     "Selects \"total\" list style.\n"
+		                          " -m0: Verbose (default)\n"
+		                          " -m1: Compact.\n"
+		                          " -m2: None.\n"
+		                          " -m3: Compact with exact numbers.", &(Handle::opt_m));
+        add("-M", "--tstylsep",   "Like -m, but with a thousand separator. Example: -M0,", &(Handle::opt_M));
+        add("-o", "--sort",       "Sort the list (disables -e), with n as combination of:\n"
+                                  "(n)ame, (s)ize, (d)ate, (u)id, (g)id, (h)linkcount, "
+                                  "(c)olor, na(m)e case insensitively, "
+                                  "g(r)oup dirs,files,links,chrdevs,blkdevs,fifos,socks, "
+                                  "grou(p) dirs,links=files,chrdevs,blkdevs,fifos,socks\n"
+                                  "Use Uppercase for reverse order.\n"
+                                  "Default is `--sort="+Sorting+"'\n", &(Handle::opt_o));
+        add("-p",  "--paged",     "Use internal pager.", &(Handle::opt_p));
+        add("-P",  "--oldvt",     "Disables colour code optimizations.", &(Handle::opt_P));
+		add("-r",  "--restore",   "Undoes all options, including the DIRR environment variable.", &(Handle::opt_r));
+        add("-v",  "--version",   "Displays the version.", &(Handle::opt_V));
+        add("-V",  NULL,          "Alias to -v.", &(Handle::opt_V));
+        add("-w",  "--wide",      "Equal to -l1HCm1f.f -opcm", &(Handle::opt_w));
+        add("-W",  "--ediw",      "Same as -w, but with reverse sort order.", &(Handle::opt_W));
+        add("-X",  "--width",     "Force screen width, example: -X132",
+                                  &(Handle::opt_X));
+        
+        parse();
+	}
+	virtual void defarg(const string &s)
+	{
+		Dirpuu.push_back(s);
+	    Files = true;
+	}
     virtual void parse()
     {
     	arghandler::parse();
-		if(!Files)RememberParam(Dirpuu, ".");
+		if(!Files)Dirpuu.push_back(".");
 		if(Help)
 		{
-           	bool c=Colors, a=AnsiOpt, p=Pagebreaks;
-           	SetDefaultOptions();
-           	Pagebreaks = p;
-           	AnsiOpt = a;
            	Dumping = true;
-           	Colors = c;
 
             GetDescrColor("txt", 1);
             
+			Gprintf(VERSIONSTR);
+			
             Gprintf(
 #ifndef DJGPP
             	"\r\33[K\r"
 #endif
-                "Usage: %s [options] {dirs | files }\n\n"
-                "Options:\n",
-                a0.c_str());
+                "Usage: %s [options] {dirs | files }\n", a0.c_str());
+            
+            SetAttr(15);
+            Gprintf("\nOptions:\n");
             
             listoptions();
             
+            GetDescrColor("txt", 1);
+            
             Gprintf(
+            	"\n"
                 "You can set environment variable 'DIRR' for the options.\n"
                 "You can also use 'DIRR_COLORS' -variable for color settings.\n"
                 "Current DIRR_COLORS:\n"
             );
+            
             PrintSettings();
+            
             exit(0);
 		}
     }
 };
 
+#if defined(SIGINT) || defined(SIGTERM)
+static void Term(int dummy)
+{
+	Gprintf("^C\n");
+    dummy=dummy;
+
+    RowLen=1;
+    Summat();
+    
+    exit(0);
+}
+#endif
+
 int main(int argc, const char *const *argv)
 {
+    if(!isatty(1))Colors = false;
+    
     #ifdef DJGPP
-    if(!isatty(fileno(stdout)))Colors = false;
     _djstat_flags &= ~(_STAT_EXEC_EXT | _STAT_WRITEBIT);
     #endif
 
-    GetScreenGeometry();
 	SetDefaultOptions();
 	
 	#ifdef SIGINT
     signal(SIGINT,  Term);
     #endif
+    
     #ifdef SIGTERM
     signal(SIGTERM, Term);
     #endif
 
-	#if CACHE_NAMECOLOR
-	BuildNameColorCache();
-	#endif
-	
     // cute
     Handle parameters (getenv("DIRR"), argc, argv);
-
-	ReadGidUid();
 	
 	Dumping = true;
     DumpDirs();
 
+	if(RowLen > 0)Gprintf("\n");
     Summat();
 
     return 0;

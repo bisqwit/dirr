@@ -1,6 +1,7 @@
 #include <vector>
 #include <map>
 
+#include "config.h"
 #include "wildmatch.hh"
 #include "setfun.hh"
 #include "cons.hh"
@@ -207,7 +208,7 @@ void PrintSettings()
             Gprintf("\n");
             LineLen=0;
         }
-        if(!LineLen)Gprintf("\t");
+        if(!LineLen)Gprintf("   ");
 
         LineLen += T.size();
         const char *n = t = T.c_str();
@@ -297,6 +298,7 @@ void PrintSettings()
 */
 
 #if CACHE_NAMECOLOR
+
 class NameColorItem
 {
 public:
@@ -308,32 +310,36 @@ public:
 static vector<NameColorItem> nccache;
 static map<string, int> NameColorCache2;
 
-void BuildNameColorCache()
+static class BuildNameColorCache
 {
-    const char *DirrVar = getenv("DIRR_COLORS");
-    if(DirrVar)Settings = DirrVar;
-
-	const char *s = Settings.c_str();
-	int Normal = GetDescrColor("txt", -1);
-	int index=0;
-	
-	for(;;)
+public:
+	BuildNameColorCache()
 	{
-		int c;
-		string T = GetSet(&s, "byext", index++);
-		if(T == sNULL)break;
-		const char *t = T.c_str() + 6;
-		c = GetHex(Normal, &t);
-		IgnoreCase = *t++ == 'i';
-		string Buffer = t;
-		char *Q, *q = (char *)Buffer.c_str();
-		for(; (Q=strtok(q, " ")) != NULL; q=NULL)
-		{
-			NameColorItem tmp(Q, IgnoreCase, c);
-			nccache.push_back(tmp);
-		}
+        const char *DirrVar = getenv("DIRR_COLORS");
+        if(DirrVar)Settings = DirrVar;
+
+    	const char *s = Settings.c_str();
+    	int Normal = GetDescrColor("txt", -1);
+    	int index=0;
+    	
+    	for(;;)
+    	{
+    		int c;
+    		string T = GetSet(&s, "byext", index++);
+    		if(T == sNULL)break;
+    		const char *t = T.c_str() + 6;
+    		c = GetHex(Normal, &t);
+    		IgnoreCase = *t++ == 'i';
+    		string Buffer = t;
+    		char *Q, *q = (char *)Buffer.c_str();
+    		for(; (Q=strtok(q, " ")) != NULL; q=NULL)
+    		{
+    			NameColorItem tmp(Q, IgnoreCase, c);
+    			nccache.push_back(tmp);
+    		}
+    	}
 	}
-}
+} NameColorCacheLoader;
 
 int NameColor(const string &Name)
 {
@@ -389,4 +395,5 @@ int NameColor(const string &Name)
 
     return Normal;
 }
+
 #endif

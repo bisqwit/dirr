@@ -1,12 +1,16 @@
 #include <cstdio>
 #include <cstring>
-#include <sys/types.h>
-#include <unistd.h>
 
+#include "config.h"
 #include "colouring.hh"
 #include "setfun.hh"
 #include "strfun.hh"
 #include "getname.hh"
+
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#include <unistd.h>
 
 #ifndef MAJOR
  #define MAJOR(dev) ((dev) >> 8)

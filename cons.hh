@@ -16,6 +16,5 @@ extern int Gputch(int x);
 extern void SetAttr(int newattr);
 extern int ColorNums;
 extern int Gprintf(const char *fmt, ...) __attribute__((format(printf,1,2)));
-extern void GetScreenGeometry();
 
 #endif

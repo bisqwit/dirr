@@ -16,6 +16,5 @@
 
 extern const char *Getpwuid(int uid);
 extern const char *Getgrgid(int gid);
-extern void ReadGidUid();
 
 #endif
