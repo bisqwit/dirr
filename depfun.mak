@@ -1,8 +1,8 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.1.20
-# 
+# depfun.mak version 1.1.26
+#
 # Required vars:
 #
 #  ${CPP}        - C preprocessor name, usually "gcc"
@@ -37,11 +37,11 @@ depend dep:
 archpak: ${ARCHFILES}
 	@if [ "${ARCHNAME}" = "" ]; then echo ARCHNAME not set\!;false;fi
 	- mkdir ${ARCHNAME} ${ARCHDIR} 2>/dev/null
-	cp --parents -lfr ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile ${ARCHNAME}/
-	if [ -f makediff.php ]; then ln makediff.php ${ARCHNAME}/; fi
-	- rm -f ${ARCHDIR}${ARCHNAME}.zip
-	- zip -9rq ${ARCHDIR}${ARCHNAME}.zip ${ARCHNAME}/
-	- rar a ${ARCHDIR}${ARCHNAME}.rar -mm -m5 -r -s -inul ${ARCHNAME}/
+	cp --parents -lfr ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile ${ARCHNAME}/ 2>&1 >/dev/null | while read line;do cp --parents -fr "`echo "$$line"|sed 's/.*${ARCHNAME}\///;s/'\''.*//'`" ${ARCHNAME}/; done
+	if [ -f makediff.php ]; then ln -f makediff.php ${ARCHNAME}/; fi
+	#- rm -f ${ARCHDIR}${ARCHNAME}.zip
+	#- zip -9rq ${ARCHDIR}${ARCHNAME}.zip ${ARCHNAME}/
+	#- rar a ${ARCHDIR}${ARCHNAME}.rar -mm -m5 -r -s -inul ${ARCHNAME}/
 	tar cf ${ARCHDIR}${ARCHNAME}.tar ${ARCHNAME}/
 	#find ${ARCHNAME}/|/ftp/backup/bsort >.paktmp.txt
 	#tar -c --no-recursion -f ${ARCHDIR}${ARCHNAME}.tar -T.paktmp.txt
@@ -55,20 +55,22 @@ pak: archpak
 	if [ -f makediff.php ]; then php -q makediff.php ${ARCHNAME} ${ARCHDIR} 1; fi
 
 # This is Bisqwit's method to install the packages to web-server...
-omabin: archpak
+omabin${DEPFUN_OMABIN}: archpak
 	if [ -f makediff.php ]; then php -q makediff.php ${ARCHNAME} ${ARCHDIR}; fi
 	- @rm -f /WWW/src/${ARCHNAME}.{zip,rar,tar.{bz2,gz}}
 	- ln -f ${ARCHDIR}${ARCHNAME}.{zip,rar,tar.{bz2,gz}} /WWW/src/
-	if [ -f progdesc.php ]; then cp -p --remove-destination progdesc.php /WWW/src/.desc-$(subst /,,$(dir $(subst -,/,$(ARCHNAME)))).php; fi
+	if [ -f progdesc.php ]; then cp -p --remove-destination progdesc.php /WWW/src/.desc-$(subst /,,$(dir $(subst -,/,$(ARCHNAME)))).php 2>/dev/null || cp -fp progdesc.php /WWW/src/.desc-$(subst /,,$(dir $(subst -,/,$(ARCHNAME)))).php; fi
 
 install${DEPFUN_INSTALL}: ${INSTALLPROGS}
-	- mkdir --parents $(BINDIR) 2>/dev/null
-	- mkdir $(BINDIR) 2>/dev/null
-	for s in ${INSTALLPROGS}; do ${INSTALL} -c -s -o bin -g bin -m 755 $$s ${BINDIR}/$$s;done
+	- if [ ! "${BINDIR}" = "" ]; then mkdir --parents $(BINDIR) 2>/dev/null; mkdir $(BINDIR) 2>/dev/null; \
+	   for s in ${INSTALLPROGS} ""; do if [ ! "$$s" = "" ]; then \
+	     ${INSTALL} -c -s -o bin -g bin -m 755 "$$s" ${BINDIR}/"$$s";fi;\
+	   done; \
+	  fi
 	
-deinstall${DEPFUN_INSTALL}: uninstall${DEPFUN_INSTALL}
-uninstall${DEPFUN_INSTALL}:
-	for s in ${INSTALLPROGS}; do rm -f ${BINDIR}/$$s;done
+uninstall${DEPFUN_INSTALL} deinstall${DEPFUN_INSTALL}:
+	for s in ${INSTALLPROGS}; do rm -f ${BINDIR}/"$$s";done
+	- for s in ${INSTALLLIBS}; do rm -f ${LIBDIR}/"$$s";done
 
 .PHONY: pak dep depend archpak omabin \
 	install${DEPFUN_INSTALL} \
