@@ -15,7 +15,7 @@ Given some luck, may compile on DOS too.
 ", '1. Copying' => "
 
 dirr has been written by Joel Yliluoma, a.k.a.
-<a href=\"http://bisqwit.stc.cx/\">Bisqwit</a>,<br>
+<a href=\"http://bisqwit.iki.fi/\">Bisqwit</a>,<br>
 and is distributed under the terms of the
 <a href=\"http://www.gnu.org/licenses/licenses.html#GPL\">General Public License</a> (GPL).
 
