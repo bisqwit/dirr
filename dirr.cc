@@ -38,9 +38,9 @@
 #include <vector>
 #include <string>
 
-#ifndef major
- #define major(dev) ((dev) >> 8)
- #define minor(dev) ((dev) & 255)
+#ifndef MAJOR
+ #define MAJOR(dev) ((dev) >> 8)
+ #define MINOR(dev) ((dev) & 255)
 #endif
 
 #ifdef HAVE_DIR_H
@@ -1348,8 +1348,8 @@ GotSize:
     {
     	char *e;
     	sprintf(Buf, ChrStr.c_str(),
-    		(unsigned)major(Stat->st_rdev),
-    		(unsigned)minor(Stat->st_rdev));
+    		(unsigned)MAJOR(Stat->st_rdev),
+    		(unsigned)MINOR(Stat->st_rdev));
     	if(Space)
     	{
 		    e = strchr(Buf, 0);
@@ -1361,8 +1361,8 @@ GotSize:
     {
     	char *e;
     	sprintf(Buf, BlkStr.c_str(),
-    		(unsigned)major(Stat->st_rdev),
-    		(unsigned)minor(Stat->st_rdev));
+    		(unsigned)MAJOR(Stat->st_rdev),
+    		(unsigned)MINOR(Stat->st_rdev));
     	if(Space)
     	{
 	    	e = strchr(Buf, 0);

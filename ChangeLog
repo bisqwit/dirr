@@ -1,3 +1,9 @@
+Wed 2000-08-30 01:10 Bisqwit <bisqwit@iki.fi>
+
+	* Version 3.19
+	
+	    - Fixed device major and minor numbers displaying.
+
 Sun 2000-08-20 23:00 Bisqwit <bisqwit@iki.fi>
 
 	* Version 3.18

@@ -1,4 +1,4 @@
-VERSION = 3.18
+VERSION = 3.19
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -28,23 +28,24 @@ CXX=g++
 CPPFLAGS=-Wall -W -pedantic -DVERSION=\"$(VERSION)\" $(DEFINES)
 CXXFLAGS=-O3 -fomit-frame-pointer
 LDFLAGS=-s
-
 BINDIR=/usr/local/bin
+INSTALL=install
 
+PROG=dirr
+
+ARCHDIR=archives/
 ARCHNAME=dirr-$(VERSION)
 ARCHFILES=dirr.cc COPYING ChangeLog README dirrsets.hh \
           configure config.sub1 config.sub2 config.sub3
+INSTALLPROGS=$(PROG)
 
-dirr: dirr.o
+$(PROG): dirr.o
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 clean:
-	rm -f dirr dirr.o
+	rm -f $(PROG) dirr.o
 distclean: clean
 	rm -f Makefile.cfg config.h *~
 realclean: distclean
-
-install: dirr
-	cp -p dirr ${BINDIR}/
 
 include depfun.mak
