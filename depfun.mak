@@ -22,12 +22,13 @@ depend: dep
 dep:
 	- ${CPP} ${CPPFLAGS} -MM *.c *.cc > .depend
 
-# Makes the .tar.gz and .tar.bz2 and .zip -packages...
+# Makes the packages of various types...
 pak: ${ARCHFILES}
 	- mkdir ${ARCHNAME}
 	cp -lfr ${ARCHFILES} depfun.mak Makefile ${ARCHNAME}/
 	- rm -f ${ARCHNAME}.zip
 	zip -9rq ${ARCHNAME}.zip ${ARCHNAME}/
+	rar a ${ARCHNAME}.rar -mm -m5 -r -s ${ARCHNAME}/
 	tar cf ${ARCHNAME}.tar ${ARCHNAME}/
 	rm -rf ${ARCHNAME}
 	- bzip2 -c9 >${ARCHNAME}.tar.bz2 <${ARCHNAME}.tar
@@ -35,5 +36,5 @@ pak: ${ARCHFILES}
 
 # This is Bisqwit's method to install the packages to web-server...
 omabin: pak
-	- @rm -f /WWW/src/${ARCHNAME}.{zip,tar.{bz2,gz}}
-	- cp -lf ${ARCHNAME}.{zip,tar.{bz2,gz}} /WWW/src/
+	- @rm -f /WWW/src/${ARCHNAME}.{zip,rar,tar.{bz2,gz}}
+	- cp -lf ${ARCHNAME}.{zip,rar,tar.{bz2,gz}} /WWW/src/

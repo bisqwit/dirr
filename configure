@@ -1,6 +1,7 @@
 #!/bin/sh
 
 . ./config.sub1
+. ./config.sub2
 
 echo $ac_n "Checking for g++... "$ac_c
 
@@ -9,7 +10,7 @@ if test -n "$CPP"; then
   echo $CPP
 else
   echo no
-  echo gcc is required. stop.
+  echo g++ is required. stop.
   exit 1
 fi
 
@@ -20,9 +21,12 @@ AC_INCLUDES="sys/vfs.h sys/mount.h dir.h crt0.h conio.h termio.h sys/ioctl.h"
 cp -pf conftest.h config.h
 rm -f conftest.[ch]
 
-if test "$ac_has_sys_vfs_h" = yes || \
-   test "$ac_has_sys_mount_h" = yes; then
+if test "$os_type" = Linux || \
+   test "$os_type" = HP-UX; then
   echo 'HAVE_STATFS=1' >Makefile.cfg
+  echo
+  echo "Congratulations! You're running Linux! :)"
+  echo
 else
   echo 'HAVE_STATFS=0' >Makefile.cfg
 fi
