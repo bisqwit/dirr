@@ -535,9 +535,13 @@ static void Puuhun(const struct stat &Stat, const string &Name
 			{
 				int b, c, d;
 				
-				for(b=d=1; (c=StatPuu.size()/b) != 0; b*=10, d++)if(c%10)break;
+				unsigned prevsize = StatPuu.size() - 1;
+				
+				for(b=d=1; (c=prevsize/b) != 0; b*=10, d++)if(c%10)break;
+				if(!prevsize) d = 0;
 				
 				for(c=0; c<d; c++)Gputch('\b');
+				if(!prevsize) c = 1;
 				
 				while(c)
 				{

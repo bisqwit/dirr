@@ -4,9 +4,9 @@
 # The same program is used in many different projects to create
 # the README.html file from progdesc.php.
 #
-# docmaker.php version 1.0.7
+# docmaker.php version 1.0.8
 
-# Copyright (C) 2000,2002 Bisqwit (http://iki.fi/bisqwit/)
+# Copyright (C) 2000,2003 Bisqwit (http://iki.fi/bisqwit/)
 
 foreach(array('progdesc.php', '/WWW/document.php') as $fn)
   if(!file_exists($fn))
@@ -54,7 +54,7 @@ SMALL    {font-size:70%}
   This is the documentation of <?=htmlspecialchars($argv[1])?>.
 <?
 
-$url = 'http://oktober.stc.cx/source/'.rawurlencode($progname).'.html';
+$url = 'http://iki.fi/bisqwit/source/'.rawurlencode($progname).'.html';
 $k = '
    The official home page of '.htmlspecialchars($progname).'
    is at <a href="'.htmlspecialchars($url).'">'.htmlspecialchars($url).'</a>.<br>

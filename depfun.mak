@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.3.6
+# depfun.mak version 1.4.0
 #
 # Required vars:
 #
@@ -75,11 +75,19 @@ install${DEPFUN_INSTALL}: ${INSTALLPROGS}
 	   for s in ${INSTALLPROGS} ""; do if [ ! "$$s" = "" ]; then \
 	     ${INSTALL} -c -s -o bin -g bin -m 755 "$$s" ${BINDIR}/"$$s";fi;\
 	   done; \
+	  fi; \
+	  if [ ! "${MANDIR}" = "" ]; then mkdir --parents $(MANDIR) 2>/dev/null; mkdir $(MANDIR) 2>/dev/null; \
+	   for s in ${INSTALLMANS} ""; do if [ ! "$$s" = "" ]; then \
+	     ${INSTALL} -m 644 "$$s" ${MANDIR}/man"`echo "$$s"|sed 's/.*\.//'`"/"$$s";fi;\
+	   done; \
 	  fi
 	
 uninstall${DEPFUN_INSTALL} deinstall${DEPFUN_INSTALL}:
 	for s in ${INSTALLPROGS}; do rm -f ${BINDIR}/"$$s";done
 	- for s in ${INSTALLLIBS}; do rm -f ${LIBDIR}/"$$s";done
+	for s in ${INSTALLMANS} ""; do if [ ! "$$s" = "" ]; then \
+	  rm -f ${MANDIR}/man"`echo "$$s"|sed 's/.*\.//'`"/"$$s";fi;\
+	done; \
 
 .PHONY: pak dep depend archpak omabin \
 	install${DEPFUN_INSTALL} \

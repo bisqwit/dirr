@@ -4,7 +4,7 @@
 # The same program is used in many different projects to create
 # a diff file version history (patches).
 #
-# makediff.php version 3.0.2
+# makediff.php version 3.0.3
 
 # Copyright (C) 2000,2002 Bisqwit (http://bisqwit.iki.fi/)
 
@@ -295,8 +295,8 @@ function MakePatch($progname, $v1, $v2, $paks1, $paks2)
   $v1 = ereg_replace('(-----)*$', '', $v1);
   $v2 = ereg_replace('(-----)*$', '', $v2);
   
-  $v1string = ereg_replace('\.$', '', preg_replace('|(.....)|e', '((int)str_replace("-","0","$1"))."."', $v1));
-  $v2string = ereg_replace('\.$', '', preg_replace('|(.....)|e', '((int)str_replace("-","0","$1"))."."', $v2));
+  $v1string = ereg_replace('\.$', '', preg_replace('|(.....)|e', '(str_replace("-","","$1"))."."', $v1));
+  $v2string = ereg_replace('\.$', '', preg_replace('|(.....)|e', '(str_replace("-","","$1"))."."', $v2));
   
   $files1 = Array();
   foreach($paks1 as $ext)
