@@ -30,24 +30,25 @@
 # Note: This requires perl. FIXME change it to sed
 .depend: ${ARCHFILES}
 	@echo "Checking dependencies..."
-	@rm -f $@.tmp && \
-	 for dir in "" ${DEPDIRS}; \
-	 do n="`pwd`";cd "$$dir";for s in *.c *.cc *.cpp; \
-	 do if echo "$$s"|grep -vq '^\*';\
-	    then \
-	    cd "$$n";\
-	    ${CPP} ${CPPFLAGS} -MM -MG "$$dir""$$s" |\
-	     perl -pe "s|^([^ ])|$$dir\\1|" \
-	      > $@."$$s";\
+	@rm -f $@.tmp
+	@for dir in "" ${DEPDIRS}; \
+	 do n="`pwd`";\
+	    if [ ! -z "$$dir" ]; then cd "$$dir"; fi; \
+	    for s in *.c *.cc *.cpp; \
+	    do if echo "$$s"|grep -vq '^\*';\
+	       then \
+	       cd "$$n";\
+	       ${CPP} ${CPPFLAGS} -MM -MG "$$dir""$$s" |\
+	        perl -pe "s|^([^ ])|$$dir\\1|" \
+	         > $@."$$s";\
 	    fi&done; \
 	    cd "$$n"; \
-	 done;\
-	 wait;\
-	 touch $@.dummy; \
-	 cat $@.* >$@ \
-	 && cp -f $@ $@.tmp \
-	 && sed 's/\.o:/.lo:/' <$@.tmp >>$@ \
-	 && rm -f $@.*
+	 done; wait
+	@touch $@.dummy
+	@cat $@.* >$@
+	@cp -f $@ $@.tmp
+	@sed 's/\.o:/.lo:/' <$@.tmp >>$@
+	@rm -f $@.*
 
 depend dep: .depend
 

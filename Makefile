@@ -1,4 +1,4 @@
-VERSION = 3.27.8.1
+VERSION = 3.27.8.2
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -14,8 +14,8 @@ VERSION = 3.27.8.1
 CPP=gcc
 CXX=g++
 CPPFLAGS=-Wall -W -pedantic -DVERSION=\"$(VERSION)\" -pipe
-CXXFLAGS=-g
-#-O3 -fomit-frame-pointer
+#CXXFLAGS=-g
+CXXFLAGS=-O3 -fomit-frame-pointer
 LDFLAGS=
 #-s
 BINDIR=/usr/local/bin
