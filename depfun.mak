@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.1.11
+# depfun.mak version 1.1.13
 # 
 # Required vars:
 #
@@ -41,7 +41,9 @@ pak: ${ARCHFILES}
 	- zip -9rq ${ARCHDIR}${ARCHNAME}.zip ${ARCHNAME}/
 	- rar a ${ARCHDIR}${ARCHNAME}.rar -mm -m5 -r -s -inul ${ARCHNAME}/
 	tar cf ${ARCHDIR}${ARCHNAME}.tar ${ARCHNAME}/
-	rm -rf ${ARCHNAME}
+	#find ${ARCHNAME}/|/ftp/backup/bsort >.paktmp.txt
+	#tar -c --no-recursion -f ${ARCHDIR}${ARCHNAME}.tar -T.paktmp.txt
+	#rm -rf ${ARCHNAME} .paktmp.txt
 	- bzip2 -9 >${ARCHDIR}${ARCHNAME}.tar.bz2 < ${ARCHDIR}${ARCHNAME}.tar
 	gzip -f9 ${ARCHDIR}${ARCHNAME}.tar
 
@@ -51,6 +53,7 @@ omabin: pak
 	- cp -lf ${ARCHDIR}${ARCHNAME}.{zip,rar,tar.{bz2,gz}} /WWW/src/
 
 install${DEPFUN_INSTALL}: ${INSTALLPROGS}
+	- mkdir $(BINDIR) 2>/dev/null
 	for s in ${INSTALLPROGS}; do ${INSTALL} -c -s -o bin -g bin -m 755 $$s ${BINDIR}/$$s;done
 	
 deinstall${DEPFUN_INSTALL}: uninstall${DEPFUN_INSTALL}

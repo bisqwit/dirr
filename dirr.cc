@@ -689,24 +689,24 @@ static void DirChangeCheck(string Source)
 
 static void ScanDir(const char *Dirrikka)
 {
-    char Source[PATH_MAX+1];
-    char DirName[PATH_MAX+1];
+	string Source;
+	string DirName;
     int Tried = 0;
 
     struct stat Stat;
     struct dirent *ent;
     DIR *dir;
-
-    strcpy(DirName, Dirrikka);
+    
+    DirName = Dirrikka;
 
     #ifdef DJGPP
-    if(DirName[strlen(DirName)-1] == ':')
-        strcat(DirName, ".");
+    if(DirName.size() && DirName[DirName.size()-1] == ':')
+    	DirName += '.';
     #endif
+    
+    Source = DirName;
 
-    strcpy(Source, DirName);
-
-R1: if((dir = opendir(Source)) == NULL)
+R1: if((dir = opendir(Source.c_str())) == NULL)
     {
     	/* It was not a directory, or could not be read */
     	
@@ -727,20 +727,21 @@ P1:			string Tmp = DirOnly(Source);
 			SingleFile(Source, Stat);
 			goto End_ScanDir;
         }
-        else if(!Tried)
+        else if(!Tried && (!Source.size() || Source[Source.size()-1]!='/'))
         {
-        	strcat(Source, "/");
-            Tried=1;
+        	Source += '/';
+            Tried = 1;
             goto R1;
         }
         else if(errno==EACCES)
         {
-            Gprintf(" No access to %s\n", Source);
+            Gprintf(" No access to %s\n", Source.c_str());
             goto End_ScanDir;
         }
 
         if(errno)
-            Gprintf("\n%s - error: %d (%s)\n", Source, errno, GetError(errno).c_str());
+            Gprintf("\n%s - error: %d (%s)\n", Source.c_str(),
+                    errno, GetError(errno).c_str());
 
         goto End_ScanDir;
     }    
