@@ -8,6 +8,8 @@
 extern int Links;
 #endif
 
+using std::string;
+
 /***********************************************
  *
  * GetName(fn, Stat, Space, Fill)

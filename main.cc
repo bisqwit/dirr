@@ -52,6 +52,8 @@
 #include <sys/stat.h>
 #endif
 
+using namespace std;
+
 static int RowLen;
 
 static int LongestName;
@@ -292,7 +294,7 @@ static void TellMe(const struct stat &Stat, const string &Name
                         
                         GetName(Name, Stat, LongestName,
                                 (Sara||s[1]) && (*s=='f'),
-                                *s=='f',
+                                (*s=='f'),
                                 hardlinkfn);
                         
                         ItemLen += LongestName;
@@ -1041,27 +1043,27 @@ public:
 	Handle(const char *defopts, int argc, const char *const *argv)
 	: arghandler(defopts, argc, argv), Files(false), Help(false)
 	{
-        add("-al", "--long",      "\"Standard\" listing format", &(Handle::opt_al));
+        add("-al", "--long",      "\"Standard\" listing format", &Handle::opt_al);
         add("-a",  "--predef",    "-a0 to -a4: Some predefined formats. "
                                   "You may want to play with them to find out "
                                   "how extensive this program is :)",
-                                  &(Handle::opt_a));
-        add("-c1", "--colours",   "Enables colours (default, if tty output).", &(Handle::opt_c1));
-        add("-c",  "--nocolor",   "Disables colours.", &(Handle::opt_c));
-        add("-C",  "--columns",   "Enables multiple column mode.", &(Handle::opt_C));
-		add("-d1", "--useatime",  "Use atime, last access datetime for date fields.", &(Handle::opt_d1));
-		add("-d2", "--usemtime",  "Use mtime, last modification datetime.", &(Handle::opt_d2));
-		add("-d3", "--usectime",  "Use ctime, file creation datetime.", &(Handle::opt_d3));
+                                  &Handle::opt_a);
+        add("-c1", "--colours",   "Enables colours (default, if tty output).", &Handle::opt_c1);
+        add("-c",  "--nocolor",   "Disables colours.", &Handle::opt_c);
+        add("-C",  "--columns",   "Enables multiple column mode.", &Handle::opt_C);
+		add("-d1", "--useatime",  "Use atime, last access datetime for date fields.", &Handle::opt_d1);
+		add("-d2", "--usemtime",  "Use mtime, last modification datetime.", &Handle::opt_d2);
+		add("-d3", "--usectime",  "Use ctime, file creation datetime.", &Handle::opt_d3);
 		add("-db", "--blkdev",    "Specify how the blockdevices are shown\n"
                                     " Example: `--blkdev=<B%u,%u>'\n"
                                     " Default is `-db" + BlkStr + "'",
-                                    &(Handle::opt_db));
+                                    &Handle::opt_db);
 		add("-dc", "--chrdev",    "Specify how the character devices are shown\n"
                                     " Example: `--chrdev=<C%u,%u>'\n"
                                     " Default is `-dc" + ChrStr + "'",
-                                    &(Handle::opt_dc));
-        add("-D",  "--notinside", "Show directory names instead of contents.", &(Handle::opt_D));
-        add("-e",  "--noprescan", "Undocumented evil option.", &(Handle::opt_e));
+                                    &Handle::opt_dc);
+        add("-D",  "--notinside", "Show directory names instead of contents.", &Handle::opt_D);
+        add("-e",  "--noprescan", "Undocumented evil option.", &Handle::opt_e);
         add("-f",  "--format",    "Output format\n"
                                   "  .s=Size,    .f=File,   .d=Datetime,     .o=Owner,   .g=Group,\n"
                                   "  .S#=size with thsep #, .x##=Color 0x##, .h=Number of hard links\n"
@@ -1074,15 +1076,15 @@ public:
                                   "  .F and .G and .O are respectively, without space fitting\n"
                                   "   anything else=printed\n"
                                   "   Default is `--format="+FieldOrder+"'",
-                                  &(Handle::opt_f));
+                                  &Handle::opt_f);
         add("-F",  "--dates",     "Specify new date format. man strftime.\n"
                                   "Default is `-F"+DateForm+"'",
-                                  &(Handle::opt_F));
-		add("-h",  "--help",      "mm.. familiar?", &(Handle::opt_h));
-        add("-H1", "--hl",        "Enables mapping hardlinks (default)", &(Handle::opt_H1));
-        add("-H",  "--nohl",      "Disables mapping hardlinks", &(Handle::opt_H));
-		add("-?",  NULL,          "Alias to -h", &(Handle::opt_h));
-        add("-la", NULL,          "Alias to -al", &(Handle::opt_al));
+                                  &Handle::opt_F);
+		add("-h",  "--help",      "mm.. familiar?", &Handle::opt_h);
+        add("-H1", "--hl",        "Enables mapping hardlinks (default)", &Handle::opt_H1);
+        add("-H",  "--nohl",      "Disables mapping hardlinks", &Handle::opt_H);
+		add("-?",  NULL,          "Alias to -h", &Handle::opt_h);
+        add("-la", NULL,          "Alias to -al", &Handle::opt_al);
 #ifdef S_ISLNK
         add("-l",  "--links",     "Specify how the links are shown:\n"
                                     "  0 Show link name and stats of link\n"
@@ -1091,30 +1093,30 @@ public:
                                     "  3 Show link name, link's target and stats of target\n"
                                     "  4 Show link name, link's target and <LINK>\n"
                                     "  5 Show link name and stats of target\n",
-                                    &(Handle::opt_l));
+                                    &Handle::opt_l);
 #endif
 		add("-m", "--tstyle",     "Selects \"total\" list style.\n"
 		                          " -m0: Verbose (default)\n"
 		                          " -m1: Compact.\n"
 		                          " -m2: None.\n"
-		                          " -m3: Compact with exact numbers.", &(Handle::opt_m));
-        add("-M", "--tstylsep",   "Like -m, but with a thousand separator. Example: -M0,", &(Handle::opt_M));
+		                          " -m3: Compact with exact numbers.", &Handle::opt_m);
+        add("-M", "--tstylsep",   "Like -m, but with a thousand separator. Example: -M0,", &Handle::opt_M);
         add("-o", "--sort",       "Sort the list (disables -e), with n as combination of:\n"
                                   "(n)ame, (s)ize, (d)ate, (u)id, (g)id, (h)linkcount, "
                                   "(c)olor, na(m)e case insensitively, "
                                   "g(r)oup dirs,files,links,chrdevs,blkdevs,fifos,socks, "
                                   "grou(p) dirs,links=files,chrdevs,blkdevs,fifos,socks\n"
                                   "Use Uppercase for reverse order.\n"
-                                  "Default is `--sort="+Sorting+"'\n", &(Handle::opt_o));
-        add("-p",  "--paged",     "Use internal pager.", &(Handle::opt_p));
-        add("-P",  "--oldvt",     "Disables colour code optimizations.", &(Handle::opt_P));
-		add("-r",  "--restore",   "Undoes all options, including the DIRR environment variable.", &(Handle::opt_r));
-        add("-v",  "--version",   "Displays the version.", &(Handle::opt_V));
-        add("-V",  NULL,          "Alias to -v.", &(Handle::opt_V));
-        add("-w",  "--wide",      "Equal to -l1HCm1f.f -opcm", &(Handle::opt_w));
-        add("-W",  "--ediw",      "Same as -w, but with reverse sort order.", &(Handle::opt_W));
+                                  "Default is `--sort="+Sorting+"'\n", &Handle::opt_o);
+        add("-p",  "--paged",     "Use internal pager.", &Handle::opt_p);
+        add("-P",  "--oldvt",     "Disables colour code optimizations.", &Handle::opt_P);
+		add("-r",  "--restore",   "Undoes all options, including the DIRR environment variable.", &Handle::opt_r);
+        add("-v",  "--version",   "Displays the version.", &Handle::opt_V);
+        add("-V",  NULL,          "Alias to -v.", &Handle::opt_V);
+        add("-w",  "--wide",      "Equal to -l1HCm1f.f -opcm", &Handle::opt_w);
+        add("-W",  "--ediw",      "Same as -w, but with reverse sort order.", &Handle::opt_W);
         add("-X",  "--width",     "Force screen width, example: -X132",
-                                  &(Handle::opt_X));
+                                  &Handle::opt_X);
         
         parse();
 	}

@@ -9,9 +9,13 @@
 #endif
 #include <string>
 
+using std::string;
+
 #if PRELOAD_UIDGID||CACHE_UIDGID
 
 #include <map>
+
+using std::map;
 
 typedef map<int, string> idCache;
 

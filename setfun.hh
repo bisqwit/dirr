@@ -3,6 +3,8 @@
 
 #include <string>
 
+using std::string;
+
 extern bool Dumping;
 
 extern int WasNormalColor;

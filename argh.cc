@@ -2,7 +2,18 @@
 #include <cstring>
 
 #include "argh.hh"
+
+#ifdef ColourPrints
 #include "cons.hh"
+#define GPRINTF_ARGS 
+#else
+#include <cstdio>
+
+#define GPRINTF_ARGS stderr,
+#define Gputch(x) putc((x), stderr)
+#define Gprintf fprintf
+#define SetAttr(x) 
+#endif
 
 /* This file is part of Bisqwit's dirr and remotegcc packages. */
 
@@ -37,6 +48,16 @@ arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
         args.push_back(q);
     }
     bool terminated = false;
+    
+    /* If you have 5 parameters and want to skip 2 parameters
+     * at th ebeginning, specify argc as: (2-argc)*MAX_ARGC-2
+     */
+    if(argc < 0)
+    {
+        argc = -argc;
+        argv += (argc%MAX_ARGC);
+        argc /= MAX_ARGC;
+    }
     while(--argc)
     {
         q = *++argv;
@@ -62,6 +83,8 @@ arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
 
 arghandler::~arghandler()
 {
+    for(vector<option>::iterator i=options.begin(); i!=options.end(); ++i)
+        delete i->handler;
 }
 
 void arghandler::subadd(const char *Short, const char *Long, const string &Descr, argfun handler)
@@ -95,11 +118,11 @@ void arghandler::parse()
                 {
                     argerror(s, false);
                     return;
-                 }
-                 unsigned c = a+1;
-                 if(c == b)--c;
+                }
+                unsigned c = a+1;
+                if(c == b)--c;
                 s = args[c];
-                s = (this->*(i->handler))(s);
+                s = i->handler->CallBack(this, s);
                 if(s.size())
                 {
                     if(s != args[c])
@@ -126,7 +149,7 @@ void arghandler::parse()
                            argerror(s[0]);
                            return;
                        }
-                       s = (this->*(i->handler))(s.substr(strlen(i->Short)));
+                       s = i->handler->CallBack(this, s.substr(strlen(i->Short)));
                 }
             }
         }
@@ -137,14 +160,14 @@ void arghandler::parse()
 
 void arghandler::argerror(char c)
 {
-    Gprintf("%s: illegal option -- %c\n", a0.c_str(), c);
+    Gprintf(GPRINTF_ARGS "%s: illegal option -- %c\n", a0.c_str(), c);
     suggesthelp();
     exit(1);
 }
 
 void arghandler::argerror(const string &s, bool param)
 {
-    Gprintf("%s: %s%s'\n",
+    Gprintf(GPRINTF_ARGS "%s: %s%s'\n",
         a0.c_str(),
         param ? "invalid parameter `" : "unrecognized option `--",
         s.c_str());
@@ -154,7 +177,7 @@ void arghandler::argerror(const string &s, bool param)
 
 void arghandler::suggesthelp()
 {
-    Gprintf("Try `%s --help' for more information.\n", a0.c_str());
+    Gprintf(GPRINTF_ARGS "Try `%s --help' for more information.\n", a0.c_str());
 }
 
 void arghandler::listoptions()
@@ -175,16 +198,16 @@ void arghandler::listoptions()
         const char *l = i->Long;
         
         SetAttr(*s ? 3 : 0);
-        Gprintf("  -");
+        Gprintf(GPRINTF_ARGS "  -");
         SetAttr(7);
-        Gprintf("%s", s);
+        Gprintf(GPRINTF_ARGS "%s", s);
         
         SetAttr(*l ? 3 : 0);
-        Gprintf(", --");
+        Gprintf(GPRINTF_ARGS ", --");
         SetAttr(7);
-        Gprintf("%s", l);
+        Gprintf(GPRINTF_ARGS "%s", l);
         
-        Gprintf("%*s", space-(strlen(s) + strlen(l)), "");
+        Gprintf(GPRINTF_ARGS "%*s", space-(strlen(s) + strlen(l)), "");
         
         SetAttr(7);
         
@@ -195,7 +218,7 @@ void arghandler::listoptions()
         {
             if(needspace)
             {
-                Gprintf("\n%*s", space+7, "");
+                Gprintf(GPRINTF_ARGS "\n%*s", space+7, "");
                 needspace = false;
             }
             needeol = true;
@@ -207,7 +230,6 @@ void arghandler::listoptions()
             needspace = true;
             needeol = false;
         }
-        if(needspace || needeol)Gprintf("\n");
+        if(needspace || needeol)Gprintf(GPRINTF_ARGS "\n");
     }
 }
-  

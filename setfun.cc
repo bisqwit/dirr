@@ -1,10 +1,15 @@
 #include <vector>
+#include <cctype>
 #include <map>
 
 #include "config.h"
 #include "wildmatch.hh"
 #include "setfun.hh"
 #include "cons.hh"
+
+using std::vector;
+using std::map;
+using std::isxdigit;
 
 bool Dumping = false; // If 0, save some time
 

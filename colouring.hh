@@ -4,6 +4,8 @@
 #include <string>
 #include <sys/stat.h>
 
+using std::string;
+
 extern int GetNameAttr(const struct stat &Stat, const string &fn);
 
 // Case of Attrs:

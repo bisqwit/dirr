@@ -2,6 +2,8 @@
 #include <cstdarg>
 #include <string>
 
+using namespace std;
+
 #include "config.h"
 #include "cons.hh"
 
@@ -27,6 +29,13 @@ int _crt0_startup_flags =
 	_CRT0_FLAG_PRESERVE_UPPER_CASE
   | _CRT0_FLAG_PRESERVE_FILENAME_CASE;
 #define Ggetch getch
+#else
+#ifdef HAVE_TERMIO_H
+#include <termio.h>
+#endif
+#ifdef HAVE_TERMIOS_H
+#include <termios.h>
+#endif
 #endif
 
 bool Colors     = true;
@@ -35,7 +44,9 @@ bool Pagebreaks = false;
 
 int WhereX=0;
 int LINES=25, COLS=80;
-#define MAX_COLS 512 // Expect no bigger COLS-values
+
+/* Bigger COLS-values don't work. Change it if it's not ok. */
+#define MAX_COLS 1024
 
 static int TextAttr = DEFAULTATTR;
 static int OldAttr  = DEFAULTATTR;
@@ -142,12 +153,6 @@ static void FlushSetAttr()
 }
 
 #ifndef DJGPP
-#ifdef HAVE_TERMIO_H
-#include <termio.h>
-#endif
-#ifdef HAVE_TERMIOS_H
-#include <termios.h>
-#endif
 static int Ggetch()
 {
 	struct termio term, back;

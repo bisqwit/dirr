@@ -4,6 +4,8 @@
 #include <string>
 #include <limits.h>
 
+using namespace std;
+
 extern string NameOnly(const string &Name);
 
 // Ends with '/'.

@@ -1,4 +1,4 @@
-VERSION = 3.26
+VERSION = 3.27
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -22,12 +22,12 @@ BINDIR=/usr/local/bin
 INSTALL=install
 
 PROG=dirr
-OBJS=dirr.o pwfun.o wildmatch.o cons.o setfun.o strfun.o colouring.o \
+OBJS=main.o pwfun.o wildmatch.o cons.o setfun.o strfun.o colouring.o \
      getname.o getsize.o totals.o argh.o
 
 ARCHDIR=archives/
 ARCHNAME=dirr-$(VERSION)
-ARCHFILES=dirr.cc COPYING ChangeLog README dirrsets.hh \
+ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh \
           configure config.sub1 config.sub2 config.sub3 \
           wildmatch.cc wildmatch.hh \
           colouring.cc colouring.hh \
@@ -45,6 +45,9 @@ INSTALLPROGS=$(PROG)
 
 ${PROG}: ${OBJS}
 	$(CXX) $(LDFLAGS) -o $@ $^
+
+argh.o: argh.cc
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -DColourPrints -o $@ -c $<
 
 clean:
 	rm -f $(PROG) ${OBJS}
