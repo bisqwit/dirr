@@ -111,4 +111,4 @@
     "byext(8i *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
     "byext(Ai *.exe *.com *.bat)"
     "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.a\\d\\d)"
-    "byext(Di *.gif *.bmp *.mp* *.x?m *.mov *.tga *.png *.tif *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\\w)"
+    "byext(Di *.gif *.bmp *.mp* *.avi *.asf *.x?m *.mov *.tga *.png *.tif *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\\w)"

@@ -4,9 +4,9 @@
 # The same program is used in many different projects to create
 # a diff file version history (patches).
 #
-# makediff.php version 1.0.7
+# makediff.php version 1.0.9
 
-# Copyright (C) 2000,2001 Bisqwit (http://iki.fi/bisqwit/)
+# Copyright (C) 2000,2002 Bisqwit (http://iki.fi/bisqwit/)
 
 # argv[1]: Newest archive if any
 # argv[2]: Archive directory if any
@@ -89,7 +89,13 @@ function Eexec($s)
 function FindInodes($directory)
 {
   $inodes = array();
-  $fp = opendir($directory);
+  $fp = @opendir($directory);
+  if(!$fp)
+  {
+    print "OPENDIR $directory failed!\n";
+    exit;
+  }
+  
   while(($fn = readdir($fp)))
   {
     if($fn=='.' || $fn=='..')continue;
@@ -113,7 +119,12 @@ function FindInodes($directory)
 function EraLinks($directory, &$inomap)
 {
   $links = array();
-  $fp = opendir($directory);
+  $fp = @opendir($directory);
+  if(!$fp)
+  {
+    print "OPENDIR $directory failed!\n";
+    exit;
+  }
   while(($fn = readdir($fp)))
   {
     if($fn=='.' || $fn=='..')continue;
@@ -160,7 +171,8 @@ foreach($f as $this)
     if(!$madeprev)
     {
       chdir($tmpdir2);
-      if(file_exists('../../'.shellfix($prev).'.tar.gz'))
+      print 1;
+      if(file_exists('../../'.$prev.'.tar.gz'))
         Eexec('gzip -d < ../../'.shellfix($prev).'.tar.gz | tar xf -');
       else
         Eexec('bzip2 -d < ../../'.shellfix($prev).'.tar.bz2 | tar xf -');
@@ -172,13 +184,14 @@ foreach($f as $this)
     {
       $madeprev = 1;
       chdir($tmpdir2);
-      $thisfn = '../'.shellfix($this).'.tar.gz';
+      $thisfn = '../'.$this.'.tar.gz';
+      print 2;
       if(file_exists('../'.$thisfn))
-        Eexec('gzip -d < ../'.$thisfn.' | tar xf -');
+        Eexec('gzip -d < ../'.shellfix($thisfn).' | tar xf -');
       else
       {
-        $thisfn = '../'.shellfix($this).'.tar.bz2';
-        Eexec('bzip2 -d < ../'.$thisfn.' | tar xf -');
+        $thisfn = '../'.$this.'.tar.bz2';
+        Eexec('bzip2 -d < ../'.shellfix($thisfn).' | tar xf -');
       }
       $thisdirs = exec('echo *');
       exec('mv * ../');

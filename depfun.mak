@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.1.26
+# depfun.mak version 1.2.2
 #
 # Required vars:
 #
@@ -25,14 +25,14 @@
 #  ${EXTRA_ARCHFILES} - More files to include in archive,
 #                       but without dependency checking
 
-include .depend
 
 .depend: ${ARCHFILES}
-	@touch .depend
-	@make dep
+	rm -f $@.tmp && for s in *.c *.cc *.cpp;do if echo "$$s"|grep -vq '^\*';then ${CPP} ${CPPFLAGS} -MM -MG $$s;fi;done >$@.tmp && rm -f $@ && cp -p $@.tmp $@ && sed 's/\.o:/.lo:/' <$@.tmp >>$@ && rm -f $@.tmp
+depend dep: .depend
 
-depend dep:
-	- ${CPP} ${CPPFLAGS} -MM -MG *.c *.cc *.cpp >.depend 2>/dev/null
+
+include .depend
+
 
 archpak: ${ARCHFILES}
 	@if [ "${ARCHNAME}" = "" ]; then echo ARCHNAME not set\!;false;fi
@@ -47,8 +47,9 @@ archpak: ${ARCHFILES}
 	#tar -c --no-recursion -f ${ARCHDIR}${ARCHNAME}.tar -T.paktmp.txt
 	#rm -f .paktmp.txt
 	rm -rf ${ARCHNAME}
-	- bzip2 -9 >${ARCHDIR}${ARCHNAME}.tar.bz2 < ${ARCHDIR}${ARCHNAME}.tar
-	gzip -f9 ${ARCHDIR}${ARCHNAME}.tar
+	- if [ "${NOBZIP2ARCHIVES}" = "" ]; then bzip2 -9 >${ARCHDIR}${ARCHNAME}.tar.bz2 < ${ARCHDIR}${ARCHNAME}.tar; fi
+	if [ "${NOGZIPARCHIVES}" = "" ]; then gzip -f9 ${ARCHDIR}${ARCHNAME}.tar; fi
+	rm -f ${ARCHDIR}${ARCHNAME}.tar
 
 # Makes the packages of various types...
 pak: archpak

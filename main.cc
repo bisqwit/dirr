@@ -535,13 +535,13 @@ static void Puuhun(const struct stat &Stat, const string &Name
 			{
 				int b, c, d;
 				
-				for(b=d=1; (c=StatPuuKoko/b) != 0; b*=10, d++)if(c%10)break;
+				for(b=d=1; (c=StatPuu.size()/b) != 0; b*=10, d++)if(c%10)break;
 				
 				for(c=0; c<d; c++)Gputch('\b');
 				
 				while(c)
 				{
-					Gprintf("%d", (StatPuuKoko/b)%10);
+					Gprintf("%d", (StatPuu.size()/b)%10);
 					b /= 10;
 					c--;
 				}
