@@ -1,4 +1,4 @@
-VERSION = 3.17
+VERSION = 3.18
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed

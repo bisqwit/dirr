@@ -28,7 +28,7 @@ pak: ${ARCHFILES}
 	cp -lfr ${ARCHFILES} depfun.mak Makefile ${ARCHNAME}/
 	- rm -f ${ARCHNAME}.zip
 	zip -9rq ${ARCHNAME}.zip ${ARCHNAME}/
-	rar a ${ARCHNAME}.rar -mm -m5 -r -s ${ARCHNAME}/
+	rar a ${ARCHNAME}.rar -mm -m5 -r -s -inul ${ARCHNAME}/
 	tar cf ${ARCHNAME}.tar ${ARCHNAME}/
 	rm -rf ${ARCHNAME}
 	- bzip2 -c9 >${ARCHNAME}.tar.bz2 <${ARCHNAME}.tar

@@ -1,3 +1,16 @@
+Sun 2000-08-20 23:00 Bisqwit <bisqwit@iki.fi>
+
+	* Version 3.18
+	
+	    - Finished the work with statfs() for SunOS.
+	    - Now free disk space is reported there too, whee :)
+
+Sun 2000-08-20 22:40 Bisqwit <bisqwit@iki.fi>
+
+	* Version 3.17
+	   
+	    - Added rar-compressed distribution...
+
 Sun 2000-08-20 21:40 Bisqwit <bisqwit@iki.fi>
 
 	* Version 3.16

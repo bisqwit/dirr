@@ -2029,19 +2029,29 @@ End_ScanDir:
     return;
 }
 
-#if HAVE_STATFS
 #ifdef HAVE_SYS_VFS_H
 #include <sys/vfs.h>
 #endif
+#ifdef HAVE_SYS_STATFS_H
+#include <sys/statfs.h>
+#endif
 #ifdef HAVE_SYS_MOUNT_H
 #include <sys/mount.h>
-#endif
 #endif
 
 static void Summat()
 {
 #if HAVE_STATFS
-	struct statfs tmp;
+#if defined(SUNOS)||defined(__sun)||defined(SOLARIS)
+#define STATFS(mountpoint, structp) statvfs(mountpoint, structp)
+#define STATFST statvfs
+#define STATFREEKB(tmp) ((tmp).f_bavail / 1024.0 * (tmp).f_frsize)
+#else
+#define STATFS(mountpoint, structp) statfs(mountpoint, structp)
+#define STATFST statfs
+#define STATFREEKB(tmp) ((tmp).f_bavail / 1024.0 * (tmp).f_bsize)
+#endif
+	struct STATFST tmp;
 #endif
 	unsigned long Koko;
 	
@@ -2068,7 +2078,7 @@ static void Summat()
     ColorNums = GetDescrColor("num", -1);
     
 #if HAVE_STATFS
-    if(statfs(LastDir.c_str(), &tmp))tmp.f_bavail = 0;
+    if(STATFS(LastDir.c_str(), &tmp))tmp.f_bavail = 0;
 #endif
         	
     if(Compact)
@@ -2113,7 +2123,8 @@ static void Summat()
 #if HAVE_STATFS
         if(tmp.f_bavail > 0)
         {
-        	float Size = tmp.f_bavail / 1024.0 * tmp.f_bsize;
+            // Size = kilobytes
+        	double Size = STATFREEKB(tmp);
         	
         	if(Compact == 2)
         	{
@@ -2125,14 +2136,19 @@ static void Summat()
         		PrintNum(NumBuf, TotalSep, "%.1f", Size/1024.0);
         		Gprintf(", \1%s\1 MB", NumBuf.c_str());
         	}
-       		else 
+        	else if(Size >= 1048576*10)
+        	{
+        		PrintNum(NumBuf, TotalSep, "%.1f", Size/1048576.0);
+        		Gprintf(", \1%s\1 GB", NumBuf.c_str());
+        	}
+       		else
        		{
        			PrintNum(NumBuf, TotalSep, "%.1f", Size);
         		Gprintf(", \1%s\1 kB", NumBuf.c_str());
         	}
         		
         	Gprintf(" free(\1%.1f\1%%)",
-        		(float)tmp.f_bavail * 100.0 / tmp.f_blocks);
+        		(double)tmp.f_bavail * 100.0 / tmp.f_blocks);
         }
 #endif	    
 	    Gprintf("\n");
@@ -2199,7 +2215,7 @@ static void Summat()
 #if HAVE_STATFS
         if(tmp.f_bavail > 0)
         {
-        	double Size = (long double)tmp.f_bavail * tmp.f_bsize;
+        	double Size = STATFREEKB(tmp) * 1024.0;
         	
         	/* FIXME: Thousand separators for free space also      *
         	 *        Currently not implemented, because there     *
