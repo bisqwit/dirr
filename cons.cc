@@ -43,6 +43,47 @@ static int ColorNumToggle = 0;
 
 extern int GetDescrColor(const string &descr, int index);
 
+static class GetScreenGeometry
+{
+public:
+	GetScreenGeometry()
+	{
+		Get();
+	}
+	void Get()
+	{
+#if defined(DJGPP) || defined(__BORLANDC__)
+	    struct text_info w;
+	    gettextinfo(&w);
+	    LINES=w.screenheight;
+	    COLS =w.screenwidth;
+#else
+#ifdef TIOCGWINSZ
+	    struct winsize w;
+	    if(ioctl(1, TIOCGWINSZ, &w) >= 0)
+	    {
+	        LINES=w.ws_row;
+	        COLS =w.ws_col;
+	    }
+#else
+#ifdef WIOCGETD
+	    struct uwdata w;
+	    if(ioctl(1, WIOCGETD, &w) >= 0)
+	    {
+	        LINES = w.uw_height / w.uw_vs;
+	        COLS  = w.uw_width / w.uw_hs;
+	    }
+#endif
+#endif
+#endif
+	}
+} ScreenInitializer;
+
+void GetScreenGeometry()
+{
+	ScreenInitializer.Get();
+}
+
 static void FlushSetAttr()
 {
     if(TextAttr == OldAttr)return;
@@ -229,6 +270,7 @@ int Gputch(int x)
                 if(More<0)exit(0);
                 SetAttr(ta);
                 Line -= More;
+                GetScreenGeometry();
             }
         }
     }
@@ -268,35 +310,3 @@ int Gprintf(const char *fmt, ...)
     }
     return a;
 }
-
-static class GetScreenGeometry
-{
-public:
-	GetScreenGeometry()
-	{
-#if defined(DJGPP) || defined(__BORLANDC__)
-	    struct text_info w;
-	    gettextinfo(&w);
-	    LINES=w.screenheight;
-	    COLS =w.screenwidth;
-#else
-#ifdef TIOCGWINSZ
-	    struct winsize w;
-	    if(ioctl(1, TIOCGWINSZ, &w) >= 0)
-	    {
-	        LINES=w.ws_row;
-	        COLS =w.ws_col;
-	    }
-#else
-#ifdef WIOCGETD
-	    struct uwdata w;
-	    if(ioctl(1, WIOCGETD, &w) >= 0)
-	    {
-	        LINES = w.uw_height / w.uw_vs;
-	        COLS  = w.uw_width / w.uw_hs;
-	    }
-#endif
-#endif
-#endif
-	}
-} ScreenInitializer;

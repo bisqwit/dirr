@@ -107,7 +107,7 @@
     "byext(3i *.txt *.htm *.html *.1st *.wri *.ps *.doc readme quickstart install)"
     "byext(4i core DEADJOE)"
     "byext(5i *.m?d *.mtm *.s3m *.xm* *.mp\\d *.wav *.smp *.au *.ult *.669)"
-    "byext(6i *.?as *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak)"
+    "byext(6i *.?as *.php *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak)"
     "byext(8i *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
     "byext(Ai *.exe *.com *.bat)"
     "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.a\\d\\d)"
