@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.3.2
+# depfun.mak version 1.3.5
 #
 # Required vars:
 #
@@ -27,7 +27,8 @@
 
 
 .depend: ${ARCHFILES}
-	rm -f $@.tmp && for s in *.c *.cc *.cpp;do if echo "$$s"|grep -vq '^\*';then ${CPP} ${CPPFLAGS} -MM -MG $$s;fi;done >$@.tmp && rm -f $@ && cp -p $@.tmp $@ && sed 's/\.o:/.lo:/' <$@.tmp >>$@ && rm -f $@.tmp
+	@echo "Checking dependencies..."
+	@rm -f $@.tmp && for s in *.c *.cc *.cpp;do if echo "$$s"|grep -vq '^\*';then ${CPP} ${CPPFLAGS} -MM -MG $$s;fi;done >$@.tmp && rm -f $@ && cp -p $@.tmp $@ && sed 's/\.o:/.lo:/' <$@.tmp >>$@ && rm -f $@.tmp
 depend dep: .depend
 
 
@@ -38,15 +39,19 @@ archpak: ${ARCHFILES}
 	@if [ "${ARCHNAME}" = "" ]; then echo ARCHNAME not set\!;false;fi
 	- mkdir ${ARCHNAME} ${ARCHDIR} 2>/dev/null
 	cp --parents -lfr ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile ${ARCHNAME}/ 2>&1 >/dev/null | while read line;do cp --parents -fr "`echo "$$line"|sed 's/.*${ARCHNAME}\///;s/'\''.*//'`" ${ARCHNAME}/; done
-	if [ -f docmaker.php ]; then php -q docmaker.php ${ARCHNAME} >README.html && ln -f docmaker.php README.html ${ARCHNAME}/;fi
+	- if [ -f docmaker.php ]; then php -q docmaker.php ${ARCHNAME} >README.html && ln -f docmaker.php README.html ${ARCHNAME}/;fi
 	if [ -f makediff.php ]; then ln -f makediff.php ${ARCHNAME}/; fi
 	#- rm -f ${ARCHDIR}${ARCHNAME}.zip
 	#- zip -9rq ${ARCHDIR}${ARCHNAME}.zip ${ARCHNAME}/
 	#- rar a ${ARCHDIR}${ARCHNAME}.rar -mm -m5 -r -s -inul ${ARCHNAME}/
-	tar cf ${ARCHDIR}${ARCHNAME}.tar ${ARCHNAME}/
+	#tar cf ${ARCHDIR}${ARCHNAME}.tar ${ARCHNAME}/
+	#
+	find ${ARCHNAME}/ -type d > .paktmp.txt
+	find ${ARCHNAME}/ -not -type d | rev | sort | rev >> .paktmp.txt
 	#find ${ARCHNAME}/|/ftp/backup/bsort >.paktmp.txt
-	#tar -c --no-recursion -f ${ARCHDIR}${ARCHNAME}.tar -T.paktmp.txt
-	#rm -f .paktmp.txt
+	tar -c --no-recursion -f ${ARCHDIR}${ARCHNAME}.tar -T.paktmp.txt
+	rm -f .paktmp.txt
+	
 	rm -rf ${ARCHNAME}
 	- if [ "${NOBZIP2ARCHIVES}" = "" ]; then bzip2 -9 >${ARCHDIR}${ARCHNAME}.tar.bz2 < ${ARCHDIR}${ARCHNAME}.tar; fi
 	if [ "${NOGZIPARCHIVES}" = "" ]; then gzip -f9 ${ARCHDIR}${ARCHNAME}.tar; fi

@@ -6,7 +6,7 @@
      " S,H,R,A         are for dos attributes
 	 * l,d,x,c,b,p,s,- are the corresponding characters
 	 *                 in the mode string respectively
-	 * D               is door. It's used in SunOS.
+	 * D               is door. It's used in Solaris.
      **************************************************************/
 
     "mode(SB,H8,R9,A3,DC,lB,d9,x9,cE,bE,p6,sD,-7,?C,#3)"
@@ -21,7 +21,7 @@
      * & is for arrows in hardlinks
      * = for sockets
      * | for pipes
-     * ? for links which of destinations does not exist
+     * ? for links whose destinations does not exist
      *
      * Note: Colour 0 disables the character being printed.
      *
@@ -43,7 +43,7 @@
      * l=links, d=directories, x=executable
      * c=character devices, s=sockets
      * b=block devices, p=pipes.
-     * D=door (used in SunOS).
+     * D=door (used in Solaris).
      * ? is for file/link names which were not stat()able.
      **************************************************************/
     "type(lB,d9,xA,cE,bE,p6,sD,?3,DC)"
@@ -104,10 +104,10 @@
      **************************************************************/
      
     "byext(2i *.so *.o *.vxd *.dll *.drv *.obj *.dll *.a)"
-    "byext(3i *.txt *.htm *.html *.1st *.wri *.ps *.doc readme quickstart install)"
+    "byext(3i *.txt *.htm *.html *.xml *.xhtml *.1st *.wri *.ps *.doc readme quickstart install)"
     "byext(4i core DEADJOE)"
     "byext(5i *.m?d *.mtm *.s3m *.xm* *.mp\\d *.wav *.smp *.au *.ult *.669)"
-    "byext(6i *.?as *.php *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak)"
+    "byext(6i *.?as *.php *.phtml *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak)"
     "byext(8i *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
     "byext(Ai *.exe *.com *.bat)"
     "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.a\\d\\d)"

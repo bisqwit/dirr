@@ -4,9 +4,11 @@
 # The same program is used in many different projects to create
 # a diff file version history (patches).
 #
-# makediff.php version 1.0.9
+# makediff.php version 2.1.0
 
-# Copyright (C) 2000,2002 Bisqwit (http://iki.fi/bisqwit/)
+# Copyright (C) 2000,2002 Bisqwit (http://bisqwit.iki.fi/)
+
+# Syntax 1:
 
 # argv[1]: Newest archive if any
 # argv[2]: Archive directory if any
@@ -36,6 +38,12 @@ ChDir: no such file or directory - have fun ;)
 }
 
 ob_implicit_flush(true);
+
+if($argv[1]=='-d')
+{
+  MakeDiff($argv[2], $argv[3]);
+  exit;
+}
 
 if(strlen($argv[2]))
 {
@@ -84,6 +92,11 @@ function Eexec($s)
 {
   print "\t$s\n";
   return exec($s);
+}
+
+function MakeDiffCmd($dir1, $dir2)
+{
+  return 'diff -NaHudr ' . shellfix($dir1) . ' ' . shellfix($dir2);
 }
 
 function FindInodes($directory)
@@ -199,9 +212,7 @@ foreach($f as $this)
     }
 
     $diffname = '../patch-'.$prog.'-'.$v1.'-'.$v2;
-    
-    $diffcmd = 'diff -NaHudr';
-    
+
     $inomap = FindInodes($thisdirs) + FindInodes($prevdirs);
     $links = EraLinks($thisdirs, $inomap) + EraLinks($prevdirs, $inomap);
     $rmcmd = '';
@@ -213,18 +224,16 @@ foreach($f as $this)
       Eexec('rm -f '.$rmcmd);
     }
 
-    # foreach($exclusions as $ex)
-    #   $diffcmd .= ' -x '.shellfix($ex);
-    
-    $diffcmd .= ' '.shellfix($prevdirs);
-    $diffcmd .= ' '.shellfix($thisdirs);
-    
-    Eexec($diffcmd.
+    Eexec(MakeDiffCmd($prevdirs, $thisdirs).
           '|gzip -9 >'.shellfix($diffname).'.gz');
-    Eexec('gzip -d <'.shellfix($diffname).'.gz|bzip2 -9 >'.shellfix($diffname).'.bz2');
+
     Eexec('rm -rf '.$prev);
+
+    Eexec('gzip -d <'.shellfix($diffname).'.gz|bzip2 -9 >'.shellfix($diffname).'.bz2');
+
     Eexec('touch -r'.$thisfn.' '.shellfix($diffname).'.{gz,bz2}');
     Eexec('chown --reference '.$thisfn.' '.shellfix($diffname).'.{gz,bz2}');
+
     if(!$argv[3])
       Eexec('ln -f '.shellfix($diffname).'.{gz,bz2} /WWW/src/');
   }
