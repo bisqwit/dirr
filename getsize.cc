@@ -28,13 +28,13 @@ static bool LinkFormatStatsOfTarget()
 	return Links==3 || Links==5;
 }
 
-string GetSize(const string &s, const struct stat &Sta, int Space, int Seps)
+string GetSize(const string &s, const StatType &Sta, int Space, int Seps)
 {
 	unsigned Bufsize = Space<256 ? 256 : Space;
 	char *Buf = new char[Bufsize];
     const char *descr = "descr";
     
-    const struct stat *Stat = &Sta;
+    const StatType *Stat = &Sta;
 
 #ifdef S_ISLNK
 GotSize:
@@ -83,7 +83,7 @@ LinkProblem:
     else
     {
     	/* Tähän päädytään, jos kyseessä oli tavanomainen tiedosto */
-        long l;
+        SizeType l;
 
 #ifdef S_ISLNK
 P1:
@@ -94,11 +94,11 @@ P1:
 		{
 			if(LinkFormatStatsOfTarget())
 			{
-				static struct stat Stat1;
+				static StatType Stat1;
 				string Buf = LinkTarget(s);
        	     	
     	        // Target status
-	    	    if(stat(Buf.c_str(), &Stat1) >= 0)
+	    	    if(StatFunc(Buf.c_str(), &Stat1) >= 0)
 	    	    {
     		    	Stat = &Stat1;
     	    		goto GotSize;
@@ -112,7 +112,7 @@ P1:
         l = Stat->st_size;
         
         string TmpBuf;
-        PrintNum(TmpBuf, Seps, "%lu", l);
+        PrintNum(TmpBuf, Seps, SizeFormat, l);
         sprintf(Buf, "%*s", Space, TmpBuf.c_str());
         
         if(descr)descr = "size";

@@ -48,9 +48,8 @@
 #ifdef HAVE_DIRECT_H
 #include <direct.h>
 #endif
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
+
+#include "stat.h"
 
 using namespace std;
 
@@ -148,7 +147,7 @@ public:
 	}
 } Inodemap;
 
-static void TellMe(const struct stat &Stat, const string &Name
+static void TellMe(const StatType &Stat, const string &Name
 #ifdef DJGPP
 	, unsigned int dosattr
 #endif
@@ -405,13 +404,13 @@ P1:         Gprintf("\n");
 class StatItem
 {
 public:
-	struct stat Stat;
+	StatType Stat;
     #ifdef DJGPP
     unsigned dosattr;
     #endif
     string Name;
 public:
-	StatItem(const struct stat &t,
+	StatItem(const StatType &t,
 	#ifdef DJGPP
 	         unsigned da,
 	#endif
@@ -513,7 +512,7 @@ public:
 
 static vector <StatItem> StatPuu;
 
-static void Puuhun(const struct stat &Stat, const string &Name
+static void Puuhun(const StatType &Stat, const string &Name
 #ifdef DJGPP
 	, unsigned int attr
 #endif
@@ -605,7 +604,7 @@ static void DropOut()
 }
 
 /* This function is supposed to stat() to Stat! */
-static void SingleFile(const string &Buffer, struct stat &Stat)
+static void SingleFile(const string &Buffer, StatType &Stat)
 {
     #ifndef S_ISLNK
     int Links=0; /* hack */
@@ -620,11 +619,11 @@ static void SingleFile(const string &Buffer, struct stat &Stat)
     }
     #endif
 
-    if((lstat(Buffer.c_str(), &Stat) == -1) && !Links)
+    if((LStatFunc(Buffer.c_str(), &Stat) == -1) && !Links)
         Gprintf("%s - stat() error: %d (%s)\n", Buffer.c_str(), errno, GetError(errno).c_str());
     #ifdef S_ISLNK
-    else if((lstat(Buffer.c_str(), &Stat) == -1) && Links)
-        Gprintf("%s - lstat() error: %d (%s)\n", Buffer.c_str(), errno, GetError(errno).c_str());
+    else if((LStatFunc(Buffer.c_str(), &Stat) == -1) && Links)
+        Gprintf("%s - LStatFunc() error: %d (%s)\n", Buffer.c_str(), errno, GetError(errno).c_str());
     #endif
     else
     {
@@ -699,7 +698,7 @@ static void ScanDir(const char *Dirrikka)
 	string DirName;
     int Tried = 0;
 
-    struct stat Stat;
+    StatType Stat;
     struct dirent *ent;
     DIR *dir;
     

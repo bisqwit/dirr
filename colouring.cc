@@ -5,7 +5,7 @@
 #include "cons.hh"
 #include "colouring.hh"
 
-int GetNameAttr(const struct stat &Stat, const string &fn)
+int GetNameAttr(const StatType &Stat, const string &fn)
 {
     int NameAttr = NameColor(fn);
 
@@ -32,7 +32,7 @@ int GetNameAttr(const struct stat &Stat, const string &fn)
     return NameAttr;
 }
 
-int PrintAttr(const struct stat &Stat, char Attrs
+int PrintAttr(const StatType &Stat, char Attrs
 #ifdef DJGPP
 	, unsigned int dosattr
 #endif

@@ -3,10 +3,12 @@
 
 #include <string>
 
+#include "stat.h"
+
 enum {SumDir=1,SumFifo,SumSock,SumFile,SumLink,SumChrDev,SumBlkDev};
 
-extern unsigned long SumCnt[10];
-extern unsigned long Summa[10];
+extern SizeType SumCnt[10];
+extern SizeType Summa[10];
 
 extern bool Totals;
 extern int TotalSep;

@@ -2,7 +2,8 @@
 #define dirr3_getname_hh
 
 #include <string>
-#include <sys/stat.h>
+
+#include "stat.h"
 
 #ifdef S_ISLNK
 extern int Links;
@@ -28,7 +29,7 @@ using std::string;
  *
  **********************************************************/
  
-extern int GetName(const string &fn, const struct stat &sta, int Space,
+extern int GetName(const string &fn, const StatType &sta, int Space,
                    bool Fill, bool nameonly,
                    const char *hardlinkfn = NULL);
 

@@ -32,12 +32,12 @@ static void TulostaNimi(unsigned maxlen, const string &buf)
 	while(maxlen>0)Gputch(' ');
 }
 
-int GetName(const string &fn, const struct stat &sta, int Space,
+int GetName(const string &fn, const StatType &sta, int Space,
             bool Fill, bool nameonly,
             const char *hardlinkfn)
 {
     string Puuh, Buf, s=fn;
-    const struct stat *Stat = &sta;
+    const StatType *Stat = &sta;
 
     unsigned Len = 0;
     int i;
@@ -98,13 +98,13 @@ Redo:
             }
             Space -= a;
             
-            struct stat Stat1;
+            StatType Stat1;
             Buf = LinkTarget(s, true);
 
             /* Target status */
-	        if(stat(Buf.c_str(), &Stat1) < 0)
+	        if(StatFunc(Buf.c_str(), &Stat1) < 0)
     	    {
-    	    	if(lstat(Buf.c_str(), &Stat1) < 0)
+    	    	if(LStatFunc(Buf.c_str(), &Stat1) < 0)
     	    	{
     	        	wasinvalid = true;
     	        	if(Space)GetModeColor("type", '?');
@@ -117,8 +117,8 @@ Redo:
 			}
 	        else if(Space)
     	    {
-    	    	struct stat Stat2;
-    	    	if(lstat(Buf.c_str(), &Stat2) >= 0 && S_ISLNK(Stat2.st_mode))
+    	    	StatType Stat2;
+    	    	if(LStatFunc(Buf.c_str(), &Stat2) >= 0 && S_ISLNK(Stat2.st_mode))
    	    	    	GetModeColor("type", 'l');
 	   	        else
    		        	SetAttr(GetNameAttr(Stat1, Buf));
@@ -139,7 +139,7 @@ Redo:
     
     if(hardlinkfn && Space)
     {
-        struct stat Stat1;
+        StatType Stat1;
         
     	SetAttr(GetModeColor("info", '&'));
     	
@@ -148,7 +148,7 @@ Redo:
     	
     	Puuh = Relativize(s, hardlinkfn);
     	
-    	stat(hardlinkfn, &Stat1);
+    	StatFunc(hardlinkfn, &Stat1);
     	SetAttr(GetNameAttr(Stat1, NameOnly(hardlinkfn)));
     	hardlinkfn = NULL;
     	Stat = &Stat1;

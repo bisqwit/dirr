@@ -1,4 +1,4 @@
-VERSION = 3.27.8.2
+VERSION = 3.28.0
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -39,6 +39,7 @@ ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh config.h \
           pwfun.cc pwfun.hh \
           cons.cc cons.hh \
           argh.cc argh.hh \
+          stat.h \
           TODO progdesc.php
 
 INSTALLPROGS=$(PROG)

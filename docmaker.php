@@ -87,8 +87,8 @@ $st1 = stat($docmodulefn);
 $st2 = stat('docmaker.php');
 ?>
  <p align=right><small>Generated from
-       <code><?=$docmodulefn?></code> (last updated: <?=date('r', $st1[9])?>)<br>
-  with <code>docmaker.php</code> (last updated: <?=date('r', $st2[9])?>)<br>
+       <tt><?=$docmodulefn?></tt> (last updated: <?=date('r', $st1[9])?>)<br>
+  with <tt>docmaker.php</tt> (last updated: <?=date('r', $st2[9])?>)<br>
   at <?=date('r')?></small>
  </p>
 </body>

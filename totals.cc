@@ -16,8 +16,8 @@
 #include "strfun.hh"
 #include "totals.hh"
 
-unsigned long SumCnt[10] = {0};
-unsigned long Summa[10]  = {0};
+SizeType SumCnt[10] = {0};
+SizeType Summa[10]  = {0};
 
 string LastDir;
 
@@ -39,7 +39,7 @@ void Summat()
 #endif
 	struct STATFST tmp;
 #endif
-	unsigned long Koko;
+	SizeType Koko;
 	
 	string NumBuf;
     
@@ -68,10 +68,10 @@ void Summat()
         	
     if(Compact)
     {
-		unsigned long Tmp = SumCnt[SumChrDev] + SumCnt[SumBlkDev];
-		unsigned long Tmp2= SumCnt[SumFifo]+SumCnt[SumSock]+SumCnt[SumLink];
+		SizeType Tmp = SumCnt[SumChrDev] + SumCnt[SumBlkDev];
+		SizeType Tmp2= SumCnt[SumFifo]+SumCnt[SumSock]+SumCnt[SumLink];
 		
-        PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumDir]);
+        PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumDir]);
         Gprintf(" \1%s\1 dir%s%s", NumBuf.c_str(),
 #if HAVE_STATFS
         	(tmp.f_bavail > 0 && Tmp)?"":
@@ -85,7 +85,7 @@ void Summat()
         		
         if(SumCnt[SumFile])
         {
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumFile]);
+        	PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumFile]);
         	Gprintf(", \1%s\1 file%s",
         		NumBuf.c_str(),
         		SumCnt[SumFile]==1?"":"s");
@@ -93,16 +93,16 @@ void Summat()
         		
         if(Tmp)
         {
-        	PrintNum(NumBuf, TotalSep, "%lu", Tmp);
+        	PrintNum(NumBuf, TotalSep, SizeFormat, Tmp);
         	Gprintf(", \1%s\1 device%s", NumBuf.c_str(), Tmp==1?"":"s");
         }
         if(Tmp2)
         {
-        	PrintNum(NumBuf, TotalSep, "%lu", Tmp2);
+        	PrintNum(NumBuf, TotalSep, SizeFormat, Tmp2);
         	Gprintf(", \1%s\1 other%s", NumBuf.c_str(), Tmp2==1?"":"s");
         }
         		
-        PrintNum(NumBuf, TotalSep, "%lu", Koko);
+        PrintNum(NumBuf, TotalSep, SizeFormat, Koko);
         Gprintf(", \1%s\1 bytes", NumBuf.c_str());
         
 #if HAVE_STATFS
@@ -140,23 +140,23 @@ void Summat()
     }
     else
     {
-		unsigned long Tmp = SumCnt[SumChrDev] + SumCnt[SumBlkDev];
+		SizeType Tmp = SumCnt[SumChrDev] + SumCnt[SumBlkDev];
 		
         if(Tmp)
         {
-        	PrintNum(NumBuf, TotalSep, "%lu", Tmp);
+        	PrintNum(NumBuf, TotalSep, SizeFormat, Tmp);
             Gprintf("\1%5s\1 device%s (", NumBuf.c_str(), (Tmp==1)?"":"s");
     
             if(SumCnt[SumChrDev])
             {
-            	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumChrDev]);
+            	PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumChrDev]);
             	Gprintf("\1%s\1 char", NumBuf.c_str());
             }
             if(SumCnt[SumChrDev]
             && SumCnt[SumBlkDev])Gprintf(", ");    
             if(SumCnt[SumBlkDev])
             {
-            	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumBlkDev]);
+            	PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumBlkDev]);
             	Gprintf("\1%s\1 block", NumBuf.c_str());
             }
             Gprintf(")\n");
@@ -165,8 +165,8 @@ void Summat()
         if(SumCnt[SumDir])
         {
         	string TmpBuf;
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumDir]);
-        	PrintNum(TmpBuf, TotalSep, "%lu", Summa[SumDir]);
+        	PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumDir]);
+        	PrintNum(TmpBuf, TotalSep, SizeFormat, Summa[SumDir]);
             Gprintf("\1%5s\1 directories,\1%11s\1 bytes\n",
                 NumBuf.c_str(), TmpBuf.c_str());
         }
@@ -174,28 +174,28 @@ void Summat()
         if(SumCnt[SumFifo])
         {
         	string TmpBuf;
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumFifo]);
-        	PrintNum(TmpBuf, TotalSep, "%lu", Summa[SumFifo]);
+        	PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumFifo]);
+        	PrintNum(TmpBuf, TotalSep, SizeFormat, Summa[SumFifo]);
             Gprintf("\1%5s\1 fifo%s\1%17s\1 bytes\n",
                 NumBuf.c_str(), (SumCnt[SumFifo]==1)?", ":"s,", TmpBuf.c_str());
         }    
         if(SumCnt[SumFile])
         {
         	string TmpBuf;
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumFile]);
-        	PrintNum(TmpBuf, TotalSep, "%lu", Summa[SumFile]);
+        	PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumFile]);
+        	PrintNum(TmpBuf, TotalSep, SizeFormat, Summa[SumFile]);
             Gprintf("\1%5s\1 file%s\1%17s\1 bytes\n",
                 NumBuf.c_str(), (SumCnt[SumFile]==1)?", ":"s,", TmpBuf.c_str());
     	}
         if(SumCnt[SumLink])
         {
         	string TmpBuf;
-        	PrintNum(NumBuf, TotalSep, "%lu", SumCnt[SumLink]);
-        	PrintNum(TmpBuf, TotalSep, "%lu", Summa[SumLink]);
+        	PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumLink]);
+        	PrintNum(TmpBuf, TotalSep, SizeFormat, Summa[SumLink]);
             Gprintf("\1%5s\1 link%s\1%17s\1 bytes\n",
                 NumBuf.c_str(), (SumCnt[SumLink]==1)?", ":"s,", TmpBuf.c_str());
 		}
-		PrintNum(NumBuf, TotalSep, "%lu", Koko);
+		PrintNum(NumBuf, TotalSep, SizeFormat, Koko);
         Gprintf("Total\1%24s\1 bytes\n", NumBuf.c_str());
 #if HAVE_STATFS
         if(tmp.f_bavail > 0)

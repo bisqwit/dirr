@@ -6,6 +6,6 @@
 
 extern string BlkStr, ChrStr;
 
-extern string GetSize(const string &s, const struct stat &Sta, int Space, int Seps);
+extern string GetSize(const string &s, const StatType &Sta, int Space, int Seps);
 
 #endif
