@@ -739,11 +739,6 @@ P1:			string Tmp = DirOnly(Source);
             Tried = 1;
             goto R1;
         }
-        else if(errno==EACCES)
-        {
-            Gprintf(" No access to %s\n", Source.c_str());
-            goto End_ScanDir;
-        }
 
         if(errno)
             Gprintf("\n%s - error: %d (%s)\n", Source.c_str(),

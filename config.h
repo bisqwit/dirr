@@ -27,7 +27,7 @@
 #define SUPPORT_BRACKETS 1
 
 // Enable this if you want a progress meter. Slows down.
-#define STARTUP_COUNTER 1
+#define STARTUP_COUNTER 0
 
 // Set this to 1 if your passwd file is quick to load.
 #define PRELOAD_UIDGID 0

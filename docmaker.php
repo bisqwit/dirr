@@ -4,11 +4,30 @@
 # The same program is used in many different projects to create
 # the README.html file from progdesc.php.
 #
-# docmaker.php version 1.0.8
+# docmaker.php version 1.1.0
 
 # Copyright (C) 2000,2003 Bisqwit (http://iki.fi/bisqwit/)
 
-foreach(array('progdesc.php', '/WWW/document.php') as $fn)
+# Syntax:
+
+# argv[1]: Archive name
+# argv[2]: Source file (default: progdesc.php)
+
+# Requires:
+#   /usr/local/bin/htmlrecode
+#   /WWW/document.php (document formatting module)
+#
+# From the source file, requires the following:
+#   $title
+#   $progname
+
+$archivename = $argv[1];
+$docmodulefn = $argv[2];
+$docformatfn = '/WWW/document.php';
+
+if(!$docmodulefn) $docmodulefn = 'progdesc.php';
+
+foreach(array($docmodulefn, $docformatfn) as $fn)
   if(!file_exists($fn))
   {
     print "$fn not found, not making document.\n";
@@ -17,7 +36,7 @@ foreach(array('progdesc.php', '/WWW/document.php') as $fn)
 
 function shellfix($s){return "'".str_replace("'", "'\''", $s)."'";}
 
-$content_array = file('progdesc.php');
+$content_array = file($docmodulefn);
 $content = implode('', $content_array);
 $fw = fopen('docmaker-temp.php', 'w');
 fwrite($fw, preg_replace('/include \'.*;/U', '', $content));
@@ -51,7 +70,7 @@ SMALL    {font-size:70%}
   <h1><?=htmlspecialchars($title)?></h1>
   <h2 class=level2> 0. Contents </h2>
   
-  This is the documentation of <?=htmlspecialchars($argv[1])?>.
+  This is the documentation of <?=htmlspecialchars($archivename)?>.
 <?
 
 $url = 'http://iki.fi/bisqwit/source/'.rawurlencode($progname).'.html';
@@ -62,13 +81,13 @@ $k = '
 ';
 $text['download:99999. Downloading'] = $k;
 
-include '/WWW/document.php';
+include $docformatfn;
 
-$st1 = stat('progdesc.php');
+$st1 = stat($docmodulefn);
 $st2 = stat('docmaker.php');
 ?>
  <p align=right><small>Generated from
-       <code>progdesc.php</code> (last updated: <?=date('r', $st1[9])?>)<br>
+       <code><?=$docmodulefn?></code> (last updated: <?=date('r', $st1[9])?>)<br>
   with <code>docmaker.php</code> (last updated: <?=date('r', $st2[9])?>)<br>
   at <?=date('r')?></small>
  </p>
@@ -83,7 +102,8 @@ if($outset)
   if(file_exists('/usr/local/bin/htmlrecode'))
   {
     /* Try to ensure browser interpretes japanese characters correctly */
-    passthru('echo '.shellfix($s).'|htmlrecode -Iiso-8859-1 -O'.$outset.' 2>/dev/null');
+    passthru('echo '.shellfix($s).
+             '|/usr/local/bin/htmlrecode -Iiso-8859-1 -O'.$outset.' 2>/dev/null');
   }
   else
     print $s;

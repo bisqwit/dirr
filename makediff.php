@@ -4,7 +4,7 @@
 # The same program is used in many different projects to create
 # a diff file version history (patches).
 #
-# makediff.php version 3.0.3
+# makediff.php version 3.0.5
 
 # Copyright (C) 2000,2002 Bisqwit (http://bisqwit.iki.fi/)
 
@@ -12,7 +12,7 @@
 
 # argv[1]: Newest archive if any
 # argv[2]: Archive directory if any
-# argv[3]: Disable /WWW/src linking if set
+# argv[3]: Disable /WWW/src/arch linking if set
 
 function ShellFix($s)
 {
@@ -180,9 +180,9 @@ function MakeDiff($dir1, $dir2, $patchname)
   */
   
   /* Gather up inode numbers. */
-  chdir($dir1); $data1 = FindInodes('.');
-  chdir('../'.$dir2); $data2 = FindInodes('.');
-  chdir('..');
+  
+  $data1 = FindInodes($dir1);
+  $data2 = FindInodes($dir2);
   
   $era1 = Array();
   $era2 = Array();
@@ -249,10 +249,16 @@ function MakeDiff($dir1, $dir2, $patchname)
 }
 function FindInodes($directory)
 {
-  $fp = @opendir($directory);
-  if(!$fp)
+  for($try = 0; $try < 10; $try++)
   {
-    print "OPENDIR $directory failed!\n";
+    $fp = @opendir($directory);
+    if($fp) break;
+    print "OPENDIR $directory failed (cwd=".getcwd()."), retrying\n";
+    sleep(1);
+  }
+  if($try == 10)
+  {
+    print "OPENDIR $directory failed (cwd=".getcwd().")!\n";
     exit;
   }
   
@@ -341,7 +347,7 @@ function MakePatch($progname, $v1, $v2, $paks1, $paks2)
   global $argv;
   if(!$argv[3])
   {
-    $cmd = 'ln -f '.shellfix($patchname).'.{gz,bz2} /WWW/src/';
+    $cmd = 'ln -f '.shellfix($patchname).'.{gz,bz2} /WWW/src/arch/';
     print "\t$cmd\n";
     exec($cmd);
   }
@@ -380,13 +386,19 @@ while(($fn = readdir($fp)))
     // tab[2] = version
     // tab[3] = archive type (tar.gz, tar.bz2, zip, rar)
     
+    #print "$fn:\n";
+    #print_r($tab);
+    
     $progname = $tab[1];
     $version  = calcversion($tab[2]);
     $archtype = $tab[3];
     
-    # print "prog {$tab[1]} vers {$tab[2]} comp {$tab[3]}\n";
-    
-    $progs[$progname]['v'][$version][$archtype] = $archtype;
+    if($archtype != 'zip' && $archtype != 'rar')
+    {
+      # print "prog {$tab[1]} vers {$tab[2]} comp {$tab[3]}\n";
+      
+      $progs[$progname]['v'][$version][$archtype] = $archtype;
+    }
   }
 }
 closedir($fp);

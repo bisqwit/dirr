@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.4.0
+# depfun.mak version 1.5.1
 #
 # Required vars:
 #
@@ -21,25 +21,45 @@
 #  ${BINDIR}        - Directory for installed programs (without /)
 #                     Example: /usr/local/bin
 #  ${INSTALL}       - Installer program, example: install
+#  ${DEPDIRS}       - Optional dependency dirs to account in .depend
 #
 #  ${EXTRA_ARCHFILES} - More files to include in archive,
 #                       but without dependency checking
 
 
+# Note: This requires perl. FIXME change it to sed
 .depend: ${ARCHFILES}
 	@echo "Checking dependencies..."
-	@rm -f $@.tmp && for s in *.c *.cc *.cpp;do if echo "$$s"|grep -vq '^\*';then ${CPP} ${CPPFLAGS} -MM -MG $$s;fi;done >$@.tmp && rm -f $@ && cp -p $@.tmp $@ && sed 's/\.o:/.lo:/' <$@.tmp >>$@ && rm -f $@.tmp
+	@rm -f $@.tmp && \
+	 for dir in "" ${DEPDIRS}; \
+	 do n="`pwd`";cd "$$dir";for s in *.c *.cc *.cpp; \
+	 do if echo "$$s"|grep -vq '^\*';\
+	    then \
+	    cd "$$n";\
+	    ${CPP} ${CPPFLAGS} -MM -MG "$$dir""$$s" |\
+	     perl -pe "s|^([^ ])|$$dir\\1|" \
+	      > $@."$$s";\
+	    fi&done; \
+	    cd "$$n"; \
+	 done;\
+	 wait;\
+	 touch $@.dummy; \
+	 cat $@.* >$@ \
+	 && cp -f $@ $@.tmp \
+	 && sed 's/\.o:/.lo:/' <$@.tmp >>$@ \
+	 && rm -f $@.*
+
 depend dep: .depend
 
 
-include .depend
+-include .depend
 
 
 archpak: ${ARCHFILES}
 	@if [ "${ARCHNAME}" = "" ]; then echo ARCHNAME not set\!;false;fi
 	- mkdir ${ARCHNAME} ${ARCHDIR} 2>/dev/null
 	cp --parents -lfr ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile ${ARCHNAME}/ 2>&1 >/dev/null | while read line;do cp --parents -fr "`echo "$$line"|sed 's/.*${ARCHNAME}\///;s/'\''.*//'`" ${ARCHNAME}/; done
-	- if [ -f docmaker.php ]; then php -q docmaker.php ${ARCHNAME} >README.html && ln -f docmaker.php README.html ${ARCHNAME}/;fi
+	- if [ -f docmaker.php ]; then php -q docmaker.php ${ARCHNAME} >README.html; ln -f docmaker.php README.html ${ARCHNAME}/;fi
 	if [ -f makediff.php ]; then ln -f makediff.php ${ARCHNAME}/; fi
 	#- rm -f ${ARCHDIR}${ARCHNAME}.zip
 	#- zip -9rq ${ARCHDIR}${ARCHNAME}.zip ${ARCHNAME}/
@@ -64,10 +84,10 @@ pak: archpak
 # This is Bisqwit's method to install the packages to web-server...
 omabin${DEPFUN_OMABIN}: archpak
 	if [ -f makediff.php ]; then php -q makediff.php ${ARCHNAME} ${ARCHDIR}; fi
-	#- @rm -f /WWW/src/${ARCHNAME}.{zip,rar,tar.{bz2,gz}}
-	#- ln -f ${ARCHDIR}${ARCHNAME}.{zip,rar,tar.{bz2,gz}} /WWW/src/
-	- @rm -f /WWW/src/${ARCHNAME}.tar.{bz2,gz}
-	- ln -f ${ARCHDIR}${ARCHNAME}.tar.{bz2,gz} /WWW/src/
+	#- @rm -f /WWW/src/arch/${ARCHNAME}.{zip,rar,tar.{bz2,gz}}
+	#- ln -f ${ARCHDIR}${ARCHNAME}.{zip,rar,tar.{bz2,gz}} /WWW/src/arch/
+	- @rm -f /WWW/src/arch/${ARCHNAME}.tar.{bz2,gz}
+	- ln -f ${ARCHDIR}${ARCHNAME}.tar.{bz2,gz} /WWW/src/arch/
 	if [ -f progdesc.php ]; then cp -p --remove-destination progdesc.php /WWW/src/.desc-$(subst /,,$(dir $(subst -,/,$(ARCHNAME)))).php 2>/dev/null || cp -fp progdesc.php /WWW/src/.desc-$(subst /,,$(dir $(subst -,/,$(ARCHNAME)))).php; fi
 
 install${DEPFUN_INSTALL}: ${INSTALLPROGS}
