@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# This is Bisqwit's generic config.sub3, included from configure.
+# The same file is used in many different projects.
+
+# Requires: $CPP, $AC_INCLUDES
+
+for ac_f in $AC_INCLUDES; do
+	ac_g=`echo "$ac_f" | sed 'y%./+-%__p_%'`
+	
+	echo $ac_n Checking for $ac_f"..."$ac_c
+	echo "#include <$ac_f>" | $CPP -E - 1>/dev/null 2>&1
+	if test "$?" = 0; then
+		echo " found"
+		eval "ac_has_$ac_g=yes"
+		echo $ac_n "#define HAVE_"$ac_c >> conftest.h
+		echo "$ac_g " | sed y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/ >>conftest.h
+	else
+		echo " no"
+		eval "ac_has_$ac_g=no"
+	fi
+done

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# This is Bisqwit's generic config.sub1, included from configure.
+# The same file is used in many different projects.
+
+echo $ac_n "Checking arch type... "$ac_c
+host_cpu=`uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ -e s/arm.*/arm/ -e s/sa110/arm/`
+echo $host_cpu
+
+echo $ac_n "Checking os type... "$ac_c
+os_type=`uname -s`
+echo $os_type

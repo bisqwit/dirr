@@ -26,7 +26,12 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <sys/stat.h>
+
+#include "config.h"
+
+#ifdef HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
+#endif
 
 #include <map>
 #include <algorithm>
@@ -38,8 +43,8 @@
  #define minor(dev) ((dev) & 255)
 #endif
 
-#ifdef DJGPP
- #include <dir.h>
+#ifdef HAVE_DIR_H
+#include <dir.h>
 #endif
 
 #ifndef NAME_MAX
@@ -253,8 +258,9 @@ static int Gputch(int x)
 }
 
 #ifndef DJGPP
+#ifdef HAVE_TERMIO_H
 #include <termio.h>
-#include <sys/ioctl.h>
+#endif
 static int Ggetch()
 {
 	struct termio term, back;
@@ -2024,11 +2030,12 @@ End_ScanDir:
 }
 
 #if HAVE_STATFS
- #if defined(linux) || defined(DJGPP) || defined(__hpux)
-  #include <sys/vfs.h>
- #else
-  #include <sys/mount.h>
- #endif
+#ifdef HAVE_SYS_VFS_H
+#include <sys/vfs.h>
+#endif
+#ifdef HAVE_SYS_MOUNT_H
+#include <sys/mount.h>
+#endif
 #endif
 
 static void Summat()

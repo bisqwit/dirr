@@ -1,4 +1,4 @@
-VERSION = 3.15
+VERSION = 3.16
 
 # Obligated defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -9,7 +9,9 @@ VERSION = 3.15
 #   STARTUP_COUNTER  Enable, if you want a progress meter
 #   PRELOAD_UIDGID   Set this to 1 if your passwd file is quick to load
 #   HAVE_STATFS      Disable it if you have no statfs() function.
-#   SETTINGSFILE     File containing the settings. Default: dirrsets.h
+#   SETTINGSFILE     File containing the settings. Default: dirrsets.hh
+
+include Makefile.cfg
 
 DEFINES = -DCACHE_GETSET=1 \
           -DCACHE_NAMECOLOR=1 \
@@ -18,10 +20,11 @@ DEFINES = -DCACHE_GETSET=1 \
           -DSUPPORT_BRACKETS=1 \
           -DSTARTUP_COUNTER=0 \
           -DPRELOAD_UIDGID=0 \
-          -DHAVE_STATFS=1 \
-          -DSETTINGSFILE=\"dirrsets.h\"
+          -DHAVE_STATFS=$(HAVE_STATFS) \
+          -DSETTINGSFILE=\"dirrsets.hh\"
 
-GXX=g++
+CPP=gcc
+CXX=g++
 CPPFLAGS=-Wall -W -pedantic -DVERSION=\"$(VERSION)\" $(DEFINES)
 CXXFLAGS=-O3 -fomit-frame-pointer
 LDFLAGS=-s
@@ -29,10 +32,17 @@ LDFLAGS=-s
 BINDIR=/usr/local/bin
 
 ARCHNAME=dirr-$(VERSION)
-ARCHFILES=dirr.cc oldversions COPYING ChangeLog README dirrsets.h
+ARCHFILES=dirr.cc COPYING ChangeLog README dirrsets.hh \
+          configure config.sub1 config.sub2 config.sub3
 
 dirr: dirr.o
 	$(CXX) $(LDFLAGS) -o $@ $^
+
+clean:
+	rm -f dirr dirr.o
+distclean: clean
+	rm -f Makefile.cfg config.h *~
+realclean: distclean
 
 install: dirr
 	cp -p dirr ${BINDIR}/

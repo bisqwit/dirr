@@ -1,0 +1,43 @@
+#!/bin/sh
+
+# This is Bisqwit's generic config.sub1, included from configure.
+# The same file is used in many different projects.
+
+if (echo "testing\c"; echo 1,2,3) | grep c >/dev/null; then
+  # Many systems lack -e. This is from GNU configure.
+  if (echo -n testing; echo 1,2,3) | sed s/-n/xn/ | grep xn >/dev/null; then
+    ac_n= ac_c='
+'
+  else
+    ac_n=-n ac_c=
+  fi
+else
+  ac_n= ac_c='\c'
+fi
+
+for ac_t in conftest.c conftest.h; do
+  rm -f $ac_t
+  echo $ac_n ""$ac_c >$ac_t  
+
+  test -f $ac_t || {
+    echo "Trouble: Access to $ac_t is"
+    echo "         denied or other problem."
+    echo
+    echo Configuration terminated.
+    exit 1
+  }
+done
+
+test -s conftest.h && {
+cat <<EOF
+Trouble: You don't have an echo program which
+         accepts the $ac_n switch. Retry the
+         configuration with the following
+         command line:
+
+                 . ./configure
+EOF
+echo
+echo Configuration terminated.
+exit 1
+}
