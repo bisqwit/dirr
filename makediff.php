@@ -4,46 +4,29 @@
 # The same program is used in many different projects to create
 # a diff file version history (patches).
 #
-# makediff.php version 2.1.0
+# makediff.php version 3.0.2
 
 # Copyright (C) 2000,2002 Bisqwit (http://bisqwit.iki.fi/)
 
-# Syntax 1:
+# Syntax:
 
 # argv[1]: Newest archive if any
 # argv[2]: Archive directory if any
 # argv[3]: Disable /WWW/src linking if set
 
+function ShellFix($s)
+{
+  return "'".str_replace("'", "'\''", $s)."'";
+}
+
 if($REMOTE_ADDR)
 {
   header('Content-type: text/plain');
-?>
-This test was added due to abuse :)
-Looks like somebody's friends had fun.
-
-xx.yy.cam.ac.uk - - [20/Nov/2001:02:17:51 +0200] "GET /src/tmp/makediff.php HTTP/1.1" 200 36858 "http://www.google.com/search?q=%22chdir%3A+No+such+file+or+directory%22&btnG=Google+Search" "Mozilla/5.0 (X11; U; Linux i686; en-US; rv:0.9.5) Gecko/20011012"
-207.195.43.xx - - [20/Nov/2001:02:18:18 +0200] "GET /src/tmp/makediff.php HTTP/1.1" 200 36858 "-" "Mozilla/4.0 (compatible; MSIE 5.0; Windows NT 5.1) Opera 5.12  [en]"
-xx.yy.mi.home.com - - [20/Nov/2001:02:18:39 +0200] "GET /src/tmp/makediff.php HTTP/1.0" 200 36817 "-" "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)"
-proxy1.slnt1.on.home.com - - [20/Nov/2001:02:18:53 +0200] "GET /src/tmp/makediff.php HTTP/1.0" 200 36817 "-" "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; MSOCD; AtHome021SI)"
-xx-yy-ftw-01.cvx.algx.net - - [20/Nov/2001:02:19:01 +0200] "GET /src/tmp/makediff.php HTTP/1.1" 200 36858 "-" "Mozilla/4.0 (compatible; MSIE 5.0; Windows 98; DigExt; Hotbar 3.0)"
-  
-I still keep this text here for Google to index this happily.
-
-ChDir: no such file or directory - have fun ;)
-
-(The hostnames have been masked because the original person contacted
- me and explained me what was it about. Wasn't an abuse try.)
-<?
+  readfile($PHP_SELF);
   exit;
 }
 
 ob_implicit_flush(true);
-
-if($argv[1]=='-d')
-{
-  MakeDiff($argv[2], $argv[3]);
-  exit;
-}
 
 if(strlen($argv[2]))
 {
@@ -51,202 +34,445 @@ if(strlen($argv[2]))
   echo "\tcd ", $argv[2], "\n";
 }
 
-function ShellFix($s)
+function calcversion($versionstring)
 {
-  return "'".str_replace("'", "'\''", $s)."'";
+  $k = '.'.str_replace('.', '..', $versionstring).'.';
+  $k = ereg_replace('([^0-9])([0-9][0-9][0-9][0-9][^0-9])', '\1-\2', $k);
+  $k = ereg_replace('([^0-9])([0-9][0-9][0-9][^0-9])', '\1--\2', $k);
+  $k = ereg_replace('([^0-9])([0-9][0-9][^0-9])', '\1---\2', $k);
+  $k = ereg_replace('([^0-9])([0-9][^0-9])', '\1----\2', $k);
+  $k = str_replace('.', '', $k);
+  $k = str_pad($k, 6*5, '-');
+  # Reverse:
+  #$k = strtr($k, '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  #               '9876543210ZYXWVUTSRQPONMLKJIHGFEDCBAzyxwvutsrqponmlkjihgfedcba');
+  return $k;
 }
 
-$fp=opendir('.');
-$f=array();
-while(($fn = readdir($fp)))
-{
-  if(ereg('\.tar\.gz$', $fn))
-    $f[] = ereg_replace('\.tar\.gz$', '', $fn);
-  elseif(ereg('\.tar\.bz2$', $fn))
-    $f[] = ereg_replace('\.tar\.bz2$', '', $fn);
-}
-closedir($fp);
-$f = array_unique($f);
 
-function padder($k) { return str_pad($k, 9, '0', STR_PAD_LEFT); }
-function cmp1($a, $b)
+$openfiles = Array();
+$archtmpdir = 'archives.tmp';
+$subtmpdir = 'subarch.tmp';
+$istmp=0;
+function GoTmp()
 {
-  $a1 = preg_replace('/([0-9]+)/e', "padder('\\1')", $a);
-  $b1 = preg_replace('/([0-9]+)/e', "padder('\\1')", $b);
-  if($a1 == $b1)return 0;
-  if($a1 < $b1)return -1;
-  return 1;
+  global $istmp, $archtmpdir;
+  if($istmp)return;
+  $istmp=1;
+  if(@mkdir($archtmpdir, 0700))print "\tmkdir $archtmpdir\n";
+  print "\tcd $archtmpdir\n";
+  chdir($archtmpdir);
 }
-function cmp($a, $b)
+function IsInTmp() { global $istmp; return $istmp; }
+function UnGoTmp()
 {
-  $k1 = ereg_replace('^patch-(.*)-[.0-9]*-([.0-9]*).*$', '\1-\2z', $a);
-  $k2 = ereg_replace('^patch-(.*)-[.0-9]*-([.0-9]*).*$', '\1-\2z', $b);
-  $k = cmp1($k1, $k2);
-  if($k)return $k;
-  return cmp1($a, $b);
+  global $istmp, $archtmpdir;
+  if(!$istmp)return;
+  $istmp=0;
+  print "\tcd ..\n";
+  chdir('..');
 }
-
-usort($f, cmp);
-
-function Eexec($s)
+function Open($files, $keeplist=array())
 {
-  print "\t$s\n";
-  return exec($s);
-}
+  global $openfiles;
+  global $archtmpdir, $subtmpdir;
 
-function MakeDiffCmd($dir1, $dir2)
-{
-  return 'diff -NaHudr ' . shellfix($dir1) . ' ' . shellfix($dir2);
-}
-
-function FindInodes($directory)
-{
-  $inodes = array();
-  $fp = @opendir($directory);
-  if(!$fp)
+  /* Open any of the given files */
+  foreach($files as $fn)
   {
-    print "OPENDIR $directory failed!\n";
-    exit;
+    // If any of the files is already open, return true.
+    $puh = $openfiles[$fn];
+    if($puh) return $puh['dir'];
+  }
+
+  #echo count($openfiles), " files open now...\n";
+  if(count($openfiles) >= 2)
+  {
+    $oldest=''; $oldesttime=999999999;
+    foreach($openfiles as $fn => $puh)
+    {
+      $keep = 0;
+      foreach($keeplist as $keepfn) if($fn == $keepfn) { $keep=1; break; }
+      if($keep) continue;
+      if($puh['time'] < $oldesttime) { $oldesttime = $puh['time']; $oldest = $fn; }
+    }
+    if($oldest)
+    {
+      Close($oldest);
+    }
   }
   
-  while(($fn = readdir($fp)))
+  $pick = '';
+  foreach($files as $fn)
+    if(ereg('\.tar\.gz$', $fn))
+    {
+      $pick = $fn;
+      break;
+    }
+
+  if(!$pick)
   {
-    if($fn=='.' || $fn=='..')continue;
-    
-    $fn = $directory.'/'.$fn;
-    if(!is_link($fn))
-    {
-      $st = stat($fn);
-      
-      $inodes[$st[0].':'.$st[1]] = $fn;
-    }
-    if(is_dir($fn))
-    {
-      $inodes = $inodes + FindInodes($fn);
-    }
+    reset($files);
+    list($dummy, $pick) = each($files);
   }
-  closedir($fp);
-  return $inodes;
-}
-
-function EraLinks($directory, &$inomap)
-{
-  $links = array();
-  $fp = @opendir($directory);
-  if(!$fp)
-  {
-    print "OPENDIR $directory failed!\n";
-    exit;
-  }
-  while(($fn = readdir($fp)))
-  {
-    if($fn=='.' || $fn=='..')continue;
-    
-    $fn = $directory.'/'.$fn;
-    if(is_link($fn))
-    {
-      $st = stat($fn); /* See if the target has already been included */
-      if($inomap[$st[0].':'.$st[1]])
-        $links[$fn] = $fn;
-    }
-
-    if(is_dir($fn))
-      $links = $links + EraLinks($fn, $inomap);
-  }
-  closedir($fp);
-  return $links;
-}
-
-$tmpdir = 'archives.tmp'; /* Subdir to not overwrite anything */
-
-$tmpdir2= 'abcdefg.tmp';  /* Subdir to get the archive name safely
-                           * This directory must not exist within
-                           * the archive being analyzed.
-                           */
-
-mkdir($tmpdir, 0700);
-mkdir($tmpdir.'/'.$tmpdir2, 0700);
-$prev = '';
-$madeprev = 0;
-$lastprog = '';
-foreach($f as $this)
-{
-  chdir($tmpdir);
   
-  $v1 = ereg_replace('^.*-([0-9])', '\1', $prev);
-  $v2 = ereg_replace('^.*-([0-9])', '\1', $this);
-  $prog = ereg_replace('-[0-9].*', '', $this);
+  GoTmp();
   
-  if(!strlen($lastprog))$lastprog = $prog;
+  @mkdir($subtmpdir, 0700);
+  chdir($subtmpdir);
   
-  if(strlen($prev) && ($this == $argv[1] || !strlen($argv[1])) && $prog == $lastprog)
+  if(ereg('\.tar\.gz$', $pick))
   {
-    if(!$madeprev)
-    {
-      chdir($tmpdir2);
-      print 1;
-      if(file_exists('../../'.$prev.'.tar.gz'))
-        Eexec('gzip -d < ../../'.shellfix($prev).'.tar.gz | tar xf -');
-      else
-        Eexec('bzip2 -d < ../../'.shellfix($prev).'.tar.bz2 | tar xf -');
-      $prevdirs = exec('echo *');
-      exec('mv * ../');
-      chdir('..');
-    }
-    if(1) /* Always true. Just for symmetry with the previous thing. */
-    {
-      $madeprev = 1;
-      chdir($tmpdir2);
-      $thisfn = '../'.$this.'.tar.gz';
-      print 2;
-      if(file_exists('../'.$thisfn))
-        Eexec('gzip -d < ../'.shellfix($thisfn).' | tar xf -');
-      else
-      {
-        $thisfn = '../'.$this.'.tar.bz2';
-        Eexec('bzip2 -d < ../'.shellfix($thisfn).' | tar xf -');
-      }
-      $thisdirs = exec('echo *');
-      exec('mv * ../');
-      chdir('..');
-    }
-
-    $diffname = '../patch-'.$prog.'-'.$v1.'-'.$v2;
-
-    $inomap = FindInodes($thisdirs) + FindInodes($prevdirs);
-    $links = EraLinks($thisdirs, $inomap) + EraLinks($prevdirs, $inomap);
-    $rmcmd = '';
-    foreach($links as $linkname)
-      $rmcmd .= shellfix($linkname).' ';
-    if(strlen($rmcmd))
-    {
-      /* Erase files which of targets are already being diffed */
-      Eexec('rm -f '.$rmcmd);
-    }
-
-    Eexec(MakeDiffCmd($prevdirs, $thisdirs).
-          '|gzip -9 >'.shellfix($diffname).'.gz');
-
-    Eexec('rm -rf '.$prev);
-
-    Eexec('gzip -d <'.shellfix($diffname).'.gz|bzip2 -9 >'.shellfix($diffname).'.bz2');
-
-    Eexec('touch -r'.$thisfn.' '.shellfix($diffname).'.{gz,bz2}');
-    Eexec('chown --reference '.$thisfn.' '.shellfix($diffname).'.{gz,bz2}');
-
-    if(!$argv[3])
-      Eexec('ln -f '.shellfix($diffname).'.{gz,bz2} /WWW/src/');
+    print "\ttar xfz ../".shellfix($pick)."\n";
+    exec('tar xfz ../../'.shellfix($pick));
   }
   else
-    $madeprev = 0;
+  {
+    print "\tbzip2 -d < ../".shellfix($pick)."| tar xf -\n";
+    exec('bzip2 -d < ../../'.shellfix($pick).'| tar xf -');
+  }
+  $thisdir = exec('echo *');
+  exec('mv * ../');
+  chdir('..');
+
+  global $timeind;
+  $openfiles[$pick] = array('dir' => $thisdir, 'time' => ++$timeind);
   
-  $lastprog = $prog;
+  return $thisdir;
+}
+function Close($fn)
+{
+  global $openfiles;
+  global $archtmpdir;
   
+  $puh = $openfiles[$fn];
+  if(!$puh) return;
+  
+  $prefix = IsInTmp() ? '' : $archtmpdir.'/';
+  
+  $cmd = 'rm -rf '.shellfix($prefix.$puh['dir']);
+  print "\t$cmd\n";
+  exec($cmd);
+  unset($openfiles[$fn]);
+}
+function CloseAll()
+{
+  global $openfiles;
+  global $archtmpdir;
+  
+  UnGoTmp();
+  
+  $openfiles = Array();
+  $cmd = 'rm -rf '.shellfix($archtmpdir);
+  print "\t$cmd\n";
+  exec($cmd);
+}
+function MakeDiff($dir1, $dir2, $patchname)
+{
+  GoTmp();
+  #print "## Building $patchname from $dir1 and $dir2\n";
+  #passthru('ls -al');
+  
+  /*
+    Before doing the diff, we should do the following:
+      - Remove all symlinks
+      - Remove all duplicate hardlinks
+  */
+  
+  /* Gather up inode numbers. */
+  chdir($dir1); $data1 = FindInodes('.');
+  chdir('../'.$dir2); $data2 = FindInodes('.');
   chdir('..');
   
-  $prev     = $this;
-  $prevdirs = $thisdirs;
+  $era1 = Array();
+  $era2 = Array();
+  
+  foreach($data1['if'] as $ino => $fils)
+  {
+    if(count($fils) > 1)
+    {
+      $bestcommoncount = 0;
+      $bestcommon = $fn;
+      $group2 = array();
+      foreach($fils as $fn)
+      {
+        $ino2 = $data2['fi'][$fn];
+        if(!isset($ino2))continue;
+        
+        $fils2 = $data2['if'][$ino2];
+        
+        $common = array_intersect($fils, $fils2);
+        if(count($common) > $bestcommoncount)
+        {
+          $bestcommoncount = count($common);
+          $bestcommon = $fn;
+          $group2 = $fils2;
+        }
+      }
+      $common = array_intersect($fils, $group2);
+      
+      // Leave one file so that diff works
+      reset($common);
+      list($dummy, $fn) = each($common);
+      unset($common[$dummy]);
+      
+      foreach($common as $fn)
+      {
+        $era1[] = $fn;
+        $era2[] = $fn;
+      }
+    }
+  }
+  
+  if(count($era1))
+  {
+    chdir($dir1); print "\tcd $dir1\n";
+    $cmd = 'rm -f';
+    foreach($era1 as $fn)$cmd .= ' '.shellfix($fn);
+    print "\t$cmd\n";
+    exec($cmd);
+    chdir('..'); print "\tcd ..\n";
+  }
+  if(count($era2))
+  {
+    chdir($dir2); print "\tcd $dir2\n";
+    $cmd = 'rm -f';
+    foreach($era1 as $fn)$cmd .= ' '.shellfix($fn);
+    print "\t$cmd\n";
+    exec($cmd);
+    chdir('..'); print "\tcd ..\n";
+  }
+  
+  $cmd = 'LC_ALL=C LANG=C diff -NaHudr '.shellfix($dir1) . ' ' . shellfix($dir2).' > '.shellfix($patchname);
+  print "\t$cmd\n";
+  exec($cmd);
+}
+function FindInodes($directory)
+{
+  $fp = @opendir($directory);
+  if(!$fp)
+  {
+    print "OPENDIR $directory failed!\n";
+    exit;
+  }
+  
+  $inofil = array();
+  $filino = array();
+  
+  while(($fn = readdir($fp)))
+  {
+    if($fn=='.' || $fn=='..')continue;
+    
+    if($directory != '.')
+      $fn = $directory.'/'.$fn;
+    
+    $st = stat($fn);
+    $ino = $st[0].':'.$st[1];
+    
+    $inofil[$ino][] = $fn;
+    $filino[$fn] = $ino;
+    
+    if(is_dir($fn))
+    {
+      $sub = FindInodes($fn);
+      $filino = $filino + $sub['fi'];
+      
+      foreach($sub['if'] as $ino => $fil)
+      {
+        $inofil[$ino] = array_merge($inofil[$ino], $fil);
+      }
+    }
+  }
+  closedir($fp);
+  return array('if' => $inofil, 'fi' => $filino);
+}
+function MakePatch($progname, $v1, $v2, $paks1, $paks2)
+{
+  // print "Make patch for $progname $v1 - $v2\n";
+  // Available packages for prog1: print_r($paks1);
+  // Available packages for prog2: print_r($paks2);
+  
+  $v1 = ereg_replace('(-----)*$', '', $v1);
+  $v2 = ereg_replace('(-----)*$', '', $v2);
+  
+  $v1string = ereg_replace('\.$', '', preg_replace('|(.....)|e', '((int)str_replace("-","0","$1"))."."', $v1));
+  $v2string = ereg_replace('\.$', '', preg_replace('|(.....)|e', '((int)str_replace("-","0","$1"))."."', $v2));
+  
+  $files1 = Array();
+  foreach($paks1 as $ext)
+    $files1[] = $progname . '-' . $v1string . '.' . $ext;
+
+  $files2 = Array();
+  foreach($paks2 as $ext)
+    $files2[] = $progname . '-' . $v2string . '.' . $ext;
+  
+  $keeplist = array_merge($files1, $files2);
+  $dir1 = Open($files1, $keeplist);
+  $dir2 = Open($files2, $keeplist);
+  
+  $patchname = "patch-$progname-$v1string-$v2string";
+  
+  MakeDiff($dir1, $dir2, $patchname);
+  
+  GoTmp();
+  
+  $cmd = "gzip -9 ".shellfix($patchname);
+  print "\t$cmd\n";
+  exec($cmd);
+  
+  $cmd = "gzip -d < ".shellfix($patchname). ".gz | bzip2 -9 > ".shellfix($patchname).".bz2";
+  print "\t$cmd\n";
+  exec($cmd);
+  
+  $cmd = "mv -f ".shellfix($patchname).".{gz,bz2} ../";
+  print "\t$cmd\n";
+  exec($cmd);
+  
+  UnGoTmp();
+
+  $cmd = "touch -r".shellfix($files2[0])." ".shellfix($patchname).".{gz,bz2}";
+  print "\t$cmd\n";
+  exec($cmd);
+
+  $cmd = "chown --reference ".shellfix($files2[0])." ".shellfix($patchname).".{gz,bz2}";
+  print "\t$cmd\n";
+  exec($cmd);
+
+  global $argv;
+  if(!$argv[3])
+  {
+    $cmd = 'ln -f '.shellfix($patchname).'.{gz,bz2} /WWW/src/';
+    print "\t$cmd\n";
+    exec($cmd);
+  }
 }
 
-exec('rm -rf '.shellfix($tmpdir));
-echo "\tcd ..\n";
+$progs = array();
+$fp = opendir('.');
+$f = array();
+while(($fn = readdir($fp)))
+{
+  if(ereg('\.sh\.(gz|bz2)$', $fn))continue;
+  if(ereg('^patch-.*-[0-9].*-[0-9].*\...*', $fn))
+  {
+    preg_match(
+      '/^patch-(.*)-([0-9][0-9.a-z-]*)-([0-9][0-9.a-z-]*)\.([a-z0-9]+)$/', $fn, $tab);
+    // tab[0] = fn
+    // tab[1] = progname
+    // tab[2] = old version
+    // tab[3] = new version
+    // tab[4] = compression type (gz, bz2)
+
+    $progname = $tab[1];
+    $version1 = calcversion($tab[2]);
+    $version2 = calcversion($tab[3]);
+    $archtype = $tab[4];
+
+    # print "patch prog {$tab[1]} vers1 {$tab[2]} vers2 {$tab[3]} comp {$tab[4]}\n";
+
+    $progs[$progname]['p'][$version1][$version2][$archtype] = $archtype;
+  }
+  else
+  {
+    preg_match('/(.*)-([0-9][0-9.a-z-]*)\.(tar\.[a-z0-9]+|zip|rar)$/', $fn, $tab);
+    // tab[0] = fn
+    // tab[1] = progname
+    // tab[2] = version
+    // tab[3] = archive type (tar.gz, tar.bz2, zip, rar)
+    
+    $progname = $tab[1];
+    $version  = calcversion($tab[2]);
+    $archtype = $tab[3];
+    
+    # print "prog {$tab[1]} vers {$tab[2]} comp {$tab[3]}\n";
+    
+    $progs[$progname]['v'][$version][$archtype] = $archtype;
+  }
+}
+closedir($fp);
+
+$argv[1] = ereg_replace('^[^-]*-([0-9])', '\1', $argv[1]);
+$wantversion = strlen($argv[1]) ? calcversion($argv[1]) : '';
+
+foreach($progs as $progname => $data)
+{
+  $versions = $data['v'];
+  ksort($versions);
+  
+  $wantpatches = Array();
+  
+  $verstabs = Array();
+  for($c=1; $c<=6; $c++)
+  {
+    foreach($versions as $version => $paks)
+    {
+      $k = substr($version, 0, $c*5);
+      $verstabs[$c][$k] = $k;
+    }
+    asort($verstabs[$c]);
+  }
+
+  $lastversio = '';
+  foreach($versions as $version => $paks)
+  {
+    if($lastversio)
+    {
+      $did = Array($lastversio => 1);
+      
+      $wantpatches[$lastversio][$version] = 1;
+      
+      for($c=1; $c<=5; ++$c)
+      {
+        $prev = '';
+        $k = substr($version, 0, $c*5);
+        
+        $test = str_pad($k, 5*6, '-');
+        if($test != $version
+        && isset($versions[$test])) continue;
+        foreach($verstabs[$c] as $k2)
+        {
+          if($k2 == $k)break;
+          $prev = $k2;
+        }
+        
+        if($prev)
+        {
+          $prev = str_pad($prev, 5*6, '-');
+          if(isset($versions[$prev]) && !$did[$prev])
+          {
+            $did[$prev] = 1;
+            
+            // Extra
+            $wantpatches[$prev][$version] = 1;
+          }
+        }
+      }
+    }
+    $lastversio = $version;
+  }
+  
+  foreach($wantpatches as $version1 => $v2tab)
+  {
+    foreach($v2tab as $version2 => $dummy)
+    {
+      if(strlen($wantversion))
+      {
+        if($version2 != $wantversion)
+        {
+          continue;
+        }
+      }
+      else if(isset($progs[$progname]['p'][$version1][$version2]))
+      {
+        continue;
+      }
+      
+      MakePatch($progname, $version1, $version2,
+                $versions[$version1],
+                $versions[$version2]);
+    }
+  }
+}
+print_r($thisdir);
+CloseAll();
+UnGoTmp();

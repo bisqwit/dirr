@@ -1,4 +1,5 @@
 <?php
+//TITLE=ls replacement, friendlier than ls
 
 $title = 'Directory lister';
 $progname = 'dirr';

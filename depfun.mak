@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.3.5
+# depfun.mak version 1.3.6
 #
 # Required vars:
 #
@@ -64,8 +64,10 @@ pak: archpak
 # This is Bisqwit's method to install the packages to web-server...
 omabin${DEPFUN_OMABIN}: archpak
 	if [ -f makediff.php ]; then php -q makediff.php ${ARCHNAME} ${ARCHDIR}; fi
-	- @rm -f /WWW/src/${ARCHNAME}.{zip,rar,tar.{bz2,gz}}
-	- ln -f ${ARCHDIR}${ARCHNAME}.{zip,rar,tar.{bz2,gz}} /WWW/src/
+	#- @rm -f /WWW/src/${ARCHNAME}.{zip,rar,tar.{bz2,gz}}
+	#- ln -f ${ARCHDIR}${ARCHNAME}.{zip,rar,tar.{bz2,gz}} /WWW/src/
+	- @rm -f /WWW/src/${ARCHNAME}.tar.{bz2,gz}
+	- ln -f ${ARCHDIR}${ARCHNAME}.tar.{bz2,gz} /WWW/src/
 	if [ -f progdesc.php ]; then cp -p --remove-destination progdesc.php /WWW/src/.desc-$(subst /,,$(dir $(subst -,/,$(ARCHNAME)))).php 2>/dev/null || cp -fp progdesc.php /WWW/src/.desc-$(subst /,,$(dir $(subst -,/,$(ARCHNAME)))).php; fi
 
 install${DEPFUN_INSTALL}: ${INSTALLPROGS}
