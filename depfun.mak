@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.1.15
+# depfun.mak version 1.1.20
 # 
 # Required vars:
 #
@@ -21,21 +21,23 @@
 #  ${BINDIR}        - Directory for installed programs (without /)
 #                     Example: /usr/local/bin
 #  ${INSTALL}       - Installer program, example: install
+#
+#  ${EXTRA_ARCHFILES} - More files to include in archive,
+#                       but without dependency checking
 
 include .depend
 
 .depend: ${ARCHFILES}
-	touch .depend
-	@ ${MAKE} --silent dep
+	@touch .depend
+	@make dep
 
-depend: dep
-dep:
+depend dep:
 	- ${CPP} ${CPPFLAGS} -MM -MG *.c *.cc *.cpp >.depend 2>/dev/null
 
 archpak: ${ARCHFILES}
 	@if [ "${ARCHNAME}" = "" ]; then echo ARCHNAME not set\!;false;fi
 	- mkdir ${ARCHNAME} ${ARCHDIR} 2>/dev/null
-	cp --parents -lfr ${ARCHFILES} depfun.mak Makefile ${ARCHNAME}/
+	cp --parents -lfr ${ARCHFILES} ${EXTRA_ARCHFILES} depfun.mak Makefile ${ARCHNAME}/
 	if [ -f makediff.php ]; then ln makediff.php ${ARCHNAME}/; fi
 	- rm -f ${ARCHDIR}${ARCHNAME}.zip
 	- zip -9rq ${ARCHDIR}${ARCHNAME}.zip ${ARCHNAME}/
@@ -57,12 +59,18 @@ omabin: archpak
 	if [ -f makediff.php ]; then php -q makediff.php ${ARCHNAME} ${ARCHDIR}; fi
 	- @rm -f /WWW/src/${ARCHNAME}.{zip,rar,tar.{bz2,gz}}
 	- ln -f ${ARCHDIR}${ARCHNAME}.{zip,rar,tar.{bz2,gz}} /WWW/src/
+	if [ -f progdesc.php ]; then cp -p --remove-destination progdesc.php /WWW/src/.desc-$(subst /,,$(dir $(subst -,/,$(ARCHNAME)))).php; fi
 
 install${DEPFUN_INSTALL}: ${INSTALLPROGS}
-	- mkdir -p $(BINDIR) 2>/dev/null
+	- mkdir --parents $(BINDIR) 2>/dev/null
 	- mkdir $(BINDIR) 2>/dev/null
 	for s in ${INSTALLPROGS}; do ${INSTALL} -c -s -o bin -g bin -m 755 $$s ${BINDIR}/$$s;done
 	
 deinstall${DEPFUN_INSTALL}: uninstall${DEPFUN_INSTALL}
 uninstall${DEPFUN_INSTALL}:
 	for s in ${INSTALLPROGS}; do rm -f ${BINDIR}/$$s;done
+
+.PHONY: pak dep depend archpak omabin \
+	install${DEPFUN_INSTALL} \
+	deinstall${DEPFUN_INSTALL} \
+	uninstall${DEPFUN_INSTALL}
