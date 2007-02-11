@@ -1,6 +1,26 @@
-VERSION = 3.28.0
+include Makefile.sets
 
-# Obligated defines:
+# Building for Windows (opt/xmingw is for Gentoo):
+#HOST=/usr/local/mingw32/bin/i586-mingw32msvc-
+#HOST=/opt/xmingw/bin/i386-mingw32msvc-
+#CFLAGS +=
+#CPPFLAGS +=
+#CXXFLAGS +=
+##LDOPTS = -L/usr/local/mingw32/lib
+#LDOPTS += -L/opt/xmingw/lib
+#LDFLAGS +=
+
+# Building for native:
+HOST=
+LDFLAGS +=
+
+CXX=$(HOST)g++
+CC=$(HOST)gcc
+CPP=$(HOST)gcc
+
+VERSION = 3.29.0
+
+# Obligatory defines:
 #   CACHE_GETSET     Recommended, adds speed
 #   CACHE_NAMECOLOR  This too
 #   CACHE_UIDGID     This too
@@ -11,12 +31,6 @@ VERSION = 3.28.0
 #   HAVE_STATFS      Disable it if you have no statfs() function.
 #   SETTINGSFILE     File containing the settings. Default: dirrsets.hh
 
-CPP=gcc
-CXX=g++
-CPPFLAGS=-Wall -W -pedantic -DVERSION=\"$(VERSION)\" -pipe
-#CXXFLAGS=-g
-CXXFLAGS=-O3 -fomit-frame-pointer
-LDFLAGS=
 #-s
 BINDIR=/usr/local/bin
 INSTALL=install
@@ -40,7 +54,7 @@ ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh config.h \
           cons.cc cons.hh \
           argh.cc argh.hh \
           stat.h \
-          TODO progdesc.php
+          TODO progdesc.php Makefile.sets
 
 INSTALLPROGS=$(PROG)
 

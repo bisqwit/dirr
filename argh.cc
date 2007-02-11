@@ -17,17 +17,6 @@
 
 /* This file is part of Bisqwit's dirr and remotegcc packages. */
 
-class arghandler::option
-{
-public:
-    const char *Short, *Long;
-    string Descr;
-    argfun handler;
-    option(const char *s, const char *l, const string &d, argfun h)
-          : Short(s), Long(l), Descr(d), handler(h) { }
-};
-
-
 arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
 {
     const char *q;

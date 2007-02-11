@@ -6,7 +6,7 @@
 #
 # docmaker.php version 1.1.0
 
-# Copyright (C) 2000,2003 Bisqwit (http://iki.fi/bisqwit/)
+# Copyright (C) 2000,2004 Bisqwit (http://iki.fi/bisqwit/)
 
 # Syntax:
 
@@ -21,8 +21,8 @@
 #   $title
 #   $progname
 
-$archivename = $argv[1];
-$docmodulefn = $argv[2];
+@$archivename = $argv[1];
+@$docmodulefn = $argv[2];
 $docformatfn = '/WWW/document.php';
 
 if(!$docmodulefn) $docmodulefn = 'progdesc.php';
@@ -44,6 +44,7 @@ fclose($fw);
 include 'docmaker-temp.php';
 unlink('docmaker-temp.php');
 
+if(!isset($outset)) $outset='';
 if($outset) ob_start();
 
 ?>
@@ -65,6 +66,8 @@ BODY{background:white;color:black}
 CODE{font-family:lucida console,courier new,courier;color:#105000}
 PRE.smallerpre{font-family:lucida console,courier new,courier;font-size:80%;color:#500010;margin-left:30px}
 SMALL    {font-size:70%}
+.nonmail { visibility:hidden;position:absolute; top:0px;left:0px }
+.ismail  { font-weight:normal }
 --></style></head>
  <body>
   <h1><?=htmlspecialchars($title)?></h1>

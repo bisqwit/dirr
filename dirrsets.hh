@@ -103,12 +103,21 @@
      * code for more information about the wildcards.
      **************************************************************/
      
+    // green: object files
     "byext(2i *.so *.o *.vxd *.dll *.drv *.obj *.dll *.a)"
+    // cyan: text files
     "byext(3i *.txt *.htm *.html *.xml *.xhtml *.1st *.wri *.ps *.doc readme quickstart install)"
+    // red: unwanted temp files
     "byext(4i core DEADJOE)"
-    "byext(5i *.m?d *.mtm *.s3m *.xm* *.mp\\d *.wav *.smp *.au *.ult *.669)"
-    "byext(6i *.?as *.php *.phtml *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak)"
+    // magenta: sound-only multimedia files
+    "byext(5i *.m?d *.mtm *.s3m *.xm* *.mp2 *.mp3 *.wav *.ogg *.smp *.au *.ult *.669)"
+    // brown: programming
+    "byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak)"
+    // dark gray: temp files
     "byext(8i *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
-    "byext(Ai *.exe *.com *.bat)"
-    "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.a\\d\\d)"
-    "byext(Di *.gif *.bmp *.mp* *.avi *.asf *.x?m *.mov *.tga *.png *.tif *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\\w)"
+    // bright green: executable files
+    "byext(Ai *.exe *.com *.bat *.sh)"
+    // bright red: archives
+    "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.arj *.7z)"
+    // bright magenta: image and video files
+    "byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.mkv *.asf *.x?m *.mov *.tga *.png *.tif *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\\w)"

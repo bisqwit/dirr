@@ -43,8 +43,16 @@ private:
     typedef MethodPtr *argfun;
     //typedef string (arghandler::*argfun) (const string &);
     
-    class option;
-    
+    class option
+    {
+    public:
+        const char *Short, *Long;
+        string Descr;
+        argfun handler;
+        option(const char *s, const char *l, const string &d, argfun h)
+              : Short(s), Long(l), Descr(d), handler(h) { }
+    };
+
     vector<option> options;
     vector<string> args;
     

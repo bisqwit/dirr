@@ -19,6 +19,8 @@ dirr has been written by Joel Yliluoma, a.k.a.
 <a href=\"http://iki.fi/bisqwit/\">Bisqwit</a>,<br>
 and is distributed under the terms of the
 <a href=\"http://www.gnu.org/licenses/licenses.html#GPL\">General Public License</a> (GPL).
+ <p>
+Portions contributed by <a href=\"http://iki.fi/warp/\">Warp</a>
 
 ", '1. To do' => "
 
