@@ -10,5 +10,9 @@
 #define StatFunc stat64
 #define LStatFunc lstat64
 
-#define SizeType uint64_t
-#define SizeFormat "%llu"
+#define SizeType int64_t
+#ifdef __x86_64
+# define SizeFormat "%ld"
+#else
+# define SizeFormat "%lld"
+#endif

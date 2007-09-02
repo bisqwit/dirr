@@ -11,14 +11,14 @@ include Makefile.sets
 #LDFLAGS +=
 
 # Building for native:
-HOST=
-LDFLAGS +=
+#HOST=
+#LDFLAGS +=
 
-CXX=$(HOST)g++
-CC=$(HOST)gcc
-CPP=$(HOST)gcc
+#CXX=$(HOST)g++
+#CC=$(HOST)gcc
+#CPP=$(HOST)gcc
 
-VERSION = 3.29.0
+VERSION = 3.29.1
 
 # Obligatory defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -54,7 +54,9 @@ ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh config.h \
           cons.cc cons.hh \
           argh.cc argh.hh \
           stat.h \
-          TODO progdesc.php Makefile.sets
+          TODO progdesc.php \
+          Makefile.sets.in \
+          Makefile.sets
 
 INSTALLPROGS=$(PROG)
 

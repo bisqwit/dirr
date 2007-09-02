@@ -66,6 +66,135 @@ else
   echo '#define HAVE_STATFS 0' >>config.h
 fi
 
+
+
+rm -f configure.log
+DEVNULL=configure.log
+
+cc_check() {
+    rm -f conftest*
+    cat > conftest.cpp << EOF
+#include $1
+int main () { $3 return 0; }
+EOF
+    echo "	conftest.cpp:" >> $DEVNULL
+    cat conftest.cpp >> $DEVNULL
+    echo "	$CXX conftest.cpp $CXXFLAGS $LDFLAGS $2 -o conftest" >> $DEVNULL
+    $CXX conftest.cpp $CXXFLAGS $LDFLAGS $2 -o conftest 2>>$DEVNULL
+    TMP="$?"
+    rm -f conftest*
+    return $TMP
+}
+
+select_tool() {
+    toolname=$1
+    shift
+    echo -n '' > conftest
+    for tool in $*; do
+      tool_ver="`$tool -dumpversion 2>&1`"
+      if test ! "$?" -gt 0; then echo -e "$tool_ver	$tool" >> conftest; fi
+    done
+    if test -z "`cat conftest`"; then
+      echo ""
+      echo "Error: Unable to determine a suitable $toolname".
+      echo "Configure cannot progress. Try installing $1."
+      exit 1
+    fi
+    cat conftest >> $DEVNULL
+    sel_tool="`sort -rn < conftest | head -n 1 | sed 's/.*	//'`"
+    sel_ver="`sort -rn < conftest | head -n 1 | sed 's/	.*//'`"
+    eval "$toolname"="'$sel_tool'"
+    do_echo -n "$toolname=$sel_tool($sel_ver) "
+}
+
+do_echo() {
+  op=""
+  if test x"$1" = x"-n"; then op="$1"; shift; fi
+  echo $op "$*"
+  echo "$*" >> $DEVNULL
+}
+
+CFLAGS=""
+CPPFLAGS=""
+LDFLAGS=""
+OPTIM=""
+
+do_echo -n "Determining compiler version to use... "
+select_tool CXX g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done) 2>/dev/null`
+select_tool CPP cpp `(IFS=':'; for s in $PATH;do cd "$s"&&echo cpp-*;done) 2>/dev/null`
+select_tool CC  gcc cc `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;done) 2>/dev/null`
+do_echo ""
+
+do_echo -n "Checking if the determined compiler works... "
+if cc_check '<stdio.h>' '' 'for(int a=0; a<10;++a) { for(int a=0; a<5;++a) { } } puts("ok");'; then
+  do_echo Ok
+else
+  do_echo No
+  do_echo "Error: Configure cannot figure out how to use your compiler."
+  do_echo "Please try installing some recent version of gcc."
+  exit 1
+fi
+
+do_echo -n "Checking if your compiler supports -fopenmp... "
+if cc_check '<stdio.h>' '-fopenmp' 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
+  do_echo Yes
+  do_echo "- Will use OpenMP, not checking for -pthread"
+  CPPFLAGS="$CPPFLAGS -fopenmp"
+  LDFLAGS="$LDFLAGS -fopenmp"
+  CPPFLAGS="$CPPFLAGS -DUSE_PTHREADS=0"
+else
+  do_echo No
+  do_echo -n "Checking if your compiler supports -pthread... "
+  if cc_check '"lib/threadfun.hh"' '-pthread' 'ThreadType t;JoinThread(t);'; then
+    do_echo Yes
+    CPPFLAGS="$CPPFLAGS -DUSE_PTHREADS=1 -pthread"
+    LDFLAGS="$LDFLAGS -pthread"
+  else
+    do_echo No
+    CPPFLAGS="$CPPFLAGS -DUSE_PTHREADS=0"
+  fi
+fi
+
+do_echo -n "Checking if your compiler supports hash_map... "
+if cc_check '"lib/hash.hh"' '-DHASH_MAP=1' 'hash_map<long,int>x; hash_set<long>y;'; then
+  do_echo Yes
+  CPPFLAGS="$CPPFLAGS -DHASH_MAP=1"
+else
+  do_echo No
+  CPPFLAGS="$CPPFLAGS -DHASH_MAP=0"
+fi
+
+do_echo -n "Checking if your compiler supports -ftree-vectorize... "
+if cc_check '<stdio.h>' '-ftree-vectorize' 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
+  do_echo Yes
+  OPTIM="$OPTIM -ftree-vectorize"
+else
+  do_echo No
+fi
+
+do_echo "Updating Makefile.sets ..."
+
+DATE="`LC_ALL=C date`"
+UNAME="`uname -a`"
+sed_cmd=""
+for s in CC CPP CXX OPTIM CPPFLAGS LDFLAGS FUSELIBS DATE UNAME; do
+  eval value=\"\$$s\"
+  sed_cmd="$sed_cmd;s§{CONFIG_$s}§$value§"
+done
+
+sed "$sed_cmd" < Makefile.sets.in > Makefile.sets
+
+for dir in . lib util; do
+  rm $dir/.depend $dir/.libdepend; make -C $dir .depend
+done &> /dev/null
+
+
+
+
+
+
+
+
 cat << EOF
 
 Configuration finished.

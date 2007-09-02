@@ -449,7 +449,7 @@ public:
     	
         for(const char *s=Sorting.c_str(); *s; s++)
         {
-        	int Result=0;
+        	SizeType Result=0;
         	
         	switch(tolower(*s))
     	    {
