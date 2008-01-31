@@ -4,37 +4,19 @@ CPPDEBUG=-g -pipe
 CPPFLAGS=-DVERSION=\"$(VERSION)\" $(CPPDEBUG)
 #         -fmessage-length=0
 
-WARNINGS=-Wall \
-    -Wundef \
-    -Wcast-qual \
-    -Wpointer-arith \
-    -Wconversion \
-    -Wwrite-strings \
-    -Wsign-compare \
-    -Wredundant-decls \
-    -Winit-self \
-    -Wextra \
-    -Wcast-align -Wformat
-
-#    -Wtraditional
-
 # C specific warnings
-CCOPTS=$(WARNINGS) -Waggregate-return -Wshadow -Winline \
-    -Wstrict-prototypes \
-    -Wmissing-prototypes
-
+CCOPTS=$(WARNINGS) $(CWARNINGS)
 # C++ specific warnings
-CXXOPTS=$(WARNINGS) \
-	-Woverloaded-virtual
-#	-Weffc++
+CXXOPTS=$(WARNINGS) $(CXXWARNINGS)
+
 
 # Optimization
-OPTIM=-ffast-math -O1
+OPTIM=-O3
 #-march=pentiumpro
 
 # Flags.
 CFLAGS=$(OPTIM) $(CCOPTS)
-CXXFLAGS=$(OPTIM) $(CXXOPTS) -fno-default-inline
+CXXFLAGS=$(OPTIM) $(CXXOPTS)
 #-fno-rtti
 
 #LDFLAGS=-pg -ax
@@ -42,13 +24,18 @@ LDFLAGS=-g
 
 #####
 # These options were set by ./configure
-# at Sun Sep  2 23:55:09 EEST 2007
-# for Linux chii 2.6.22.5 #5 SMP Sun Sep 2 21:52:46 EEST 2007 x86_64 GNU/Linux
+# at Fri Jan 18 20:26:06 EET 2008
+# for Linux chii 2.6.23.1 #1 SMP Wed Oct 31 02:24:16 EET 2007 x86_64 GNU/Linux
 # To change, run ./configure again.
 #
-CC=gcc-4.2
-CPP=cpp-4.2
-CXX=g++-4.2
-OPTIM +=  -ftree-vectorize -march=native -mtune=native
-CPPFLAGS +=  -fopenmp -DUSE_PTHREADS=0 -DHASH_MAP=0
-LDFLAGS +=  -fopenmp
+CC=gcc
+CPP=cpp
+CXX=g++
+OPTIM += 
+CPPFLAGS +=  -DHASH_MAP=0
+LDFLAGS += 
+WARNINGS +=  -Wall -Wundef -Wcast-qual -Wpointer-arith -Wconversion -Wwrite-strings -Wsign-compare -Wredundant-decls -Winit-self -Wextra -Wcast-align -Wformat
+CWARNINGS +=  -Waggregate-return -Wshadow -Winline -Wstrict-prototypes -Wmissing-prototypes
+CXXWARNINGS +=  -Woverloaded-virtual
+
+

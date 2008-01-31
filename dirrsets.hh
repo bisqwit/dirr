@@ -110,7 +110,7 @@
     // red: unwanted temp files
     "byext(4i core DEADJOE)"
     // magenta: sound-only multimedia files
-    "byext(5i *.m?d *.mtm *.s3m *.xm* *.mp2 *.mp3 *.wav *.ogg *.smp *.au *.ult *.669)"
+    "byext(5i *.mid *.mod *.mtm *.s3m *.xm* *.mp2 *.mp3 *.wav *.ogg *.smp *.au *.ult *.669 *.aac *.spc *.nsf)"
     // brown: programming
     "byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak)"
     // dark gray: temp files
@@ -118,6 +118,6 @@
     // bright green: executable files
     "byext(Ai *.exe *.com *.bat *.sh)"
     // bright red: archives
-    "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.arj *.7z)"
+    "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.arj *.7z *.lzma)"
     // bright magenta: image and video files
     "byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.mkv *.asf *.x?m *.mov *.tga *.png *.tif *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\\w)"

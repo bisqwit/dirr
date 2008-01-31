@@ -716,7 +716,7 @@ R1: if((dir = opendir(Source.c_str())) == NULL)
     	/* It was not a directory, or could not be read */
     	
     	if(
-	    #ifdef DJGPP
+	    #if defined(DJGPP) || (defined(SUNOS)||defined(__sun)||defined(SOLARIS))
     		errno==EACCES  ||
         #endif
         	errno==ENOENT  ||	/* Piti lisätä linkkejä varten */
@@ -898,7 +898,7 @@ private:
     {
     	const char *q = s.c_str();
     	const char *p = q;
-    	Links = strtol(p, (char **)&p, 10);
+    	Links = strtol(p, const_cast<char**>(&p), 10);
     	if(Links < 0 || Links > 5)argerror(s);
     	return s.substr(p-q);
     }
@@ -908,7 +908,7 @@ private:
     	const char *q = s.c_str();
     	const char *p = q;
     	if(*p == '0')printf("Window size = %dx%d\n", COLS, LINES);
-    	COLS = strtol(p, (char **)&p, 10);
+    	COLS = strtol(p, const_cast<char**>(&p), 10);
     	return s.substr(p-q);
     }
     string opt_H1(const string &s)
@@ -941,7 +941,7 @@ private:
     {
     	const char *q = s.c_str();
     	const char *p = q;
-    	switch(strtol(p, (char **)&p, 10))
+    	switch(strtol(p, const_cast<char**>(&p), 10))
     	{
     		case 0:
 				FieldOrder = ".f_.s.d|";
@@ -993,7 +993,7 @@ private:
     {
     	const char *q = s.c_str();
     	const char *p = q;
-    	switch(strtol(p, (char **)&p, 10))
+    	switch(strtol(p, const_cast<char**>(&p), 10))
     	{
     		case 0: Compact=0; Totals=true; break;
     		case 1: Compact=1; Totals=true; break;

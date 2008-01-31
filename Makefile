@@ -18,7 +18,7 @@ include Makefile.sets
 #CC=$(HOST)gcc
 #CPP=$(HOST)gcc
 
-VERSION = 3.29.1
+VERSION = 3.29.2
 
 # Obligatory defines:
 #   CACHE_GETSET     Recommended, adds speed

@@ -58,7 +58,7 @@ void PrintNum(string &Dest, int Seps, const char *fmt, ...)
 	
 	va_list ap;
 	va_start(ap, fmt);
-	Dest.erase(vsprintf((char *)Dest.c_str(), fmt, ap));
+	Dest.erase(vsprintf(const_cast<char *>(Dest.c_str()), fmt, ap));
 	va_end(ap);
 	
 	if(Seps)
