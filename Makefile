@@ -18,7 +18,7 @@ include Makefile.sets
 #CC=$(HOST)gcc
 #CPP=$(HOST)gcc
 
-VERSION = 3.29.2
+VERSION = 3.29.2.2
 
 # Obligatory defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -60,14 +60,14 @@ ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh config.h \
 
 INSTALLPROGS=$(PROG)
 
-${PROG}: ${OBJS}
+$(PROG): $(OBJS)
 	$(CXX) $(LDFLAGS) -o $@ $^
 
 argh.o: argh.cc
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -DColourPrints -o $@ -c $<
 
 clean:
-	rm -f $(PROG) ${OBJS}
+	rm -f $(PROG) $(OBJS)
 distclean: clean
 	rm -f Makefile.cfg config.h *~
 realclean: distclean
