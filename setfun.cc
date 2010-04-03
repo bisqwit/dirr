@@ -1,6 +1,8 @@
 #include <vector>
 #include <cctype>
 #include <map>
+#include <cstring>
+#include <cstdlib>
 
 #include "config.h"
 #include "wildmatch.hh"
