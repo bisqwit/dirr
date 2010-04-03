@@ -1,3 +1,5 @@
+#include <cstring>
+
 #include "config.h"
 
 #ifdef HAVE_SYS_VFS_H

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 if test "$*" = "--help"; then
   echo "Prepares dirr for compilation."
@@ -172,14 +172,112 @@ else
   do_echo No
 fi
 
+WARNINGS=""
+CWARNINGS=""
+CXXWARNINGS=""
+
+if [ "$CC" = "icc" ]; then
+  #do_echo -n "Checking if your compiler supports -pch... "
+  #if cc_check '<stdio.h>' '-pch' 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
+  #  do_echo Yes
+  #  OPTIM="$OPTIM -pch"
+  #else
+  #  do_echo No
+  #fi
+  true
+else
+  LDFLAGS="$LDFLAGS -Xlinker --gc-sections"
+
+  do_echo -n "Checking if your compiler supports -minline-stringops-dynamically... "
+  if cc_check '<string.h>' '-minline-stringops-dynamically' 'char buf1[64],buf2[80]="kissa"; memcpy(buf1,buf2,sizeof(buf2)-strlen(buf2));'; then
+    do_echo Yes
+    OPTIM="$OPTIM -minline-stringops-dynamically"
+  else
+    do_echo No
+  fi
+  
+  # Removed from the list:
+  # -ftree-switch-conversion (new in GCC 4.4, automatically turned on by -O2)
+  # -ftree-vectorize (new in GCC 4.0, automatically turned on by -O3 at least since GCC 4.3)
+  
+  # -fwhole-program (new in GCC-4.4, makes compiler assume that
+  #                  the included source files consist of entire
+  #                  program, messing link semantics)
+
+  T_OPTIM="\
+    -ffast-math -mrecip -fvpt -ffunction-cse -ffunction-sections -fdata-sections"
+  for s in $T_OPTIM;do
+    do_echo -n "Checking if your compiler supports $s... "
+    if cc_check '<stdio.h>' "$s" 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
+      do_echo Yes
+      OPTIM="$OPTIM $s"
+    else
+      do_echo No
+    fi
+  done
+  
+  #-fconserve-stack
+  
+  T_WARNINGS="-Wall \
+    -Wundef \
+    -Wcast-qual \
+    -Wpointer-arith \
+    -Wconversion \
+    -Wwrite-strings \
+    -Wsign-compare \
+    -Wredundant-decls \
+    -Winit-self \
+    -Wextra \
+    -Wsequence-points \
+    -Wparentheses \
+    -Wcast-align -Wformat \
+    -Wno-conversion"
+  T_CWARNINGS="-Waggregate-return -Wshadow -Winline \
+    -Wstrict-prototypes \
+    -Wmissing-prototypes"
+  T_CXXWARNINGS="-Woverloaded-virtual -Weffc++ -Wno-non-virtual-dtor"
+
+  for s in $T_WARNINGS;do
+    do_echo -n "Checking if your compiler supports $s... "
+    if cc_check '<stdio.h>' "$s" ''; then
+      do_echo Yes
+      WARNINGS="$WARNINGS $s"
+    else
+      do_echo No
+    fi
+  done
+  for s in $T_CWARNINGS;do
+    do_echo -n "Checking if your compiler supports $s... "
+    if cc_check '<stdio.h>' "$s" ''; then
+      do_echo Yes
+      CWARNINGS="$CWARNINGS $s"
+    else
+      do_echo No
+    fi
+  done
+  for s in $T_CXXWARNINGS;do
+    do_echo -n "Checking if your compiler supports $s... "
+    if cc_check '<stdio.h>' "$s" ''; then
+      do_echo Yes
+      CXXWARNINGS="$CXXWARNINGS $s"
+    else
+      do_echo No
+    fi
+  done
+fi  
+
+(echo "Your CPU has these features:"
+ grep flags /proc/cpuinfo | uniq | sed 's/.*://' | tr ' ' '\012'|sort|grep .|(fmt -w60||cat)|sed 's/^/- /'
+) >> $DEVNULL
+
 do_echo "Updating Makefile.sets ..."
 
 DATE="`LC_ALL=C date`"
 UNAME="`uname -a`"
 sed_cmd=""
-for s in CC CPP CXX OPTIM CPPFLAGS LDFLAGS FUSELIBS DATE UNAME; do
+for s in CC CPP CXX OPTIM CPPFLAGS LDFLAGS FUSELIBS DATE UNAME WARNINGS CWARNINGS CXXWARNINGS; do
   eval value=\"\$$s\"
-  sed_cmd="$sed_cmd;s§{CONFIG_$s}§$value§"
+  sed_cmd="$sed_cmd;s§{CONFIG_$s}§${value}§"
 done
 
 sed "$sed_cmd" < Makefile.sets.in > Makefile.sets

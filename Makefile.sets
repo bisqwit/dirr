@@ -24,18 +24,18 @@ LDFLAGS=-g
 
 #####
 # These options were set by ./configure
-# at Fri Jan 18 20:26:06 EET 2008
-# for Linux chii 2.6.23.1 #1 SMP Wed Oct 31 02:24:16 EET 2007 x86_64 GNU/Linux
+# at Sat Apr  3 23:56:56 EEST 2010
+# for Linux hariyu 2.6.32-3-686 #1 SMP Thu Feb 25 06:14:20 UTC 2010 i686 GNU/Linux
 # To change, run ./configure again.
 #
-CC=gcc
-CPP=cpp
-CXX=g++
-OPTIM += 
-CPPFLAGS +=  -DHASH_MAP=0
-LDFLAGS += 
-WARNINGS +=  -Wall -Wundef -Wcast-qual -Wpointer-arith -Wconversion -Wwrite-strings -Wsign-compare -Wredundant-decls -Winit-self -Wextra -Wcast-align -Wformat
+CC=gcc-4.4
+CPP=cpp-4.4
+CXX=g++-4.4
+OPTIM +=  -ftree-vectorize -minline-stringops-dynamically -ffast-math -mrecip -fvpt -ffunction-cse -ffunction-sections -fdata-sections
+CPPFLAGS +=  -fopenmp -DUSE_PTHREADS=0 -DHASH_MAP=0
+LDFLAGS +=  -fopenmp -Xlinker --gc-sections
+WARNINGS +=  -Wall -Wundef -Wcast-qual -Wpointer-arith -Wconversion -Wwrite-strings -Wsign-compare -Wredundant-decls -Winit-self -Wextra -Wparentheses -Wcast-align -Wformat -Wno-conversion
 CWARNINGS +=  -Waggregate-return -Wshadow -Winline -Wstrict-prototypes -Wmissing-prototypes
-CXXWARNINGS +=  -Woverloaded-virtual
+CXXWARNINGS +=  -Woverloaded-virtual -Weffc++ -Wno-non-virtual-dtor
 
 
