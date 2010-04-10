@@ -42,7 +42,7 @@ private:
 
     typedef MethodPtr *argfun;
     //typedef string (arghandler::*argfun) (const string &);
-    
+
     class option
     {
     public:
@@ -55,21 +55,21 @@ private:
 
     vector<option> options;
     vector<string> args;
-    
+
 protected:
     string a0;
     void subadd(const char *Short, const char *Long, const string &Descr, argfun handler);
-    
+
 public:
     arghandler(const char *defopts, int argc, const char *const *argv);
     virtual ~arghandler();
-    
+
     template<typename T>
     inline void add(const char *Short, const char *Long, const string &Descr, string(T::*handler)(const string &))
     {
         subadd(Short, Long, Descr, new MethodPtrImplementation<T>(handler));
     }
-    
+
     virtual void parse();
     virtual void defarg(const string &s) = 0;
     void argerror(char c);

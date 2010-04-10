@@ -3,7 +3,7 @@
 
 #include "config.h"
 #include "wildmatch.hh"
- 
+
 int IgnoreCase;
 
 #if NEW_WILDMATCH

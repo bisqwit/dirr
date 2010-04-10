@@ -24,11 +24,11 @@ using std::string;
  *     Space:  Maximum usable printing space.
  *     Fill:   Jos, ylim‰‰r‰inen tila t‰ytet‰‰n
  *             spaceilla oikealta puolelta.
- * 
+ *
  *   Return value: True (not necessarily printed) length
  *
  **********************************************************/
- 
+
 extern int GetName(const string &fn, const StatType &sta, int Space,
                    bool Fill, bool nameonly,
                    const char *hardlinkfn = NULL);

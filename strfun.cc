@@ -10,12 +10,12 @@
 string NameOnly(const string &Name)
 {
     const char *q, *s = Name.c_str();
-    
+
     while((q = strchr(s, '/')) && q[1])s = q+1;
-    
+
     q = strchr(s, '/');
     if(!q)q = strchr(s, 0);
-    
+
     return string(s, 0, q-s);
 }
 
@@ -39,7 +39,7 @@ string LinkTarget(const string &link, bool fixit)
 	Target[a] = 0;
 	
 	if(!fixit)return Target;
- 
+
 	if(Target[0] == '/')
 	{
 		// Absolute link

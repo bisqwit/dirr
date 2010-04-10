@@ -181,7 +181,7 @@ int Gputch(int x)
 	int TmpAttr = TextAttr;
 	if(!TmpAttr && x > ' ')x = ' ';
     if(x=='\n' && (TextAttr&0xF0))GetDescrColor("txt", 1);
-    
+
     if(x!=' ' || ((TextAttr&0xF0) != (OldAttr&0xF0)))
 		FlushSetAttr();
 		
@@ -266,7 +266,7 @@ int Gputch(int x)
                 for(;;)
                 {
                 	int Key = Ggetch();
-                	if(Key=='q' 
+                	if(Key=='q'
                 	|| Key=='Q'
                 	|| Key==3){More=-1;break;}
                 	if(Key=='\r'|| Key=='\n'){More=1;break;}
@@ -294,7 +294,7 @@ int Gprintf(const char *fmt, ...)
     va_start(ap, fmt);
     int a = vsprintf(Buf, fmt, ap);
     va_end(ap);
-    
+
     for(char *s=Buf; *s; s++)
     {
     	if(*s=='\1')

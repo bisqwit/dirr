@@ -33,7 +33,7 @@ string GetSize(const string &s, const StatType &Sta, int Space, int Seps)
 	unsigned Bufsize = Space<256 ? 256 : Space;
 	char *Buf = new char[Bufsize];
     const char *descr = "descr";
-    
+
     const StatType *Stat = &Sta;
 
 #ifdef S_ISLNK
@@ -110,14 +110,29 @@ P1:
 		}
 #endif
         l = Stat->st_size;
-        
+
+        const char* Suffix = "";
+
+        if(Seps == -1)
+        {
+            Seps=0;
+            static const char SIsuffixTable[] = "\0\0k\0M\0G\0T\0P\0E\0Z\0Y";
+            Suffix = SIsuffixTable;
+            while(l >= 1000)
+            {
+                l /= 1000;
+                Suffix += 2;
+            }
+        }
+
         string TmpBuf;
         PrintNum(TmpBuf, Seps, SizeFormat, l);
+        TmpBuf += Suffix;
         sprintf(Buf, "%*s", Space, TmpBuf.c_str());
-        
+
         if(descr)descr = "size";
     }
-    
+
     if(descr)
 	    GetDescrColor(descr, 1);
 	else
