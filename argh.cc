@@ -5,14 +5,14 @@
 
 #ifdef ColourPrints
 #include "cons.hh"
-#define GPRINTF_ARGS 
+#define GPRINTF_ARGS
 #else
 #include <cstdio>
 
 #define GPRINTF_ARGS stderr,
 #define Gputch(x) putc((x), stderr)
 #define Gprintf fprintf
-#define SetAttr(x) 
+#define SetAttr(x)
 #endif
 
 /* This file is part of Bisqwit's dirr and remotegcc packages. */
@@ -20,10 +20,10 @@
 arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
 {
     const char *q;
-    
+
     q = strrchr(argv[0], '/');
     a0 = q ? q+1 : argv[0];
-    
+
     if(defopts)
     {
         q = defopts;
@@ -37,7 +37,7 @@ arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
         args.push_back(q);
     }
     bool terminated = false;
-    
+
     /* If you have 5 parameters and want to skip 2 parameters
      * at th ebeginning, specify argc as: (2-argc)*MAX_ARGC-2
      */
@@ -98,11 +98,11 @@ void arghandler::parse()
             {
                 s.erase(0, 2);
                 vector<option>::iterator i;
-                
+
                 for(i=options.begin(); i!=options.end(); ++i)
                     if(*i->Long && s == i->Long)
                         break;
-                   
+
                 if(i == options.end())
                 {
                     argerror(s, false);
@@ -127,7 +127,7 @@ void arghandler::parse()
             {
                 s.erase(0, 1);
                 vector<option>::iterator i;
-                
+
                 while(s.size())
                 {
                        for(i=options.begin(); i!=options.end(); ++i)
@@ -185,21 +185,21 @@ void arghandler::listoptions()
     {
         const char *s = i->Short;
         const char *l = i->Long;
-        
+
         SetAttr(*s ? 3 : 0);
         Gprintf(GPRINTF_ARGS "  -");
         SetAttr(7);
         Gprintf(GPRINTF_ARGS "%s", s);
-        
+
         SetAttr(*l ? 3 : 0);
         Gprintf(GPRINTF_ARGS ", --");
         SetAttr(7);
         Gprintf(GPRINTF_ARGS "%s", l);
-        
+
         Gprintf(GPRINTF_ARGS "%*s", space-(strlen(s) + strlen(l)), "");
-        
+
         SetAttr(7);
-        
+
         const char *q = i->Descr.c_str();
         bool needspace = false;
         bool needeol = true;

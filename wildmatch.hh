@@ -30,7 +30,7 @@
  *   Return value: 0=no match, 1=match
  *
  **********************************************************/
- 
+
 extern int IgnoreCase;
 extern int WildMatch(const char *pattern, const char *what);
 

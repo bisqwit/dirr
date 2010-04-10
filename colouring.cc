@@ -83,7 +83,7 @@ int PrintAttr(const StatType &Stat, char Attrs
             Gputch((Stat.st_mode&00200)?'w':'-');
 
             GetModeColor("mode", (Stat.st_mode&00100)?'x':'-');
-            
+
             Gputch("-xSs"[((Stat.st_mode&04000)>>10)|((Stat.st_mode&00100)>>6)]);
 
             SetAttr(Viva);

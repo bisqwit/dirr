@@ -10,11 +10,11 @@
      **************************************************************/
 
     "mode(SB,H8,R9,A3,DC,lB,d9,x9,cE,bE,p6,sD,-7,?C,#3)"
-    
+
     /**************************************************************
      * info() - How to color the type characters
      *          in the end of filenames.
-     *          
+     *
      * / is for directories
      * * for executables
      * @ for links
@@ -27,7 +27,7 @@
      *
      **************************************************************/
     "info(/1,*2,@3,=5,|8,?C,&F)"
-    
+
     /**************************************************************
      * owner() - How to color the file owner name.
      *
@@ -35,7 +35,7 @@
      * second for the case of file not owned by self.
      **************************************************************/
     "owner(4,8)"
-    
+
     /**************************************************************
      * type() - How to color the file names, if it does
      *          not belong to any class of byext()'s.
@@ -47,22 +47,22 @@
      * ? is for file/link names which were not stat()able.
      **************************************************************/
     "type(lB,d9,xA,cE,bE,p6,sD,?3,DC)"
-    
+
     /**************************************************************
      * descr() - How to color the <DIR>, <PIPE> etc texts
      **************************************************************/
     "descr(3)"
-    
+
     /**************************************************************
      * date() - How to color the datetimes
      **************************************************************/
     "date(7)"
-    
+
     /**************************************************************
      * size() - How to color the numeric file sizes
      **************************************************************/
     "size(7)"
-    
+
 #ifndef DJGPP
     /**************************************************************
 	 * nrlink() - How to color the number of hard links
@@ -74,7 +74,7 @@
 	 * num() - How to color the numbers in total-sums
      **************************************************************/
     "num(3)"
-    
+
 #ifndef DJGPP
     /**************************************************************
      * group() - How to color the file owner name.
@@ -89,20 +89,20 @@
 	 * txt() - The default color used for all other texts
      **************************************************************/
     "txt(7)"
-    
+
     /**************************************************************
      * byext() - How to color the filenames that match one or more
      *           of the patterns in the list
      *
      * The first argument is the color code. It may have 'i' at end
      * of it. If it has 'i', the file name patterns are case insensitive.
-     * 
+     *
      * There may be multiple byext() definitions.
      *
      * See the documentation at function WildMatch in this source
      * code for more information about the wildcards.
      **************************************************************/
-     
+
     // green: object files
     "byext(2i *.so *.o *.vxd *.dll *.drv *.obj *.dll *.a)"
     // cyan: text files

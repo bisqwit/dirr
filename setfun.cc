@@ -75,12 +75,12 @@ static string GetSet(const char **S, const string &name, int index)
 #endif
     const char *s = *S;
     string t;
-    
+
     if(s)
     {
         /* Setting string separators */
         unsigned namelen = name.size();
-        
+
         for(;;)
         {
         	while(SetSep(*s))s++;
@@ -92,14 +92,14 @@ static string GetSet(const char **S, const string &name, int index)
             	const char *p;
                 int Len;
                 for(Len=0, p=s; *p && !SetSep(*p); ++Len)++p;
-        
+
                 *S = *p?p+1:NULL;
                 if(!**S)*S=NULL;
-                
+
                 t.assign(s, 0, Len);
                 goto Retu;
             }
-        
+
             while(*s && !SetSep(*s))s++;
         }
     }
@@ -170,12 +170,12 @@ int GetDescrColor(const string &descr, int index)
 {
     int Dfl = 7;
     if(!Colors || !Dumping)return Dfl;
-    
+
     int ind = index<0 ? -index : index;
-    
-    const char *s = Settings.c_str();    
+
+    const char *s = Settings.c_str();
     string t = GetSet(&s, descr, 0);
-    
+
     if(t == sNULL)
         Gprintf("DIRR_COLORS error: No '%s'\n", descr.c_str());
     else
@@ -195,14 +195,14 @@ void PrintSettings()
 {
     const char *s = Settings.c_str();
     int LineLen, Dfl;
-    
+
     Dfl = GetDescrColor("txt", -1);
-    
+
     for(LineLen=0;;)
     {
         while(SetSep(*s))s++;
         if(!*s)break;
-        
+
         int Len;
         const char *t = s;
         for(Len=0; *t && !SetSep(*t); Len++)t++;
@@ -236,7 +236,7 @@ void PrintSettings()
 
                 c = *t++;
 
-                k=t;    
+                k=t;
                 SetAttr(GetHex(Dfl, &k));
 
                 Gputch(c);
@@ -279,7 +279,7 @@ void PrintSettings()
             SetAttr(Dfl);
             Gputch(')');
         }
-        
+
         while(*s && !SetSep(*s))s++;
     }
     if(LineLen)

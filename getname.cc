@@ -42,7 +42,7 @@ int GetName(const string &fn, const StatType &sta, int Space,
 
     unsigned Len = 0;
     int i;
-    
+
     bool maysublink = true;
     bool wasinvalid = false;
 
@@ -56,15 +56,15 @@ Redo:
 
     Buf = Puuh;
     Len += (i = Buf.size());
-    
+
     if(i > Space && nameonly)i = Space;
     Buf.erase(i);
-    
+
     TulostaNimi(i, Buf);
     Space -= i;
 
     #define PutSet(c) do if((++Len,Space)&&GetModeColor("info", c))Gputch(c),--Space;while(0)
-    
+
     if(wasinvalid)
     {
     	PutSet('?');
@@ -85,11 +85,11 @@ Redo:
         if(Links >= 2 && maysublink)
         {
         	int a;
-            
+
             Buf = SLinkArrow;
 
             Len += (a = Buf.size());
-            
+
             if(a > Space)a = Space;
             if(a)
             {
@@ -98,7 +98,7 @@ Redo:
                 Gprintf("%*s", -a, Buf.c_str());
             }
             Space -= a;
-            
+
             StatType Stat1;
             Buf = LinkTarget(s, true);
 
@@ -124,7 +124,7 @@ Redo:
 	   	        else
    		        	SetAttr(GetNameAttr(Stat1, Buf));
   	        }
-            
+
             Puuh = s = LinkTarget(s, false); // Unfixed link.
             Stat = &Stat1;
             goto Redo;
@@ -137,11 +137,11 @@ Redo:
 	    if(S_ISDIR(Stat->st_mode))  PutSet('/');
 	    else if(Stat->st_mode & 00111)PutSet('*');
 	}
-    
+
     if(hardlinkfn && Space)
     {
         StatType Stat1;
-        
+
     	SetAttr(GetModeColor("info", '&'));
     	
     	Len += Gprintf("%s", HLinkArrow);

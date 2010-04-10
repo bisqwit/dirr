@@ -44,7 +44,7 @@ void Summat()
 	SizeType Koko;
 	
 	string NumBuf;
-    
+
     Dumping = true;
     GetDescrColor("txt", 1);
 
@@ -63,7 +63,7 @@ void Summat()
       + Summa[SumBlkDev];
 
     ColorNums = GetDescrColor("num", -1);
-    
+
 #if HAVE_STATFS
     if(STATFS(LastDir.c_str(), &tmp))tmp.f_bavail = 0;
 #endif
@@ -106,7 +106,7 @@ void Summat()
         		
         PrintNum(NumBuf, TotalSep, SizeFormat, Koko);
         Gprintf(", \1%s\1 bytes", NumBuf.c_str());
-        
+
 #if HAVE_STATFS
         if(tmp.f_bavail > 0)
         {
@@ -137,7 +137,7 @@ void Summat()
         	Gprintf(" free(\1%.1f\1%%)",
         		(double)tmp.f_bavail * 100.0 / tmp.f_blocks);
         }
-#endif	    
+#endif	
 	    Gprintf("\n");
     }
     else
@@ -148,14 +148,14 @@ void Summat()
         {
         	PrintNum(NumBuf, TotalSep, SizeFormat, Tmp);
             Gprintf("\1%5s\1 device%s (", NumBuf.c_str(), (Tmp==1)?"":"s");
-    
+
             if(SumCnt[SumChrDev])
             {
             	PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumChrDev]);
             	Gprintf("\1%s\1 char", NumBuf.c_str());
             }
             if(SumCnt[SumChrDev]
-            && SumCnt[SumBlkDev])Gprintf(", ");    
+            && SumCnt[SumBlkDev])Gprintf(", ");
             if(SumCnt[SumBlkDev])
             {
             	PrintNum(NumBuf, TotalSep, SizeFormat, SumCnt[SumBlkDev]);
@@ -172,7 +172,7 @@ void Summat()
             Gprintf("\1%5s\1 directories,\1%11s\1 bytes\n",
                 NumBuf.c_str(), TmpBuf.c_str());
         }
-    
+
         if(SumCnt[SumFifo])
         {
         	string TmpBuf;
@@ -180,7 +180,7 @@ void Summat()
         	PrintNum(TmpBuf, TotalSep, SizeFormat, Summa[SumFifo]);
             Gprintf("\1%5s\1 fifo%s\1%17s\1 bytes\n",
                 NumBuf.c_str(), (SumCnt[SumFifo]==1)?", ":"s,", TmpBuf.c_str());
-        }    
+        }
         if(SumCnt[SumFile])
         {
         	string TmpBuf;
@@ -217,7 +217,7 @@ void Summat()
         }
 #endif
     }
-    
+
     ColorNums = -1;
 
     memset(&SumCnt, 0, sizeof SumCnt);

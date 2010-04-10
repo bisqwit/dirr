@@ -6,7 +6,7 @@
 */
 
 #define VERSIONSTR \
-    "DIRR "VERSION" copyright (C) 1992,2000 Bisqwit (http://iki.fi/bisqwit/)\n" \
+    "DIRR "VERSION" copyright (C) 1992,2010 Bisqwit (http://iki.fi/bisqwit/)\n" \
     "This program is under GPL. dirr-"VERSION".{rar,zip,tar.{gz,bz2}}\n" \
     "are available at the homepage of the author.\n" \
     "About some ideas about this program, thanks to Warp.\n"
@@ -56,9 +56,10 @@ using namespace std;
 static int RowLen;
 
 static int LongestName;
-static int LongestSize;
-static int LongestUID;
-static int LongestGID;
+static int LongestSize, LongestSizeWithSeps, LongestSizeCompact;
+static int LongestUID, LongestUIDvalue;
+static int LongestGID, LongestGIDvalue;
+static int LongestLinks;
 
 static bool Contents, PreScan, Sara;
 static int DateTime;
@@ -89,7 +90,7 @@ static void SetDefaultOptions()
 	Sorting = "pmgU";
 	DateForm = "%d.%m.%y %H:%M";
 				    // Modify with -F
-				 
+				
 				    // Modify with -f
 	#ifdef DJGPP
 	FieldOrder = ".f.s_.d";
@@ -109,7 +110,7 @@ static class Inodemap
 	devmap items;
 	bool enabled;
 public:
-	Inodemap() : enabled(true) { }
+	Inodemap() : items(), enabled(true) { }
 	void disable()
 	{
 		enabled = false;
@@ -255,6 +256,18 @@ static void TellMe(const StatType &Stat, const string &Name
                         RowLen += i;
                         break;
                     }
+                    case 'u':
+                    {
+                        if(s[1]=='i' && s[2]=='d')
+                        {
+                            s += 2;
+                            GetDescrColor("owner", (Stat.st_uid==getuid())?1:2);
+                            int i = Gprintf("%*u", LongestUIDvalue, Stat.st_uid);
+                            ItemLen += i;
+                            RowLen  += i;
+                        }
+                        break;
+                    }
 #ifdef DJGPP
 					case 'G':
                     case 'g':
@@ -264,6 +277,16 @@ static void TellMe(const StatType &Stat, const string &Name
 					case 'G':
                     case 'g':
                     {
+                        if(s[1]=='i' && s[2]=='d')
+                        {
+                            s += 2;
+                            GetDescrColor("group", (Stat.st_gid==getgid())?1:2);
+                            int i = Gprintf("%*u", LongestGIDvalue, Stat.st_gid);
+                            ItemLen += i;
+                            RowLen  += i;
+                            break;
+                        }
+
                         int i;
                         GetDescrColor("group", (Stat.st_gid==getgid())?1:2);
                         if(isupper((int)*s) || !s[1])
@@ -275,27 +298,29 @@ static void TellMe(const StatType &Stat, const string &Name
                         break;
                     }
                     case 'h':
+                    {
                         GetDescrColor("nrlink", 1);
-                        Gprintf("%4d", (int)Stat.st_nlink);
-                        ItemLen += 4;
-                        RowLen += 4;
+                        int i = Gprintf("%*d", LongestLinks, (int)Stat.st_nlink);
+                        ItemLen += i;
+                        RowLen += i;
                         break;
+                    }
 #endif
                     case 'F':
                     case 'f':
                     {
                         SetAttr(NameAttr);
-                        
+
                         const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
-                        
+
                         if(hardlinkfn && Name == hardlinkfn)
                         	hardlinkfn = NULL;
-                        
+
                         GetName(Name, Stat, LongestName,
                                 (Sara||s[1]) && (*s=='f'),
                                 (*s=='f'),
                                 hardlinkfn);
-                        
+
                         ItemLen += LongestName;
                         RowLen += LongestName;
                         break;
@@ -305,11 +330,15 @@ static void TellMe(const StatType &Stat, const string &Name
                         ItemLen += LongestSize;
                         RowLen += LongestSize;
                         break;
+                    case 'z':
+                        Gprintf("%s", GetSize(Name, Stat, LongestSizeCompact, -1).c_str());
+                        ItemLen += LongestSizeCompact;
+                        RowLen += LongestSizeCompact;
+                        break;
                     case 'S':
                     {
-                        int i;
-                        s++; /* 's' on sepittömälle versiolle */
-                        i = Gprintf("%s", GetSize(Name, Stat, LongestSize+3, *s?*s:' ').c_str());
+                        s++; /* Skip 'S' */
+                        int i = Gprintf("%s", GetSize(Name, Stat, LongestSizeWithSeps, *s?*s:' ').c_str());
                         ItemLen += i;
                         RowLen += i;
                         break;
@@ -384,7 +413,7 @@ static void TellMe(const StatType &Stat, const string &Name
         }
         if(*s)s++;
     }
-    
+
     if(FieldOrder.size())
     {
         if(!Sara)goto P1;
@@ -419,7 +448,7 @@ public:
 	                            dosattr(da),
 	#endif
 	                            Name(n) { }
-    
+
     /* Returns the class code for grouping sort */
     int Class(int LinksAreFiles) const
     {
@@ -439,7 +468,7 @@ public:
     	#endif
     	return 1;
     }
-    
+
 	bool operator> (const StatItem &toka) const { return compare(toka, true); }
 	bool operator< (const StatItem &toka) const { return compare(toka, false); }
 	
@@ -454,7 +483,7 @@ public:
         	switch(tolower(*s))
     	    {
     	    	case 'c':
-    	    		Result = GetNameAttr(eka.Stat, eka.Name.c_str()) 
+    	    		Result = GetNameAttr(eka.Stat, eka.Name.c_str())
     	    			   - GetNameAttr(toka.Stat, toka.Name.c_str());
     	    		break;
     	   	 	case 'n':
@@ -505,7 +534,7 @@ public:
     		if(Result)
     			return isupper((int)*s)^suur ? Result>0 : Result<0;
     	}
-        
+
         return false;
     }
 };
@@ -526,7 +555,7 @@ static void Puuhun(const StatType &Stat, const string &Name
         #endif
                    Name);
         StatPuu.push_back(t);
-        
+
 		if(Colors)
 		{
 			#if STARTUP_COUNTER
@@ -576,15 +605,15 @@ static void SortFiles()
 static void DropOut()
 {
     EstimateFields();
-    
+
     if(Sorting.size())SortFiles();
-    
+
     Dumping = true;
-    
+
     unsigned a, b = StatPuu.size();
-    
+
     if(Colors && b && AnsiOpt)Gprintf("\r");
-    
+
 	for(a=0; a<b; ++a)
     {
         StatItem &tmp = StatPuu[a];
@@ -594,11 +623,14 @@ static void DropOut()
         #endif
         	);
     }
-    
+
     StatPuu.clear();
-    
+
     LongestName = 0;
     LongestSize = 0;
+    LongestSizeWithSeps = 0;
+    LongestSizeCompact = 0;
+    LongestLinks = 0;
 	
 	Dumping = false;
 }
@@ -627,32 +659,44 @@ static void SingleFile(const string &Buffer, StatType &Stat)
     #endif
     else
     {
-	    char OwNam[16];
-    	char GrNam[16];
+	    char OwNam[16], OwNum[16];
+    	char GrNam[16], GrNum[16];
 	    const char *Group, *Passwd;
     	
-        string s = GetSize(Buffer, Stat, 0, 0);
-        
         const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
         if(hardlinkfn && Buffer == hardlinkfn)hardlinkfn = NULL;
-        
+
         int i = GetName(Buffer, Stat, 0, false, true, hardlinkfn);
-        
+
         if(i > LongestName)LongestName = i;
-        i = s.size();
+
+        i = GetSize(Buffer, Stat, 0, 0).size();
         if(i > LongestSize)LongestSize = i;
-        
+
+        i = GetSize(Buffer, Stat, 0, -1).size();
+        if(i > LongestSizeCompact)LongestSizeCompact = i;
+
+        i = GetSize(Buffer, Stat, 0, '\'').size();
+        if(i > LongestSizeWithSeps)LongestSizeWithSeps = i;
+
 	    if(!S_ISDIR(Stat.st_mode))
 		    Inodemap.insert(Stat.st_dev, Stat.st_ino, Buffer);
 		
         Passwd = Getpwuid((int)Stat.st_uid);
 		Group  = Getgrgid((int)Stat.st_gid);
-	    if(Passwd && *Passwd)strcpy(OwNam, Passwd);else sprintf(OwNam,"%d",(int)Stat.st_uid);
-    	if( Group &&  *Group)strcpy(GrNam,  Group);else sprintf(GrNam,"%d",(int)Stat.st_gid);
+		sprintf(OwNum,"%d",(int)Stat.st_uid);
+		sprintf(GrNum,"%d",(int)Stat.st_gid);
+	    if(Passwd && *Passwd)strcpy(OwNam, Passwd);else strcpy(OwNam, OwNum);
+    	if( Group &&  *Group)strcpy(GrNam,  Group);else strcpy(GrNam, GrNum);
     	
     	i = strlen(OwNam); if(i > LongestUID)LongestUID = i;
     	i = strlen(GrNam); if(i > LongestGID)LongestGID = i;
-        
+    	i = strlen(OwNum); if(i > LongestUIDvalue)LongestUIDvalue = i;
+    	i = strlen(GrNum); if(i > LongestGIDvalue)LongestGIDvalue = i;
+    	
+    	sprintf(OwNam, "%d", (int)Stat.st_nlink);
+    	i = strlen(OwNam); if(i > LongestLinks) LongestLinks = i;
+
         Puuhun(Stat, Buffer
         #ifdef DJGPP
         , Bla.ff_attrib
@@ -701,14 +745,14 @@ static void ScanDir(const char *Dirrikka)
     StatType Stat;
     struct dirent *ent;
     DIR *dir;
-    
+
     DirName = Dirrikka;
 
     #ifdef DJGPP
     if(DirName.size() && DirName[DirName.size()-1] == ':')
     	DirName += '.';
     #endif
-    
+
     Source = DirName;
 
 R1: if((dir = opendir(Source.c_str())) == NULL)
@@ -744,16 +788,16 @@ P1:			string Tmp = DirOnly(Source);
                     errno, GetError(errno).c_str());
 
         goto End_ScanDir;
-    }    
+    }
     if(!Contents)
     {
         errno = 0;
         Tried = 1;
         goto P1;
     }
-    
+
     DirChangeCheck(Source);
-    
+
     while((ent = readdir(dir)) != NULL)
     {
     	string Buffer = Source;
@@ -774,7 +818,7 @@ End_ScanDir:
 static void EstimateFields()
 {
     int RowLen;
-    
+
     if(PreScan)
     	LongestName++;
     else
@@ -782,6 +826,8 @@ static void EstimateFields()
     	LongestSize = Sara?7:9;
     	LongestGID  = 8;
     	LongestUID  = 8;
+    	LongestSizeWithSeps = LongestSize+3;
+    	LongestSizeCompact = 9;
    	}
    	const char *s;
     for(RowLen=0, s=FieldOrder.c_str(); *s; )
@@ -801,10 +847,14 @@ static void EstimateFields()
                     case 'f':
                         break;
                     case 'S':
-                        s++;
-                        RowLen += 3;
+                        ++s;
+                        RowLen += LongestSizeWithSeps;
+                        break;
                     case 's':
                         RowLen += LongestSize;
+                        break;
+                    case 'z':
+                        RowLen += LongestSizeCompact;
                         break;
                     case 'd':
                         if(DateForm == "%u")
@@ -825,12 +875,27 @@ static void EstimateFields()
                         RowLen += 4;
                         break;
                     case 'g':
+                        if(s[1]=='i' && s[2]=='d')
+                        {
+                            s += 2;
+                            RowLen += LongestGIDvalue;
+                            break;
+                        }
                     	RowLen += LongestGID;
                     	break;
 #endif
                     case 'o':
                         RowLen += LongestUID;
                         break;
+                    case 'u':
+                    {
+                        if(s[1]=='i' && s[2]=='d')
+                        {
+                            s += 2;
+                            RowLen += LongestUIDvalue;
+                        }
+                        break;
+                    }
                     case 'a':
                     {
                         int Len = '1';
@@ -848,10 +913,10 @@ static void EstimateFields()
         }
         if(*s)s++;
     }
-    
+
     RowLen = (Sara?COLS/2:COLS)-1-RowLen;
     if(RowLen < 0)RowLen = 0;
-    
+
     if(!PreScan || LongestName > RowLen)
     	LongestName = RowLen;
 }
@@ -861,14 +926,14 @@ static vector<string> Dirpuu;
 static void DumpDirs()
 {
     EstimateFields();
-    
+
     unsigned a, b=Dirpuu.size();
-    
+
     for(a=0; a<b; ++a)
         ScanDir(Dirpuu[a].c_str());
-    
+
     Dirpuu.clear();
-    
+
     DropOut();
 }
 
@@ -977,6 +1042,16 @@ private:
 				FieldOrder = ".f_.s_.d_.o.xF|";
 				DateForm = "%z";
 				break;
+		    case 5:
+        		FieldOrder = ".a1_.h__.o_.g_.s_.d_.f";
+                DateForm = "%u";
+                Inodemap.enable();
+                break;
+            case 6:
+                FieldOrder = ".a4_.h_.uid_.gid_.z_.d_.F";
+                Links = 3;
+                Compact = 1; Totals = true;
+                break;
     		default:
     			argerror(s);
 		}
@@ -1042,9 +1117,13 @@ public:
 	: arghandler(defopts, argc, argv), Files(false), Help(false)
 	{
         add("-al", "--long",      "\"Standard\" listing format", &Handle::opt_al);
-        add("-a",  "--predef",    "-a0 to -a4: Some predefined formats. "
-                                  "You may want to play with them to find out "
-                                  "how extensive this program is :)",
+        add("-a",  "--predef",    "Predefined aliases.\n"
+                                  "a0: -f\".f_.s.d|\" -F\"%z\" -C -m1 -l1\n"
+                                  "a1: -f\".xF|.a1.xF|.f.s.xF|.d.xF|.o_.g.xF|\" -l1\n"
+                                  "a2: -f\".f_.a4_.o_.g.xF|\" -l0 -C\n"
+                                  "a3: -f\".f_.s_.o.xF|\" -l0 -C\n"
+                                  "a4: -f\".f_.s_.d_.o.xF|\" -F\"%z\" -C -l1\n"
+                                  "a6: -f\".a4_.h_.uid_.gid_.z_.d_.F\" -m1 -l3",
                                   &Handle::opt_a);
         add("-c1", "--colours",   "Enables colours (default, if tty output).", &Handle::opt_c1);
         add("-c",  "--nocolor",   "Disables colours.", &Handle::opt_c);
@@ -1072,6 +1151,8 @@ public:
 #endif
                                                                    "         .a#=Mode as #-decimal octal\n"
                                   "  .F and .G and .O are respectively, without space fitting\n"
+                                  "  .uid and .gid are .o and .g but always in numeric form\n"
+                                  "  .z is .s in \"human-readable\" format\n"
                                   "   anything else=printed\n"
                                   "   Default is `--format="+FieldOrder+"'",
                                   &Handle::opt_f);
@@ -1115,7 +1196,7 @@ public:
         add("-W",  "--ediw",      "Same as -w, but with reverse sort order.", &Handle::opt_W);
         add("-X",  "--width",     "Force screen width, example: -X132",
                                   &Handle::opt_X);
-        
+
         parse();
 	}
 	virtual void defarg(const string &s)
@@ -1132,7 +1213,7 @@ public:
            	Dumping = true;
 
             GetDescrColor("txt", 1);
-            
+
 			Gprintf(VERSIONSTR);
 			
             Gprintf(
@@ -1140,23 +1221,23 @@ public:
             	"\r\33[K\r"
 #endif
                 "Usage: %s [options] {dirs | files }\n", a0.c_str());
-            
+
             SetAttr(15);
             Gprintf("\nOptions:\n");
-            
+
             listoptions();
-            
+
             GetDescrColor("txt", 1);
-            
+
             Gprintf(
             	"\n"
                 "You can set environment variable 'DIRR' for the options.\n"
                 "You can also use 'DIRR_COLORS' -variable for color settings.\n"
                 "Current DIRR_COLORS:\n"
             );
-            
+
             PrintSettings();
-            
+
             exit(0);
 		}
     }
@@ -1170,7 +1251,7 @@ static void Term(int dummy)
 
     RowLen=1;
     Summat();
-    
+
     exit(0);
 }
 #endif
@@ -1178,7 +1259,7 @@ static void Term(int dummy)
 int main(int argc, const char *const *argv)
 {
     if(!isatty(1))Colors = false;
-    
+
     #ifdef DJGPP
     _djstat_flags &= ~(_STAT_EXEC_EXT | _STAT_WRITEBIT);
     #endif
@@ -1188,7 +1269,7 @@ int main(int argc, const char *const *argv)
 	#ifdef SIGINT
     signal(SIGINT,  Term);
     #endif
-    
+
     #ifdef SIGTERM
     signal(SIGTERM, Term);
     #endif
