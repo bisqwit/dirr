@@ -110,9 +110,9 @@
     // red: unwanted temp files
     "byext(4i core DEADJOE)"
     // magenta: sound-only multimedia files
-    "byext(5i *.mid *.mod *.mtm *.s3m *.xm* *.mp2 *.mp3 *.wav *.ogg *.smp *.au *.ult *.669 *.aac *.spc *.nsf)"
+    "byext(5i *.mid *.mod *.mtm *.s3m *.xm* *.mp2 *.mp3 *.wav *.ogg *.smp *.au *.ult *.669 *.aac *.spc *.nsf *.wma)"
     // brown: programming
-    "byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak)"
+    "byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.S *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak configure *.in *.am)"
     // dark gray: temp files
     "byext(8i *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
     // bright green: executable files

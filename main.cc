@@ -61,6 +61,7 @@ static int LongestUID, LongestUIDvalue;
 static int LongestGID, LongestGIDvalue;
 static int LongestLinks;
 
+static bool ShowDotFiles = ALWAYS_SHOW_DOTFILES;
 static bool Contents, PreScan, Sara;
 static int DateTime;
 
@@ -84,20 +85,21 @@ static void SetDefaultOptions()
 	Totals  = true; // Modify with -m
 	Pagebreaks = false; // Set with -p
 	AnsiOpt = true; // Clear with -P
-	
+	ShowDotFiles = ALWAYS_SHOW_DOTFILES; // Set with -A
+
 	TotalSep= 0;    // Modify with -Mx
-	
+
 	Sorting = "pmgU";
 	DateForm = "%d.%m.%y %H:%M";
 				    // Modify with -F
-				
+
 				    // Modify with -f
 	#ifdef DJGPP
 	FieldOrder = ".f.s_.d";
 	#else
 	FieldOrder = ".f.s_.a4_.d_.o_.g";
 	#endif
-	
+
 	BlkStr = "<B%u,%u>";	// Modify with -db
 	ChrStr = "<C%u,%u>";	// Modify with -dc
 }
@@ -118,7 +120,7 @@ public:
 	}
 	void enable()
 	{
-		enabled = true;	
+		enabled = true;
 	}
 	void insert(dev_t dev, ino_t ino, const string &name)
 	{
@@ -800,6 +802,7 @@ P1:			string Tmp = DirOnly(Source);
 
     while((ent = readdir(dir)) != NULL)
     {
+    	if(!ShowDotFiles && ent->d_name[0] == '.') continue;
     	string Buffer = Source;
         if(Buffer[Buffer.size()-1] != '/')Buffer += '/';
         Buffer += ent->d_name;
@@ -1099,6 +1102,11 @@ private:
         Sara = true;
     	return s;
     }
+    string opt_A(const string &s)
+    {
+        ShowDotFiles = true;
+    	return s;
+    }
     string opt_W(const string &s)
     {
     	Compact = 1;
@@ -1116,6 +1124,7 @@ public:
 	Handle(const char *defopts, int argc, const char *const *argv)
 	: arghandler(defopts, argc, argv), Files(false), Help(false)
 	{
+        add("-A",  "--dotfiles",  "Show files where names begin with a '.'", &Handle::opt_A);
         add("-al", "--long",      "\"Standard\" listing format", &Handle::opt_al);
         add("-a",  "--predef",    "Predefined aliases.\n"
                                   "a0: -f\".f_.s.d|\" -F\"%z\" -C -m1 -l1\n"
