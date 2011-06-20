@@ -9,7 +9,9 @@
 #include <sys/statfs.h>
 #endif
 #ifdef HAVE_SYS_MOUNT_H
+#ifndef FREEBSD50
 #include <sys/mount.h>
+#endif
 #endif
 
 #include "colouring.hh"

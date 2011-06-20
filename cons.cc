@@ -9,6 +9,12 @@ using namespace std;
 #include "config.h"
 #include "cons.hh"
 
+#ifdef FREEBSD50
+#include <linux_ioctl.h>
+#define TCGETA LINUX_TCGETA
+#define TCSETA LINUX_TCSETA
+#endif
+
 #ifndef linux
 // In SunOS, sys/ioctl.h doesn't define ioctl()
 // function, but it's instead in unistd.h.
@@ -157,6 +163,18 @@ static void FlushSetAttr()
 #ifndef DJGPP
 static int Ggetch()
 {
+#ifdef HAVE_TERMIOS_H
+	struct termios term, back;
+	int c;
+	tcgetattr(0, &term);
+	tcgetattr(0, &back);
+	term.c_lflag &= ~(ECHO | ICANON);
+	term.c_cc[VMIN] = 1;
+	tcsetattr(0, TCSAFLUSH, &term);
+	c = getchar();
+	tcsetattr(0, TCSAFLUSH, &back);
+	return c;
+#else
 	struct termio term, back;
 	int c;
 	ioctl(0, TCGETA, &term);
@@ -167,6 +185,7 @@ static int Ggetch()
 	c = getchar();
 	ioctl(0, TCSETA, &back);
 	return c;
+#endif
 }
 #endif
 
