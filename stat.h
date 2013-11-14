@@ -11,8 +11,11 @@
 #define LStatFunc lstat64
 
 #define SizeType int64_t
+
 #ifdef __x86_64
 # define SizeFormat "%ld"
+# define SizeCast (long)
 #else
 # define SizeFormat "%lld"
+# define SizeCast (long long)
 #endif

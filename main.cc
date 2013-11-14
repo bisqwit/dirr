@@ -1253,10 +1253,9 @@ public:
 };
 
 #if defined(SIGINT) || defined(SIGTERM)
-static void Term(int dummy)
+static void Term(int /*dummy*/)
 {
-	Gprintf("^C\n");
-    dummy=dummy;
+    Gprintf("^C\n");
 
     RowLen=1;
     Summat();

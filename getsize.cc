@@ -126,7 +126,8 @@ P1:
         }
 
         string TmpBuf;
-        PrintNum(TmpBuf, Seps, SizeFormat, l);
+        PrintNum(TmpBuf, Seps, SizeFormat, SizeCast l);
+
         TmpBuf += Suffix;
         sprintf(Buf, "%*s", Space, TmpBuf.c_str());
 

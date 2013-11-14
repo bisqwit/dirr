@@ -24,16 +24,16 @@ LDFLAGS=-g
 
 #####
 # These options were set by ./configure
-# at Mon Jun 13 20:25:35 EEST 2011
-# for Linux chii 2.6.35.4 #1 SMP Sun Sep 19 02:35:24 EEST 2010 x86_64 GNU/Linux
+# at Thu Nov 14 15:19:06 EET 2013
+# for Linux chii 3.11.4 #1 SMP Tue Oct 8 15:31:54 EEST 2013 x86_64 GNU/Linux
 # To change, run ./configure again.
 #
-CC=gcc-4.6
-CPP=cpp-4.6
-CXX=g++-4.6
-OPTIM +=  -ftree-vectorize -minline-stringops-dynamically -ffast-math -mrecip -fvpt -ffunction-cse -ffunction-sections -fdata-sections
-CPPFLAGS +=  -fopenmp -DUSE_PTHREADS=0 -DHASH_MAP=0
-LDFLAGS +=  -fopenmp -Xlinker --gc-sections
+CC=clang
+CPP=clang++
+CXX=clang++
+OPTIM +=  -ffast-math -ffunction-sections -fdata-sections
+CPPFLAGS +=  -DUSE_PTHREADS=0 -DHASH_MAP=0
+LDFLAGS += 
 WARNINGS +=  -Wall -Wundef -Wcast-qual -Wpointer-arith -Wconversion -Wwrite-strings -Wsign-compare -Wredundant-decls -Winit-self -Wextra -Wparentheses -Wcast-align -Wformat -Wno-conversion
 CWARNINGS +=  -Waggregate-return -Wshadow -Winline -Wstrict-prototypes -Wmissing-prototypes
 CXXWARNINGS +=  -Woverloaded-virtual -Weffc++ -Wno-non-virtual-dtor
