@@ -62,6 +62,7 @@ cat >>config.h <<EOF
 EOF
 if test "$os_type" = Linux || \
    test "$os_type" = HP-UX || \
+   test "$os_type" = Darwin || \
    test "$os_type" = SunOS; then
   echo '#define HAVE_STATFS 1' >>config.h
   echo "It seems like you're running $os_type... Ok."
@@ -83,8 +84,15 @@ EOF
     echo "	conftest.cpp:" >> $DEVNULL
     cat conftest.cpp >> $DEVNULL
     echo "	$CXX conftest.cpp $CXXFLAGS $LDFLAGS $2 -o conftest" >> $DEVNULL
-    $CXX conftest.cpp $CXXFLAGS $LDFLAGS $2 -o conftest 2>>$DEVNULL
+    $CXX conftest.cpp $CXXFLAGS $LDFLAGS $2 -o conftest 2>>conftest.log2
+
     TMP="$?"
+
+    if [ $TMP = 0 ]; then
+      if grep -q "argument unused during compilation" conftest.log2; then TMP=1; fi
+      if grep -q "unknown .*option" conftest.log2; then TMP=1; fi
+    fi
+
     rm -f conftest*
     return $TMP
 }
@@ -123,9 +131,12 @@ LDFLAGS=""
 OPTIM=""
 
 do_echo -n "Determining compiler version to use... "
-select_tool CXX g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done) 2>/dev/null`
-select_tool CPP cpp `(IFS=':'; for s in $PATH;do cd "$s"&&echo cpp-*;done) 2>/dev/null`
-select_tool CC  gcc cc `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;done) 2>/dev/null`
+select_tool CXX g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done) 2>/dev/null` clang++
+select_tool CPP g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done) 2>/dev/null` clang++
+select_tool CC  gcc cc `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;done) 2>/dev/null` clang
+#select_tool CXX clang++
+#select_tool CPP clang++
+#select_tool CC clang
 do_echo ""
 
 do_echo -n "Checking if the determined compiler works... "
@@ -189,7 +200,7 @@ if [ "$CC" = "icc" ]; then
   #fi
   true
 else
-  LDFLAGS="$LDFLAGS -Xlinker --gc-sections"
+  #LDFLAGS="$LDFLAGS -Xlinker --gc-sections"
 
   do_echo -n "Checking if your compiler supports -minline-stringops-dynamically... "
   if cc_check '<string.h>' '-minline-stringops-dynamically' 'char buf1[64],buf2[80]="kissa"; memcpy(buf1,buf2,sizeof(buf2)-strlen(buf2));'; then
