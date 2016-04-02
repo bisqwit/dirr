@@ -29,7 +29,7 @@ bool Totals;
 int TotalSep;
 int Compact;
 
-void Summat()
+void PrintSums()
 {
 #if HAVE_STATFS
 #if defined(SUNOS)||defined(__sun)||defined(SOLARIS)

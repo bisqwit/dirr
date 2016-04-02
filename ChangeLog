@@ -1,53 +1,59 @@
-Sun 2013-11-14 15:21 Bisqwit <bisqwit@iki.fi>
+Sun 2016-04-03 01:38 Joel Yliluoma <bisqwit@iki.fi>
+
+	* Version 3.33
+	
+	    - High-performance filename matching
+
+Sun 2013-11-14 15:21 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.32.2
 	
 	    - Mac OSX support
 
-Sun 2011-06-20 20:23  Bisqwit <bisqwit@iki.fi>
+Sun 2011-06-20 20:23  Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.32.1
 	
 	    - FreeBSD and Macos compatibility
 
-Sun 2011-06-13 20:29  Bisqwit <bisqwit@iki.fi>
+Sun 2011-06-13 20:29  Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.32
 
-Sun 2010-04-10 21:44  Bisqwit <bisqwit@iki.fi>
+Sun 2010-04-10 21:44  Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.31
 
-Sun 2010-04-03 23:59  Bisqwit <bisqwit@iki.fi>
+Sun 2010-04-03 23:59  Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.30
 	
-Sun 2009-10-23 20:52 Bisqwit <bisqwit@iki.fi>
+Sun 2009-10-23 20:52 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.29.2.2
 	
-Sun 2008-01-31 11:27 Bisqwit <bisqwit@iki.fi>
+Sun 2008-01-31 11:27 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.29.2
 	
-Sun 2007-09-02 23:58 Bisqwit <bisqwit@iki.fi>
+Sun 2007-09-02 23:58 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.29.1
 	
-Sun 2007-02-11 00:00 Bisqwit <bisqwit@iki.fi>
+Sun 2007-02-11 00:00 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.29.0
 	
 	    - Compilation fixes
 
-Mon 2004-08-09 18:44 Bisqwit <bisqwit@iki.fi>
+Mon 2004-08-09 18:44 Joel Yliluoma <bisqwit@iki.fi>
 	
 	* Version 3.28.0
 	
 	    - stat64 support - now files bigger than 2G
 	      are supported.
 
-Mon 2000-11-06 17:54 Bisqwit <bisqwit@iki.fi>
+Mon 2000-11-06 17:54 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.24
 	
@@ -56,7 +62,7 @@ Mon 2000-11-06 17:54 Bisqwit <bisqwit@iki.fi>
 	      now somehow even if the files contain
 	      undisplayable characters.
 	    
-Wed 2000-09-06 18:43 Bisqwit <bisqwit@iki.fi>
+Wed 2000-09-06 18:43 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.23
 	
@@ -66,7 +72,7 @@ Wed 2000-09-06 18:43 Bisqwit <bisqwit@iki.fi>
 	    - Added support for SunOS doors.
 	      See file dirrsets.hh
 	    
-Thu 2000-08-31 18:40 Bisqwit <bisqwit@iki.fi>
+Thu 2000-08-31 18:40 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.22
 	
@@ -77,7 +83,7 @@ Thu 2000-08-31 18:40 Bisqwit <bisqwit@iki.fi>
 	    - Actually none of the current TODOes
 	      were done...
 	    
-Thu 2000-08-31 06:15 Bisqwit <bisqwit@iki.fi>
+Thu 2000-08-31 06:15 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.21
 	
@@ -89,7 +95,7 @@ Thu 2000-08-31 06:15 Bisqwit <bisqwit@iki.fi>
 	    
 	    - Added info[&], a new setting.
 
-Wed 2000-08-30 21:16 Bisqwit <bisqwit@iki.fi>
+Wed 2000-08-30 21:16 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.20
 	
@@ -97,39 +103,39 @@ Wed 2000-08-30 21:16 Bisqwit <bisqwit@iki.fi>
 	      Thanks to Warp, my fine tester
 	      for reporting both of them. :)
 
-Wed 2000-08-30 01:10 Bisqwit <bisqwit@iki.fi>
+Wed 2000-08-30 01:10 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.19
 	
 	    - Fixed device major and minor numbers displaying.
 
-Sun 2000-08-20 23:00 Bisqwit <bisqwit@iki.fi>
+Sun 2000-08-20 23:00 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.18
 	
 	    - Finished the work with statfs() for SunOS.
 	    - Now free disk space is reported there too, whee :)
 
-Sun 2000-08-20 22:40 Bisqwit <bisqwit@iki.fi>
+Sun 2000-08-20 22:40 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.17
 	   
 	    - Added rar-compressed distribution...
 
-Sun 2000-08-20 21:40 Bisqwit <bisqwit@iki.fi>
+Sun 2000-08-20 21:40 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.16
 	
 	    - Removed oldversions directory.
 
-Sun 2000-08-20 21:40 Bisqwit <bisqwit@iki.fi>
+Sun 2000-08-20 21:40 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.15
 	
 	    - Added README :)
 	    - Added dirrsets.h
 
-Sun 2000-08-20 21:24 Bisqwit <bisqwit@iki.fi>
+Sun 2000-08-20 21:24 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.14
 	    - Some rewrites.
@@ -137,7 +143,7 @@ Sun 2000-08-20 21:24 Bisqwit <bisqwit@iki.fi>
 	      plain source file distribution.
 	    - GPL.
 	  
-??? Bisqwit <bisqwit@iki.fi>
+??? Joel Yliluoma <bisqwit@iki.fi>
 	
 	* Version 3.00
 	    - C++.

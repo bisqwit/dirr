@@ -11,7 +11,7 @@ CXXOPTS=$(WARNINGS) $(CXXWARNINGS)
 
 
 # Optimization
-OPTIM=-O3
+OPTIM=-Ofast
 #-march=pentiumpro
 
 # Flags.

@@ -8,3 +8,6 @@
 
 - Makefile: 
    Move DEFINES to config.h, make it easily configurable.
+
+- When listing files from a number of directories, print a grand total.
+

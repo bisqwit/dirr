@@ -12,16 +12,7 @@
 // These settings can be changed by user.
 
 // Recommended, adds speed
-#define CACHE_GETSET 1
-
-// This too
-#define CACHE_NAMECOLOR 1
-
-// This too
 #define CACHE_UIDGID 1
-
-// Recommended. Disable if it bugs you...
-#define NEW_WILDMATCH 1
 
 // They can be disabled if you do not want them.
 #define SUPPORT_BRACKETS 1

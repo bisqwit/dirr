@@ -1,13 +1,13 @@
 /*
 
-	Unix directorylister (replacement for ls command)
-	Copyright (C) 1992,2000 Bisqwit (http://iki.fi/bisqwit/)
-	
+    Unix directorylister (replacement for ls command)
+    Copyright (C) 1992,2000 Bisqwit (http://iki.fi/bisqwit/)
+
 */
 
 #define VERSIONSTR \
-    "DIRR "VERSION" copyright (C) 1992,2010 Bisqwit (http://iki.fi/bisqwit/)\n" \
-    "This program is under GPL. dirr-"VERSION".{rar,zip,tar.{gz,bz2}}\n" \
+    "DIRR " VERSION " copyright (C) 1992,2010 Bisqwit (http://iki.fi/bisqwit/)\n" \
+    "This program is under GPL. dirr-" VERSION ".{rar,zip,tar.{gz,bz2}}\n" \
     "are available at the homepage of the author.\n" \
     "About some ideas about this program, thanks to Warp.\n"
 
@@ -21,7 +21,6 @@
 
 #include "config.h"
 #include "pwfun.hh"
-#include "wildmatch.hh"
 #include "setfun.hh"
 #include "strfun.hh"
 #include "cons.hh"
@@ -73,88 +72,88 @@ static void EstimateFields();
 
 static void SetDefaultOptions()
 {
-	PreScan = true; // Clear with -e
-	Sara    = false;// Set with -C
-	Compact = 0;    // Set with -m
-	#ifdef S_ISLNK
-	Links   = 3;    // Modify with -l#
-	#endif
-	Colors  = true; // Clear with -c
-	Contents= true; // Clear with -D
-	DateTime= 2;    // Modify with -d#
-	Totals  = true; // Modify with -m
-	Pagebreaks = false; // Set with -p
-	AnsiOpt = true; // Clear with -P
-	ShowDotFiles = ALWAYS_SHOW_DOTFILES; // Set with -A
+    PreScan = true; // Clear with -e
+    Sara    = false;// Set with -C
+    Compact = 0;    // Set with -m
+    #ifdef S_ISLNK
+    Links   = 3;    // Modify with -l#
+    #endif
+    Colors  = isatty(1); // Clear with -c, set with -c1
+    Contents= true; // Clear with -D
+    DateTime= 2;    // Modify with -d#
+    Totals  = true; // Modify with -m
+    Pagebreaks = false; // Set with -p
+    AnsiOpt = true; // Clear with -P
+    ShowDotFiles = ALWAYS_SHOW_DOTFILES; // Set with -A
 
-	TotalSep= 0;    // Modify with -Mx
+    TotalSep= 0;    // Modify with -Mx
 
-	Sorting = "pmgU";
-	DateForm = "%d.%m.%y %H:%M";
-				    // Modify with -F
+    Sorting = "pmgU";
+    DateForm = "%d.%m.%y %H:%M";
+                    // Modify with -F
 
-				    // Modify with -f
-	#ifdef DJGPP
-	FieldOrder = ".f.s_.d";
-	#else
-	FieldOrder = ".f.s_.a4_.d_.o_.g";
-	#endif
+                    // Modify with -f
+    #ifdef DJGPP
+    FieldOrder = ".f.s_.d";
+    #else
+    FieldOrder = ".f.s_.a4_.d_.o_.g";
+    #endif
 
-	BlkStr = "<B%u,%u>";	// Modify with -db
-	ChrStr = "<C%u,%u>";	// Modify with -dc
+    BlkStr = "<B%u,%u>"; // Modify with -db
+    ChrStr = "<C%u,%u>"; // Modify with -dc
 }
 
 #include <map>
 static class Inodemap
 {
-	typedef map<ino_t, string> inomap;
-	typedef map<dev_t, inomap> devmap;
-	devmap items;
-	bool enabled;
+    typedef map<ino_t, string> inomap;
+    typedef map<dev_t, inomap> devmap;
+    devmap items;
+    bool enabled;
 public:
-	Inodemap() : items(), enabled(true) { }
-	void disable()
-	{
-		enabled = false;
-		items.clear();
-	}
-	void enable()
-	{
-		enabled = true;
-	}
-	void insert(dev_t dev, ino_t ino, const string &name)
-	{
-		if(enabled && !has(dev, ino))
-			items[dev][ino] = name;
-	}
-	bool has(dev_t dev, ino_t ino) const
-	{
-		devmap::const_iterator i = items.find(dev);
-		if(i != items.end())
-		{
-			inomap::const_iterator j = i->second.find(ino);
-			if(j != i->second.end())return true;
-		}
-		return false;
-	}
-	const char *get(dev_t dev, ino_t ino) const
-	{
-		devmap::const_iterator i = items.find(dev);
-		if(i != items.end())
-		{
-			inomap::const_iterator j = i->second.find(ino);
-			if(j != i->second.end())
-				return j->second.c_str();
-		}
-		return NULL;
-	}
+    Inodemap() : items(), enabled(true) { }
+    void disable()
+    {
+        enabled = false;
+        items.clear();
+    }
+    void enable()
+    {
+        enabled = true;
+    }
+    void insert(dev_t dev, ino_t ino, const string &name)
+    {
+        if(enabled && !has(dev, ino))
+            items[dev][ino] = name;
+    }
+    bool has(dev_t dev, ino_t ino) const
+    {
+        devmap::const_iterator i = items.find(dev);
+        if(i != items.end())
+        {
+            inomap::const_iterator j = i->second.find(ino);
+            if(j != i->second.end())return true;
+        }
+        return false;
+    }
+    const char *get(dev_t dev, ino_t ino) const
+    {
+        devmap::const_iterator i = items.find(dev);
+        if(i != items.end())
+        {
+            inomap::const_iterator j = i->second.find(ino);
+            if(j != i->second.end())
+                return j->second.c_str();
+        }
+        return NULL;
+    }
 } Inodemap;
 
 static void TellMe(const StatType &Stat, const string &Name
 #ifdef DJGPP
-	, unsigned int dosattr
+    , unsigned int dosattr
 #endif
-	)
+    )
 {
     int Len;
     char OwNam[16];
@@ -213,16 +212,16 @@ static void TellMe(const StatType &Stat, const string &Name
     if(Passwd && *Passwd)strcpy(OwNam, Passwd);else sprintf(OwNam,"%d",(int)Stat.st_uid);
     if( Group &&  *Group)strcpy(GrNam,  Group);else sprintf(GrNam,"%d",(int)Stat.st_gid);
 
-   	Len = strlen(OwNam); if(Len > LongestUID)LongestUID = Len;
-   	Len = strlen(GrNam); if(Len > LongestGID)LongestGID = Len;
+    Len = strlen(OwNam); if(Len > LongestUID)LongestUID = Len;
+    Len = strlen(GrNam); if(Len > LongestGID)LongestGID = Len;
 
     for(ItemLen=0, s=FieldOrder.c_str(); *s; )
     {
-    	NeedSpace=0;
+        NeedSpace=0;
         switch(*s)
         {
             case '.':
-            	NeedSpace=1;
+                NeedSpace=1;
                 switch(*++s)
                 {
                     case 'a':
@@ -231,20 +230,27 @@ static void TellMe(const StatType &Stat, const string &Name
                         Len = '1';
                         if((*s>='0')&&(*s<='9'))Len = *s;
                         int i = PrintAttr(Stat, Len
-						#ifdef DJGPP
-                        	, dosattr
-						#endif
-                    	);
+            #ifdef DJGPP
+                                          , dosattr
+            #endif
+                                         );
                         ItemLen += i;
                         RowLen += i;
                         break;
                     }
                     case 'x':
-                        s++;
-                        SetAttr(GetHex(7, (const char **)&s));
+                    {
+                        ++s;
+                        int attr = -1;
+                        #define x(c) (((c)>='0'&&(c)<='9') ? ((c)-'0') : ((c)>='A'&&(c)<='F') ? ((c)-'A') : ((c)-'a'))
+                        if(std::isxdigit(*s)) { attr =           x(*s); ++s;
+                        if(std::isxdigit(*s)) { attr = attr*16 + x(*s); ++s; }}
+                        SetAttr(attr < 0 ? 7 : attr);
+                        #undef x
                         s--;
                         NeedSpace=0;
                         break;
+                    }
                     case 'o':
                     case 'O':
                     {
@@ -271,12 +277,12 @@ static void TellMe(const StatType &Stat, const string &Name
                         break;
                     }
 #ifdef DJGPP
-					case 'G':
+                    case 'G':
                     case 'g':
                     case 'h':
                         break;
 #else
-					case 'G':
+                    case 'G':
                     case 'g':
                     {
                         if(s[1]=='i' && s[2]=='d')
@@ -316,7 +322,7 @@ static void TellMe(const StatType &Stat, const string &Name
                         const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
 
                         if(hardlinkfn && Name == hardlinkfn)
-                        	hardlinkfn = NULL;
+                            hardlinkfn = NULL;
 
                         GetName(Name, Stat, LongestName,
                                 (Sara||s[1]) && (*s=='f'),
@@ -348,7 +354,7 @@ static void TellMe(const StatType &Stat, const string &Name
                     case 'd':
                     {
                         char Buf[64]; /* For the date */
-                    	char *s;
+                        char *s;
                         int i;
 
                         time_t t;
@@ -375,17 +381,17 @@ static void TellMe(const StatType &Stat, const string &Name
                         }
                         else if(DateForm == "%z")
                         {
-                        	struct tm *TM = localtime(&t);
+                            struct tm *TM = localtime(&t);
                             time_t now = time(NULL);
                             int m = TM->tm_mon, d=TM->tm_mday, y=TM->tm_year;
                             struct tm *NOW = localtime(&now);
-                        	if(NOW->tm_year == y || (y==NOW->tm_year-1 && m>NOW->tm_mon))
-                        	{
-                        		sprintf(Buf, "%3d.%d", d,m+1);
-                        		if(Buf[5])strcpy(Buf, Buf+1);
-                        	}
-                        	else
-                        		sprintf(Buf, "%5d", y+1900);
+                            if(NOW->tm_year == y || (y==NOW->tm_year-1 && m>NOW->tm_mon))
+                            {
+                                sprintf(Buf, "%3d.%d", d,m+1);
+                                if(Buf[5])strcpy(Buf, Buf+1);
+                            }
+                            else
+                                sprintf(Buf, "%5d", y+1900);
                         }
                         else
                             strftime(Buf, sizeof Buf, DateForm.c_str(), localtime(&t));
@@ -426,116 +432,116 @@ P1:         Gprintf("\n");
         }
         else
         {
-			if(NeedSpace)Gputch(' ');
+            if(NeedSpace)Gputch(' ');
             RowLen++;
-		}
-	}
+        }
+    }
 }
 
 class StatItem
 {
 public:
-	StatType Stat;
+    StatType Stat;
     #ifdef DJGPP
     unsigned dosattr;
     #endif
     string Name;
 public:
-	StatItem(const StatType &t,
-	#ifdef DJGPP
-	         unsigned da,
-	#endif
-	         const string &n) : Stat(t),
-	#ifdef DJGPP
-	                            dosattr(da),
-	#endif
-	                            Name(n) { }
+    StatItem(const StatType &t,
+    #ifdef DJGPP
+             unsigned da,
+    #endif
+             const string &n) : Stat(t),
+    #ifdef DJGPP
+                                dosattr(da),
+    #endif
+                                Name(n) { }
 
     /* Returns the class code for grouping sort */
     int Class(int LinksAreFiles) const
     {
-    	if(S_ISDIR(Stat.st_mode))return 0;
+        if(S_ISDIR(Stat.st_mode))return 0;
         #ifdef S_ISLNK
-    	if(S_ISLNK(Stat.st_mode))return 2-LinksAreFiles;
+        if(S_ISLNK(Stat.st_mode))return 2-LinksAreFiles;
         #else
         LinksAreFiles = LinksAreFiles; /* Not used */
         #endif
-    	if(S_ISCHR(Stat.st_mode))return 3;
-    	if(S_ISBLK(Stat.st_mode))return 4;
-    	#ifdef S_ISFIFO
-    	if(S_ISFIFO(Stat.st_mode))return 5;
-    	#endif
+        if(S_ISCHR(Stat.st_mode))return 3;
+        if(S_ISBLK(Stat.st_mode))return 4;
+        #ifdef S_ISFIFO
+        if(S_ISFIFO(Stat.st_mode))return 5;
+        #endif
         #ifdef S_ISSOCK
-    	if(S_ISSOCK(Stat.st_mode))return 6;
-    	#endif
-    	return 1;
+        if(S_ISSOCK(Stat.st_mode))return 6;
+        #endif
+        return 1;
     }
 
-	bool operator> (const StatItem &toka) const { return compare(toka, true); }
-	bool operator< (const StatItem &toka) const { return compare(toka, false); }
-	
-	bool compare (const StatItem &toka, bool suur) const
+    bool operator> (const StatItem &toka) const { return compare(toka, true); }
+    bool operator< (const StatItem &toka) const { return compare(toka, false); }
+
+    bool compare (const StatItem &toka, bool suur) const
     {
-    	register const class StatItem &eka = *this;
-    	
+        const class StatItem &eka = *this;
+
         for(const char *s=Sorting.c_str(); *s; s++)
         {
-        	SizeType Result=0;
-        	
-        	switch(tolower(*s))
-    	    {
-    	    	case 'c':
-    	    		Result = GetNameAttr(eka.Stat, eka.Name.c_str())
-    	    			   - GetNameAttr(toka.Stat, toka.Name.c_str());
-    	    		break;
-    	   	 	case 'n':
-       		 		Result = strcmp(eka.Name.c_str(), toka.Name.c_str());
-       				break;
-    	   	 	case 'm':
-       		 		Result = strcasecmp(eka.Name.c_str(), toka.Name.c_str());
-       				break;
-    	   	 	case 's':
-        			Result = eka.Stat.st_size - toka.Stat.st_size;
-        			break;
-    	    	case 'd':
-        			switch(DateTime)
-        			{
-        				case 1: Result = eka.Stat.st_atime-toka.Stat.st_atime; break;
-    	    			case 2: Result = eka.Stat.st_mtime-toka.Stat.st_mtime; break;
-        				case 3: Result = eka.Stat.st_ctime-toka.Stat.st_ctime;
-        			}
-        			break;
-    	    	case 'u':
-        			Result = (int)eka.Stat.st_uid - (int)toka.Stat.st_uid;
-        			break;
-    	    	case 'g':
-        			Result = (int)eka.Stat.st_gid - (int)toka.Stat.st_gid;
-        			break;
-    	    	case 'h':
-        			Result = (int)eka.Stat.st_nlink - (int)toka.Stat.st_nlink;
-        			break;
-    		   	case 'r':
-        			Result = eka.Class(0) - toka.Class(0);
-        			break;
-    		   	case 'p':
-        			Result = eka.Class(1) - toka.Class(1);
-        			break;
-        		default:
-        		{
-        			const char *t = Sorting.c_str();
-    		        SetAttr(GetDescrColor("txt", 1));
-    			    Gprintf("\nError: `-o");
-    			    while(t < s)Gputch(*t++);
-    			    GetModeColor("info", '?');
-    			    Gputch(*s++);
-    		        SetAttr(GetDescrColor("txt", 1));
-    		        Gprintf("%s'\n\n", s);
-    		        return (Sorting = ""), 0;
-    		    }
-    		}
-    		if(Result)
-    			return isupper((int)*s)^suur ? Result>0 : Result<0;
-    	}
+            SizeType Result=0;
+
+            switch(tolower(*s))
+            {
+                case 'c':
+                    Result = GetNameAttr(eka.Stat, eka.Name.c_str())
+                           - GetNameAttr(toka.Stat, toka.Name.c_str());
+                    break;
+                case 'n':
+                    Result = strcmp(eka.Name.c_str(), toka.Name.c_str());
+                    break;
+                case 'm':
+                    Result = strcasecmp(eka.Name.c_str(), toka.Name.c_str());
+                    break;
+                case 's':
+                    Result = eka.Stat.st_size - toka.Stat.st_size;
+                    break;
+                case 'd':
+                    switch(DateTime)
+                    {
+                        case 1: Result = eka.Stat.st_atime-toka.Stat.st_atime; break;
+                        case 2: Result = eka.Stat.st_mtime-toka.Stat.st_mtime; break;
+                        case 3: Result = eka.Stat.st_ctime-toka.Stat.st_ctime;
+                    }
+                    break;
+                case 'u':
+                    Result = (int)eka.Stat.st_uid - (int)toka.Stat.st_uid;
+                    break;
+                case 'g':
+                    Result = (int)eka.Stat.st_gid - (int)toka.Stat.st_gid;
+                    break;
+                case 'h':
+                    Result = (int)eka.Stat.st_nlink - (int)toka.Stat.st_nlink;
+                    break;
+                case 'r':
+                    Result = eka.Class(0) - toka.Class(0);
+                    break;
+                case 'p':
+                    Result = eka.Class(1) - toka.Class(1);
+                    break;
+                default:
+                {
+                    const char *t = Sorting.c_str();
+                    SetAttr(GetDescrColor("txt", 1));
+                    Gprintf("\nError: `-o");
+                    while(t < s)Gputch(*t++);
+                    GetModeColor("info", '?');
+                    Gputch(*s++);
+                    SetAttr(GetDescrColor("txt", 1));
+                    Gprintf("%s'\n\n", s);
+                    return (Sorting = ""), 0;
+                }
+            }
+            if(Result)
+                return isupper((int)*s)^suur ? Result>0 : Result<0;
+        }
 
         return false;
     }
@@ -545,63 +551,63 @@ static vector <StatItem> StatPuu;
 
 static void Puuhun(const StatType &Stat, const string &Name
 #ifdef DJGPP
-	, unsigned int attr
+    , unsigned int attr
 #endif
-	)
+    )
 {
-	if(PreScan)
-	{
-		StatItem t(Stat,
+    if(PreScan)
+    {
+        StatItem t(Stat,
         #ifdef DJGPP
                    attr,
         #endif
                    Name);
         StatPuu.push_back(t);
 
-		if(Colors)
-		{
-			#if STARTUP_COUNTER
-			if(AnsiOpt)
-			{
-				int b, c, d;
-				
-				unsigned prevsize = StatPuu.size() - 1;
-				
-				for(b=d=1; (c=prevsize/b) != 0; b*=10, d++)if(c%10)break;
-				if(!prevsize) d = 0;
-				
-				for(c=0; c<d; c++)Gputch('\b');
-				if(!prevsize) c = 1;
-				
-				while(c)
-				{
-					Gprintf("%d", (StatPuu.size()/b)%10);
-					b /= 10;
-					c--;
-				}
-				
-				fflush(stdout);
-			}
-			else
-				Gprintf("%u\r", StatPuu.size());
-			#endif
-		}
-	}
-	else
-	{
-		Dumping = true;
-		TellMe(Stat, Name
+        if(Colors)
+        {
+            #if STARTUP_COUNTER
+            if(AnsiOpt)
+            {
+                int b, c, d;
+
+                unsigned prevsize = StatPuu.size() - 1;
+
+                for(b=d=1; (c=prevsize/b) != 0; b*=10, d++)if(c%10)break;
+                if(!prevsize) d = 0;
+
+                for(c=0; c<d; c++)Gputch('\b');
+                if(!prevsize) c = 1;
+
+                while(c)
+                {
+                    Gprintf("%d", (StatPuu.size()/b)%10);
+                    b /= 10;
+                    c--;
+                }
+
+                fflush(stdout);
+            }
+            else
+                Gprintf("%u\r", StatPuu.size());
+            #endif
+        }
+    }
+    else
+    {
+        Dumping = true;
+        TellMe(Stat, Name
         #ifdef DJGPP
         , attr
         #endif
-		);
-		Dumping = false;
-	}
+        );
+        Dumping = false;
+    }
 }
 
 static void SortFiles()
 {
-	sort(StatPuu.begin(), StatPuu.end());
+    sort(StatPuu.begin(), StatPuu.end());
 }
 
 static void DropOut()
@@ -616,14 +622,14 @@ static void DropOut()
 
     if(Colors && b && AnsiOpt)Gprintf("\r");
 
-	for(a=0; a<b; ++a)
+    for(a=0; a<b; ++a)
     {
         StatItem &tmp = StatPuu[a];
         TellMe(tmp.Stat, tmp.Name.c_str()
         #ifdef DJGPP
-        	, tmp.dosattr
+            , tmp.dosattr
         #endif
-        	);
+            );
     }
 
     StatPuu.clear();
@@ -633,8 +639,8 @@ static void DropOut()
     LongestSizeWithSeps = 0;
     LongestSizeCompact = 0;
     LongestLinks = 0;
-	
-	Dumping = false;
+
+    Dumping = false;
 }
 
 /* This function is supposed to stat() to Stat! */
@@ -661,10 +667,10 @@ static void SingleFile(const string &Buffer, StatType &Stat)
     #endif
     else
     {
-	    char OwNam[16], OwNum[16];
-    	char GrNam[16], GrNum[16];
-	    const char *Group, *Passwd;
-    	
+        char OwNam[16], OwNum[16];
+        char GrNam[16], GrNum[16];
+        const char *Group, *Passwd;
+
         const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
         if(hardlinkfn && Buffer == hardlinkfn)hardlinkfn = NULL;
 
@@ -681,23 +687,23 @@ static void SingleFile(const string &Buffer, StatType &Stat)
         i = GetSize(Buffer, Stat, 0, '\'').size();
         if(i > LongestSizeWithSeps)LongestSizeWithSeps = i;
 
-	    if(!S_ISDIR(Stat.st_mode))
-		    Inodemap.insert(Stat.st_dev, Stat.st_ino, Buffer);
-		
+        if(!S_ISDIR(Stat.st_mode))
+            Inodemap.insert(Stat.st_dev, Stat.st_ino, Buffer);
+
         Passwd = Getpwuid((int)Stat.st_uid);
-		Group  = Getgrgid((int)Stat.st_gid);
-		sprintf(OwNum,"%d",(int)Stat.st_uid);
-		sprintf(GrNum,"%d",(int)Stat.st_gid);
-	    if(Passwd && *Passwd)strcpy(OwNam, Passwd);else strcpy(OwNam, OwNum);
-    	if( Group &&  *Group)strcpy(GrNam,  Group);else strcpy(GrNam, GrNum);
-    	
-    	i = strlen(OwNam); if(i > LongestUID)LongestUID = i;
-    	i = strlen(GrNam); if(i > LongestGID)LongestGID = i;
-    	i = strlen(OwNum); if(i > LongestUIDvalue)LongestUIDvalue = i;
-    	i = strlen(GrNum); if(i > LongestGIDvalue)LongestGIDvalue = i;
-    	
-    	sprintf(OwNam, "%d", (int)Stat.st_nlink);
-    	i = strlen(OwNam); if(i > LongestLinks) LongestLinks = i;
+        Group  = Getgrgid((int)Stat.st_gid);
+        sprintf(OwNum,"%d",(int)Stat.st_uid);
+        sprintf(GrNum,"%d",(int)Stat.st_gid);
+        if(Passwd && *Passwd)strcpy(OwNam, Passwd);else strcpy(OwNam, OwNum);
+        if( Group &&  *Group)strcpy(GrNam,  Group);else strcpy(GrNam, GrNum);
+
+        i = strlen(OwNam); if(i > LongestUID)LongestUID = i;
+        i = strlen(GrNam); if(i > LongestGID)LongestGID = i;
+        i = strlen(OwNum); if(i > LongestUIDvalue)LongestUIDvalue = i;
+        i = strlen(GrNum); if(i > LongestGIDvalue)LongestGIDvalue = i;
+
+        sprintf(OwNam, "%d", (int)Stat.st_nlink);
+        i = strlen(OwNam); if(i > LongestLinks) LongestLinks = i;
 
         Puuhun(Stat, Buffer
         #ifdef DJGPP
@@ -709,39 +715,39 @@ static void SingleFile(const string &Buffer, StatType &Stat)
 
 static void DirChangeCheck(string Source)
 {
-	register unsigned ss = Source.size();
-	if(ss)
-	{
-		if(Source[ss-1] == '/')
-			Source.erase(--ss);
-		else if(ss>=2 && Source[0]=='.' && Source[1]=='/')
-			Source.erase(0, 2);
-	}
+    unsigned ss = Source.size();
+    if(ss)
+    {
+        if(Source[ss-1] == '/')
+            Source.erase(--ss);
+        else if(ss>=2 && Source[0]=='.' && Source[1]=='/')
+            Source.erase(0, 2);
+    }
     if(LastDir != Source)
     {
-    	DropOut();
+        DropOut();
         if(Totals)
         {
-        	static int Eka=1;
-	        GetDescrColor("txt", 1);
-        	if(WhereX)Gprintf("\n");
-        	if(!Eka)
-        	{
-        		if(RowLen > 0)Gprintf("\n");
-        		Summat();
-        		Gprintf("\n");
-        	}
-        	Eka=0;
-			Gprintf(" Directory of %s\n", Source.size()?Source.c_str():".");
-		}
-		LastDir = Source;
+            static int Eka=1;
+            GetDescrColor("txt", 1);
+            if(WhereX)Gprintf("\n");
+            if(!Eka)
+            {
+                if(RowLen > 0)Gprintf("\n");
+                PrintSums();
+                Gprintf("\n");
+            }
+            Eka=0;
+            Gprintf(" Directory of %s\n", Source.size()?Source.c_str():".");
+        }
+        LastDir = Source;
     }
 }
 
 static void ScanDir(const char *Dirrikka)
 {
-	string Source;
-	string DirName;
+    string Source;
+    string DirName;
     int Tried = 0;
 
     StatType Stat;
@@ -752,35 +758,35 @@ static void ScanDir(const char *Dirrikka)
 
     #ifdef DJGPP
     if(DirName.size() && DirName[DirName.size()-1] == ':')
-    	DirName += '.';
+        DirName += '.';
     #endif
 
     Source = DirName;
 
 R1: if((dir = opendir(Source.c_str())) == NULL)
     {
-    	/* It was not a directory, or could not be read */
-    	
-    	if(
-	    #if defined(DJGPP) || (defined(SUNOS)||defined(__sun)||defined(SOLARIS))
-    		errno==EACCES  ||
+        /* It was not a directory, or could not be read */
+
+        if(
+        #if defined(DJGPP) || (defined(SUNOS)||defined(__sun)||defined(SOLARIS))
+            errno==EACCES  ||
         #endif
-        	errno==ENOENT  ||	/* Piti lisätä linkkejä varten */
-        	errno==ENOTDIR ||
-        	errno==ELOOP        /* Tämä myös, ln -s a a varten */
-       	)
+            errno==ENOENT  ||    /* Piti lisätä linkkejä varten */
+            errno==ENOTDIR ||
+            errno==ELOOP        /* Tämä myös, ln -s a a varten */
+           )
         {
-P1:			string Tmp = DirOnly(Source);
-			if(!Tmp.size())Tmp = "./";
-			
-	    	DirChangeCheck(Tmp.c_str());
-			
-			SingleFile(Source, Stat);
-			goto End_ScanDir;
+P1:         string Tmp = DirOnly(Source);
+            if(!Tmp.size())Tmp = "./";
+
+            DirChangeCheck(Tmp.c_str());
+
+            SingleFile(Source, Stat);
+            goto End_ScanDir;
         }
         else if(!Tried && (!Source.size() || Source[Source.size()-1]!='/'))
         {
-        	Source += '/';
+            Source += '/';
             Tried = 1;
             goto R1;
         }
@@ -802,12 +808,12 @@ P1:			string Tmp = DirOnly(Source);
 
     while((ent = readdir(dir)) != NULL)
     {
-    	if(!ShowDotFiles && ent->d_name[0] == '.') continue;
-    	string Buffer = Source;
+        if(!ShowDotFiles && ent->d_name[0] == '.') continue;
+        string Buffer = Source;
         if(Buffer[Buffer.size()-1] != '/')Buffer += '/';
         Buffer += ent->d_name;
 
-       	SingleFile(Buffer, Stat);
+        SingleFile(Buffer, Stat);
     }
 
     if(closedir(dir) != 0)
@@ -823,16 +829,16 @@ static void EstimateFields()
     int RowLen;
 
     if(PreScan)
-    	LongestName++;
+        LongestName++;
     else
     {
-    	LongestSize = Sara?7:9;
-    	LongestGID  = 8;
-    	LongestUID  = 8;
-    	LongestSizeWithSeps = LongestSize+3;
-    	LongestSizeCompact = 9;
-   	}
-   	const char *s;
+        LongestSize = Sara?7:9;
+        LongestGID  = 8;
+        LongestUID  = 8;
+        LongestSizeWithSeps = LongestSize+3;
+        LongestSizeCompact = 9;
+    }
+    const char *s;
     for(RowLen=0, s=FieldOrder.c_str(); *s; )
     {
         switch(*s)
@@ -842,10 +848,12 @@ static void EstimateFields()
                 switch(*s)
                 {
                     case 'x':
-                        s++;
-                        GetHex(7, (const char **)&s);
+                    {
+                        ++s;
+                        if(std::isxdigit(*s)) { ++s; if(std::isxdigit(*s)) ++s; }
                         s--;
                         break;
+                    }
                     case 'F':
                     case 'f':
                         break;
@@ -884,8 +892,8 @@ static void EstimateFields()
                             RowLen += LongestGIDvalue;
                             break;
                         }
-                    	RowLen += LongestGID;
-                    	break;
+                        RowLen += LongestGID;
+                        break;
 #endif
                     case 'o':
                         RowLen += LongestUID;
@@ -921,7 +929,7 @@ static void EstimateFields()
     if(RowLen < 0)RowLen = 0;
 
     if(!PreScan || LongestName > RowLen)
-    	LongestName = RowLen;
+        LongestName = RowLen;
 }
 
 static vector<string> Dirpuu;
@@ -942,17 +950,17 @@ static void DumpDirs()
 
 class Handle : public arghandler
 {
-	bool Files;
-	bool Help;
+    bool Files;
+    bool Help;
 private:
     string opt_h(const string &s)
     {
-    	Help = true;
-    	return s;
+        Help = true;
+        return s;
     }
     string opt_r(const string &s)
     {
-    	SetDefaultOptions();
+        SetDefaultOptions();
         Inodemap.enable();
         return s;
     }
@@ -964,31 +972,31 @@ private:
 #ifdef S_ISLNK
     string opt_l(const string &s)
     {
-    	const char *q = s.c_str();
-    	const char *p = q;
-    	Links = strtol(p, const_cast<char**>(&p), 10);
-    	if(Links < 0 || Links > 5)argerror(s);
-    	return s.substr(p-q);
+        const char *q = s.c_str();
+        const char *p = q;
+        Links = strtol(p, const_cast<char**>(&p), 10);
+        if(Links < 0 || Links > 5)argerror(s);
+        return s.substr(p-q);
     }
 #endif
     string opt_X(const string &s)
     {
-    	const char *q = s.c_str();
-    	const char *p = q;
-    	if(*p == '0')printf("Window size = %dx%d\n", COLS, LINES);
-    	COLS = strtol(p, const_cast<char**>(&p), 10);
-    	return s.substr(p-q);
+        const char *q = s.c_str();
+        const char *p = q;
+        if(*p == '0')printf("Window size = %dx%d\n", COLS, LINES);
+        COLS = strtol(p, const_cast<char**>(&p), 10);
+        return s.substr(p-q);
     }
     string opt_H1(const string &s)
     {
-    	Inodemap.enable();
-    	return s;
+        Inodemap.enable();
+        return s;
     }
     string opt_H(const string &s)
     {
-    	Inodemap.disable();
-    	if(s.size() && s[0]=='0')return s.substr(1);
-    	return s;
+        Inodemap.disable();
+        if(s.size() && s[0]=='0')return s.substr(1);
+        return s;
     }
     string opt_c1(const string &s) { Colors = true;    return s; }
     string opt_c(const string &s) { Colors = false;    return s; }
@@ -1002,51 +1010,51 @@ private:
     string opt_f(const string &s) { FieldOrder = s; return ""; }
     string opt_V(const string &)
     {
-		printf(VERSIONSTR);
-		exit(0);
+        printf(VERSIONSTR);
+        exit(0);
     }
     string opt_a(const string &s)
     {
-    	const char *q = s.c_str();
-    	const char *p = q;
-    	switch(strtol(p, const_cast<char**>(&p), 10))
-    	{
-    		case 0:
-				FieldOrder = ".f_.s.d|";
-		        DateForm = "%z";
+        const char *q = s.c_str();
+        const char *p = q;
+        switch(strtol(p, const_cast<char**>(&p), 10))
+        {
+            case 0:
+                FieldOrder = ".f_.s.d|";
+                DateForm = "%z";
 #ifdef S_ISLNK
-		        Links = 1;
+                Links = 1;
 #endif
-		        Sara = true;
-		        Compact = 1;
-		        break;
-		    case 1:
-				FieldOrder = ".xF|.a1.xF|.f.s.xF|.d.xF|.o_.g.xF|";
-				break;
-			case 2:
+                Sara = true;
+                Compact = 1;
+                break;
+            case 1:
+                FieldOrder = ".xF|.a1.xF|.f.s.xF|.d.xF|.o_.g.xF|";
+                break;
+            case 2:
 #ifdef S_ISLNK
-				Links = 0;
+                Links = 0;
 #endif
-				Sara = true;
-				FieldOrder = ".f_.a4_.o_.g.xF|";
-				break;
-			case 3:
+                Sara = true;
+                FieldOrder = ".f_.a4_.o_.g.xF|";
+                break;
+            case 3:
 #ifdef S_ISLNK
-				Links = 0;
+                Links = 0;
 #endif
-				Sara = true;
-        		FieldOrder = ".f_.s_.o.xF|";
-        		break;
-        	case 4:
+                Sara = true;
+                FieldOrder = ".f_.s_.o.xF|";
+                break;
+            case 4:
 #ifdef S_ISLNK
-				Links = 1;
+                Links = 1;
 #endif
-				Sara = true;
-				FieldOrder = ".f_.s_.d_.o.xF|";
-				DateForm = "%z";
-				break;
-		    case 5:
-        		FieldOrder = ".a1_.h__.o_.g_.s_.d_.f";
+                Sara = true;
+                FieldOrder = ".f_.s_.d_.o.xF|";
+                DateForm = "%z";
+                break;
+            case 5:
+                FieldOrder = ".a1_.h__.o_.g_.s_.d_.f";
                 DateForm = "%u";
                 Inodemap.enable();
                 break;
@@ -1055,75 +1063,75 @@ private:
                 Links = 3;
                 Compact = 1; Totals = true;
                 break;
-    		default:
-    			argerror(s);
-		}
-    	return s.substr(p-q);
+            default:
+                argerror(s);
+        }
+        return s.substr(p-q);
     }
     string opt_al(const string &s)
     {
-		FieldOrder = ".a1_.h__.o_.g_.s_.d_.f";
+        FieldOrder = ".a1_.h__.o_.g_.s_.d_.f";
         DateForm = "%u";
         Inodemap.enable();
         return s;
     }
     string opt_m(const string &s)
     {
-    	const char *q = s.c_str();
-    	const char *p = q;
-    	switch(strtol(p, const_cast<char**>(&p), 10))
-    	{
-    		case 0: Compact=0; Totals=true; break;
-    		case 1: Compact=1; Totals=true; break;
-    		case 2: Totals=false; break;
-    		case 3: Compact=2; Totals=true; break;
-    		default:
-    			argerror(s);
-    	}
-    	return s.substr(p-q);
+        const char *q = s.c_str();
+        const char *p = q;
+        switch(strtol(p, const_cast<char**>(&p), 10))
+        {
+            case 0: Compact=0; Totals=true; break;
+            case 1: Compact=1; Totals=true; break;
+            case 2: Totals=false; break;
+            case 3: Compact=2; Totals=true; break;
+            default:
+                argerror(s);
+        }
+        return s.substr(p-q);
     }
     string opt_M(const string &s)
     {
-    	string q = opt_m(s);
-    	if(!q.size())argerror(s);
-    	TotalSep = q[0];
-    	return q.substr(1);
+        string q = opt_m(s);
+        if(!q.size())argerror(s);
+        TotalSep = q[0];
+        return q.substr(1);
     }
     string opt_w(const string &s)
     {
-    	Compact = 1;
-    	Totals = true;
-    	FieldOrder = ".f";
-    	Sorting = "pcm";
+        Compact = 1;
+        Totals = true;
+        FieldOrder = ".f";
+        Sorting = "pcm";
         Inodemap.disable();
 #ifdef S_ISLNK
         Links = 1;
 #endif
         Sara = true;
-    	return s;
+        return s;
     }
     string opt_A(const string &s)
     {
         ShowDotFiles = true;
-    	return s;
+        return s;
     }
     string opt_W(const string &s)
     {
-    	Compact = 1;
-    	Totals = true;
-    	FieldOrder = ".f";
-    	Sorting = "PCM";
+        Compact = 1;
+        Totals = true;
+        FieldOrder = ".f";
+        Sorting = "PCM";
         Inodemap.disable();
 #ifdef S_ISLNK
         Links = 1;
 #endif
         Sara = true;
-    	return s;
+        return s;
     }
 public:
-	Handle(const char *defopts, int argc, const char *const *argv)
-	: arghandler(defopts, argc, argv), Files(false), Help(false)
-	{
+    Handle(const char *defopts, int argc, const char *const *argv)
+    : arghandler(defopts, argc, argv), Files(false), Help(false)
+    {
         add("-A",  "--dotfiles",  "Show files where names begin with a '.'", &Handle::opt_A);
         add("-al", "--long",      "\"Standard\" listing format", &Handle::opt_al);
         add("-a",  "--predef",    "Predefined aliases.\n"
@@ -1137,14 +1145,14 @@ public:
         add("-c1", "--colours",   "Enables colours (default, if tty output).", &Handle::opt_c1);
         add("-c",  "--nocolor",   "Disables colours.", &Handle::opt_c);
         add("-C",  "--columns",   "Enables multiple column mode.", &Handle::opt_C);
-		add("-d1", "--useatime",  "Use atime, last access datetime for date fields.", &Handle::opt_d1);
-		add("-d2", "--usemtime",  "Use mtime, last modification datetime.", &Handle::opt_d2);
-		add("-d3", "--usectime",  "Use ctime, file creation datetime.", &Handle::opt_d3);
-		add("-db", "--blkdev",    "Specify how the blockdevices are shown\n"
+        add("-d1", "--useatime",  "Use atime, last access datetime for date fields.", &Handle::opt_d1);
+        add("-d2", "--usemtime",  "Use mtime, last modification datetime.", &Handle::opt_d2);
+        add("-d3", "--usectime",  "Use ctime, file creation datetime.", &Handle::opt_d3);
+        add("-db", "--blkdev",    "Specify how the blockdevices are shown\n"
                                     " Example: `--blkdev=<B%u,%u>'\n"
                                     " Default is `-db" + BlkStr + "'",
                                     &Handle::opt_db);
-		add("-dc", "--chrdev",    "Specify how the character devices are shown\n"
+        add("-dc", "--chrdev",    "Specify how the character devices are shown\n"
                                     " Example: `--chrdev=<C%u,%u>'\n"
                                     " Default is `-dc" + ChrStr + "'",
                                     &Handle::opt_dc);
@@ -1168,10 +1176,10 @@ public:
         add("-F",  "--dates",     "Specify new date format. man strftime.\n"
                                   "Default is `-F"+DateForm+"'",
                                   &Handle::opt_F);
-		add("-h",  "--help",      "mm.. familiar?", &Handle::opt_h);
+        add("-h",  "--help",      "mm.. familiar?", &Handle::opt_h);
         add("-H1", "--hl",        "Enables mapping hardlinks (default)", &Handle::opt_H1);
         add("-H",  "--nohl",      "Disables mapping hardlinks", &Handle::opt_H);
-		add("-?",  NULL,          "Alias to -h", &Handle::opt_h);
+        add("-?",  NULL,          "Alias to -h", &Handle::opt_h);
         add("-la", NULL,          "Alias to -al", &Handle::opt_al);
 #ifdef S_ISLNK
         add("-l",  "--links",     "Specify how the links are shown:\n"
@@ -1183,11 +1191,11 @@ public:
                                     "  5 Show link name and stats of target\n",
                                     &Handle::opt_l);
 #endif
-		add("-m", "--tstyle",     "Selects \"total\" list style.\n"
-		                          " -m0: Verbose (default)\n"
-		                          " -m1: Compact.\n"
-		                          " -m2: None.\n"
-		                          " -m3: Compact with exact numbers.", &Handle::opt_m);
+        add("-m", "--tstyle",     "Selects \"total\" list style.\n"
+                                  " -m0: Verbose (default)\n"
+                                  " -m1: Compact.\n"
+                                  " -m2: None.\n"
+                                  " -m3: Compact with exact numbers.", &Handle::opt_m);
         add("-M", "--tstylsep",   "Like -m, but with a thousand separator. Example: -M0,", &Handle::opt_M);
         add("-o", "--sort",       "Sort the list (disables -e), with n as combination of:\n"
                                   "(n)ame, (s)ize, (d)ate, (u)id, (g)id, (h)linkcount, "
@@ -1198,7 +1206,7 @@ public:
                                   "Default is `--sort="+Sorting+"'\n", &Handle::opt_o);
         add("-p",  "--paged",     "Use internal pager.", &Handle::opt_p);
         add("-P",  "--oldvt",     "Disables colour code optimizations.", &Handle::opt_P);
-		add("-r",  "--restore",   "Undoes all options, including the DIRR environment variable.", &Handle::opt_r);
+        add("-r",  "--restore",   "Undoes all options, including the DIRR environment variable.", &Handle::opt_r);
         add("-v",  "--version",   "Displays the version.", &Handle::opt_V);
         add("-V",  NULL,          "Alias to -v.", &Handle::opt_V);
         add("-w",  "--wide",      "Equal to -l1HCm1f.f -opcm", &Handle::opt_w);
@@ -1207,27 +1215,27 @@ public:
                                   &Handle::opt_X);
 
         parse();
-	}
-	virtual void defarg(const string &s)
-	{
-		Dirpuu.push_back(s);
-	    Files = true;
-	}
+    }
+    virtual void defarg(const string &s)
+    {
+        Dirpuu.push_back(s);
+        Files = true;
+    }
     virtual void parse()
     {
-    	arghandler::parse();
-		if(!Files)Dirpuu.push_back(".");
-		if(Help)
-		{
-           	Dumping = true;
+        arghandler::parse();
+        if(!Files)Dirpuu.push_back(".");
+        if(Help)
+        {
+            Dumping = true;
 
             GetDescrColor("txt", 1);
 
-			Gprintf(VERSIONSTR);
-			
+            Gprintf(VERSIONSTR);
+
             Gprintf(
 #ifndef DJGPP
-            	"\r\33[K\r"
+                "\r\33[K\r"
 #endif
                 "Usage: %s [options] {dirs | files }\n", a0.c_str());
 
@@ -1239,7 +1247,7 @@ public:
             GetDescrColor("txt", 1);
 
             Gprintf(
-            	"\n"
+                "\n"
                 "You can set environment variable 'DIRR' for the options.\n"
                 "You can also use 'DIRR_COLORS' -variable for color settings.\n"
                 "Current DIRR_COLORS:\n"
@@ -1248,7 +1256,7 @@ public:
             PrintSettings();
 
             exit(0);
-		}
+        }
     }
 };
 
@@ -1258,7 +1266,7 @@ static void Term(int /*dummy*/)
     Gprintf("^C\n");
 
     RowLen=1;
-    Summat();
+    PrintSums();
 
     exit(0);
 }
@@ -1266,15 +1274,13 @@ static void Term(int /*dummy*/)
 
 int main(int argc, const char *const *argv)
 {
-    if(!isatty(1))Colors = false;
-
     #ifdef DJGPP
     _djstat_flags &= ~(_STAT_EXEC_EXT | _STAT_WRITEBIT);
     #endif
 
-	SetDefaultOptions();
-	
-	#ifdef SIGINT
+    SetDefaultOptions();
+
+    #ifdef SIGINT
     signal(SIGINT,  Term);
     #endif
 
@@ -1284,12 +1290,12 @@ int main(int argc, const char *const *argv)
 
     // cute
     Handle parameters (getenv("DIRR"), argc, argv);
-	
-	Dumping = true;
+
+    Dumping = true;
     DumpDirs();
 
-	if(RowLen > 0)Gprintf("\n");
-    Summat();
+    if(RowLen > 0)Gprintf("\n");
+    PrintSums();
 
     return 0;
 }

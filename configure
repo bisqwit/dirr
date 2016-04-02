@@ -30,16 +30,7 @@ cat >>config.h <<EOF
 // These settings can be changed by user.
 
 // Recommended, adds speed
-#define CACHE_GETSET 1
-
-// This too
-#define CACHE_NAMECOLOR 1
-
-// This too
 #define CACHE_UIDGID 1
-
-// Recommended. Disable if it bugs you...
-#define NEW_WILDMATCH 1
 
 // They can be disabled if you do not want them.
 #define SUPPORT_BRACKETS 1
@@ -149,41 +140,26 @@ else
   exit 1
 fi
 
-do_echo -n "Checking if your compiler supports -fopenmp... "
-if cc_check '<stdio.h>' '-fopenmp' 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
+do_echo -n "Checking if your compiler supports -std=c++17... "
+if cc_check '<stdio.h>' '-std=c++17' ''; then
   do_echo Yes
-  do_echo "- Will use OpenMP, not checking for -pthread"
-  CPPFLAGS="$CPPFLAGS -fopenmp"
-  LDFLAGS="$LDFLAGS -fopenmp"
-  CPPFLAGS="$CPPFLAGS -DUSE_PTHREADS=0"
+  CPPFLAGS="$CPPFLAGS -std=c++17"
 else
   do_echo No
-  do_echo -n "Checking if your compiler supports -pthread... "
-  if cc_check '"lib/threadfun.hh"' '-pthread' 'ThreadType t;JoinThread(t);'; then
+  do_echo -n "Checking if your compiler supports -std=c++14... "
+  if cc_check '<stdio.h>' '-std=c++14' ''; then
     do_echo Yes
-    CPPFLAGS="$CPPFLAGS -DUSE_PTHREADS=1 -pthread"
-    LDFLAGS="$LDFLAGS -pthread"
+    CPPFLAGS="$CPPFLAGS -std=c++14"
   else
     do_echo No
-    CPPFLAGS="$CPPFLAGS -DUSE_PTHREADS=0"
+    do_echo -n "Checking if your compiler supports -std=c++11... "
+    if cc_check '<stdio.h>' '-std=c++11' ''; then
+      do_echo Yes
+      CPPFLAGS="$CPPFLAGS -std=c++11"
+    else
+      do_echo No
+    fi
   fi
-fi
-
-do_echo -n "Checking if your compiler supports hash_map... "
-if cc_check '"lib/hash.hh"' '-DHASH_MAP=1' 'hash_map<long,int>x; hash_set<long>y;'; then
-  do_echo Yes
-  CPPFLAGS="$CPPFLAGS -DHASH_MAP=1"
-else
-  do_echo No
-  CPPFLAGS="$CPPFLAGS -DHASH_MAP=0"
-fi
-
-do_echo -n "Checking if your compiler supports -ftree-vectorize... "
-if cc_check '<stdio.h>' '-ftree-vectorize' 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
-  do_echo Yes
-  OPTIM="$OPTIM -ftree-vectorize"
-else
-  do_echo No
 fi
 
 WARNINGS=""
@@ -229,6 +205,19 @@ else
       do_echo No
     fi
   done
+  
+  T_LDFLAGS="\
+    -Wl,--gc-sections"
+  for s in $T_LDFLAGS;do
+    do_echo -n "Checking if your compiler supports $s... "
+    if cc_check '<stdio.h>' "$s" 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
+      do_echo Yes
+      LDFLAGS="$LDFLAGS $s"
+    else
+      do_echo No
+    fi
+  done
+  
   
   #-fconserve-stack
   

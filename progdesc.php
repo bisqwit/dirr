@@ -21,6 +21,8 @@ and is distributed under the terms of the
 <a href=\"http://www.gnu.org/licenses/licenses.html#GPL\">General Public License</a> (GPL).
  <p>
 Portions contributed by <a href=\"http://iki.fi/warp/\">Warp</a>
+ <p>
+Portions contributed by <a href=\"http://re2c.org/\">RE2C</a> authors.
 
 ", '1. To do' => "
 

@@ -11,7 +11,7 @@ CXXOPTS=$(WARNINGS) $(CXXWARNINGS)
 
 
 # Optimization
-OPTIM=-O3
+OPTIM=-Ofast
 #-march=pentiumpro
 
 # Flags.
@@ -24,16 +24,16 @@ LDFLAGS=-g
 
 #####
 # These options were set by ./configure
-# at Thu Nov 14 15:19:06 EET 2013
-# for Linux chii 3.11.4 #1 SMP Tue Oct 8 15:31:54 EEST 2013 x86_64 GNU/Linux
+# at Sun Apr  3 02:30:02 EEST 2016
+# for Linux chii 4.4.3 #1 SMP Wed Mar 2 16:23:50 EET 2016 x86_64 GNU/Linux
 # To change, run ./configure again.
 #
-CC=clang
-CPP=clang++
-CXX=clang++
-OPTIM +=  -ffast-math -ffunction-sections -fdata-sections
-CPPFLAGS +=  -DUSE_PTHREADS=0 -DHASH_MAP=0
-LDFLAGS += 
+CC=gcc-5
+CPP=g++
+CXX=g++
+OPTIM +=  -minline-stringops-dynamically -ffast-math -mrecip -fvpt -ffunction-cse -ffunction-sections -fdata-sections
+CPPFLAGS +=  -std=c++17
+LDFLAGS +=  -Wl,--gc-sections
 WARNINGS +=  -Wall -Wundef -Wcast-qual -Wpointer-arith -Wconversion -Wwrite-strings -Wsign-compare -Wredundant-decls -Winit-self -Wextra -Wparentheses -Wcast-align -Wformat -Wno-conversion
 CWARNINGS +=  -Waggregate-return -Wshadow -Winline -Wstrict-prototypes -Wmissing-prototypes
 CXXWARNINGS +=  -Woverloaded-virtual -Weffc++ -Wno-non-virtual-dtor
