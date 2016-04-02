@@ -17,20 +17,20 @@ int Links;
 
 static void TulostaNimi(unsigned maxlen, const string &buf)
 {
-	const unsigned char *s = (const unsigned char *)buf.c_str();
-	
-	while(*s)
-	{
-		if(!maxlen)break;
-		if(*s < 32 || (*s >= 127 && *s <= 160))
-			Gputch('?');
-		else
-			Gputch(*s);
-		--maxlen;
-		++s;
-	}
+    const unsigned char *s = (const unsigned char *)buf.c_str();
 
-	while(maxlen>0)Gputch(' ');
+    while(*s)
+    {
+        if(!maxlen)break;
+        if(*s < 32 || (*s >= 127 && *s <= 160))
+            Gputch('?');
+        else
+            Gputch(*s);
+        --maxlen;
+        ++s;
+    }
+
+    while(maxlen>0)Gputch(' ');
 }
 
 int GetName(const string &fn, const StatType &sta, int Space,
@@ -50,9 +50,9 @@ int GetName(const string &fn, const StatType &sta, int Space,
 #ifdef S_ISLNK
 Redo:
 #endif
-	// Tähän kohtaan hypätään tulostamaan nimi.
-	// Tekstin väri on säädetty jo valmiiksi siellä
-	// mistä tähän funktioon (tai Redo-labeliin) tullaan.
+    // Tähän kohtaan hypätään tulostamaan nimi.
+    // Tekstin väri on säädetty jo valmiiksi siellä
+    // mistä tähän funktioon (tai Redo-labeliin) tullaan.
 
     Buf = Puuh;
     Len += (i = Buf.size());
@@ -67,16 +67,16 @@ Redo:
 
     if(wasinvalid)
     {
-    	PutSet('?');
+        PutSet('?');
     }
     else
     {
-	    #ifdef S_ISSOCK
-    	if(S_ISSOCK(Stat->st_mode)) PutSet('=');
-	    #endif
-    	#ifdef S_ISFIFO
-	    if(S_ISFIFO(Stat->st_mode)) PutSet('|');
-    	#endif
+        #ifdef S_ISSOCK
+        if(S_ISSOCK(Stat->st_mode)) PutSet('=');
+        #endif
+        #ifdef S_ISFIFO
+        if(S_ISFIFO(Stat->st_mode)) PutSet('|');
+        #endif
     }
 
     #ifdef S_ISLNK
@@ -84,7 +84,7 @@ Redo:
     {
         if(Links >= 2 && maysublink)
         {
-        	int a;
+            int a;
 
             Buf = SLinkArrow;
 
@@ -93,7 +93,7 @@ Redo:
             if(a > Space)a = Space;
             if(a)
             {
-            	Buf.erase(a);
+                Buf.erase(a);
                 GetModeColor("info", '@');
                 Gprintf("%*s", -a, Buf.c_str());
             }
@@ -103,27 +103,27 @@ Redo:
             Buf = LinkTarget(s, true);
 
             /* Target status */
-	        if(StatFunc(Buf.c_str(), &Stat1) < 0)
-    	    {
-    	    	if(LStatFunc(Buf.c_str(), &Stat1) < 0)
-    	    	{
-    	        	wasinvalid = true;
-    	        	if(Space)GetModeColor("type", '?');
-    	        }
-    	        else
-    	        {
-    	        	if(Space)GetModeColor("type", 'l');
-    	        }
-    	        maysublink = false;
-			}
-	        else if(Space)
-    	    {
-    	    	StatType Stat2;
-    	    	if(LStatFunc(Buf.c_str(), &Stat2) >= 0 && S_ISLNK(Stat2.st_mode))
-   	    	    	GetModeColor("type", 'l');
-	   	        else
-   		        	SetAttr(GetNameAttr(Stat1, Buf));
-  	        }
+            if(StatFunc(Buf.c_str(), &Stat1) < 0)
+            {
+                if(LStatFunc(Buf.c_str(), &Stat1) < 0)
+                {
+                    wasinvalid = true;
+                    if(Space)GetModeColor("type", '?');
+                }
+                else
+                {
+                    if(Space)GetModeColor("type", 'l');
+                }
+                maysublink = false;
+            }
+            else if(Space)
+            {
+                StatType Stat2;
+                if(LStatFunc(Buf.c_str(), &Stat2) >= 0 && S_ISLNK(Stat2.st_mode))
+                   GetModeColor("type", 'l');
+                else
+                   SetAttr(GetNameAttr(Stat1, Buf));
+            }
 
             Puuh = s = LinkTarget(s, false); // Unfixed link.
             Stat = &Stat1;
@@ -134,32 +134,32 @@ Redo:
     else
     #endif
     {
-	    if(S_ISDIR(Stat->st_mode))  PutSet('/');
-	    else if(Stat->st_mode & 00111)PutSet('*');
-	}
+        if(S_ISDIR(Stat->st_mode))  PutSet('/');
+        else if(Stat->st_mode & 00111)PutSet('*');
+    }
 
     if(hardlinkfn && Space)
     {
         StatType Stat1;
 
-    	SetAttr(GetModeColor("info", '&'));
-    	
-    	Len += Gprintf("%s", HLinkArrow);
-    	Space -= strlen(HLinkArrow);
-    	
-    	Puuh = Relativize(s, hardlinkfn);
-    	
-    	StatFunc(hardlinkfn, &Stat1);
-    	SetAttr(GetNameAttr(Stat1, NameOnly(hardlinkfn)));
-    	hardlinkfn = NULL;
-    	Stat = &Stat1;
-    	
-    	maysublink = false;
-    	wasinvalid = false;
-    	
-    	if(Space < 0)Space = 0;
-    	
-    	goto Redo;
+        SetAttr(GetModeColor("info", '&'));
+
+        Len += Gprintf("%s", HLinkArrow);
+        Space -= strlen(HLinkArrow);
+
+        Puuh = Relativize(s, hardlinkfn);
+
+        StatFunc(hardlinkfn, &Stat1);
+        SetAttr(GetNameAttr(Stat1, NameOnly(hardlinkfn)));
+        hardlinkfn = NULL;
+        Stat = &Stat1;
+
+        maysublink = false;
+        wasinvalid = false;
+
+        if(Space < 0)Space = 0;
+
+        goto Redo;
     }
 
     #undef PutSet

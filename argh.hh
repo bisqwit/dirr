@@ -51,13 +51,17 @@ private:
         argfun handler;
         option(const char *s, const char *l, const string &d, argfun h)
               : Short(s), Long(l), Descr(d), handler(h) { }
+
+        option(option&&) = default;
+        option(const option&) = delete;
+        void operator=(const option&) = delete;
     };
 
-    vector<option> options;
-    vector<string> args;
+    std::vector<option> options{};
+    std::vector<string> args{};
 
 protected:
-    string a0;
+    std::string a0{};
     void subadd(const char *Short, const char *Long, const string &Descr, argfun handler);
 
 public:

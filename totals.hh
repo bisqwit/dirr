@@ -15,6 +15,6 @@ extern int TotalSep;
 extern int Compact;
 extern string LastDir;
 
-extern void Summat();
+extern void PrintSums();
 
 #endif

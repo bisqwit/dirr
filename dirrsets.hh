@@ -1,12 +1,12 @@
     /**************************************************************
-	 * mode() - How to color the drwxr-xr-x string.
-	 *
-	 * ?               is the unknown case
-	 * #               is for numeric modes
+     * mode() - How to color the drwxr-xr-x string.
+     *
+     * ?               is the unknown case
+     * #               is for numeric modes
      " S,H,R,A         are for dos attributes
-	 * l,d,x,c,b,p,s,- are the corresponding characters
-	 *                 in the mode string respectively
-	 * D               is door. It's used in Solaris.
+     * l,d,x,c,b,p,s,- are the corresponding characters
+     *                 in the mode string respectively
+     * D               is door. It's used in Solaris.
      **************************************************************/
 
     "mode(SB,H8,R9,A3,DC,lB,d9,x9,cE,bE,p6,sD,-7,?C,#3)"
@@ -65,13 +65,13 @@
 
 #ifndef DJGPP
     /**************************************************************
-	 * nrlink() - How to color the number of hard links
+     * nrlink() - How to color the number of hard links
      **************************************************************/
     "nrlink(7)"
 #endif
-	
+
     /**************************************************************
-	 * num() - How to color the numbers in total-sums
+     * num() - How to color the numbers in total-sums
      **************************************************************/
     "num(3)"
 
@@ -86,7 +86,7 @@
 #endif
 
     /**************************************************************
-	 * txt() - The default color used for all other texts
+     * txt() - The default color used for all other texts
      **************************************************************/
     "txt(7)"
 
@@ -106,13 +106,15 @@
     // green: object files
     "byext(2i *.so *.o *.vxd *.dll *.drv *.obj *.dll *.a)"
     // cyan: text files
-    "byext(3i *.txt *.htm *.html *.xml *.xhtml *.1st *.wri *.ps *.doc readme quickstart install)"
+    "byext(3i *.txt *.htm *.html *.xml *.xhtml *.1st *.wri *.ps *.doc)"
+    "byext(3i readme quickstart install)"
     // red: unwanted temp files
     "byext(4i core DEADJOE)"
     // magenta: sound-only multimedia files
     "byext(5i *.mid *.mod *.mtm *.s3m *.xm* *.mp2 *.mp3 *.wav *.ogg *.smp *.au *.ult *.669 *.aac *.spc *.nsf *.wma)"
     // brown: programming
-    "byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.S *.s *.inc *.h *.hh *.pov *.irc *.hpp *.src *.ttt *.pp *.p makefile *.mak configure *.in *.am)"
+    "byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.S *.s *.inc *.h *.hh *.pov *.irc *.hpp)"
+    "byext(6i *.src *.ttt *.pp *.p makefile *.mak configure *.in *.am)"
     // dark gray: temp files
     "byext(8i *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
     // bright green: executable files
@@ -120,4 +122,5 @@
     // bright red: archives
     "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.arj *.7z *.lzma)"
     // bright magenta: image and video files
-    "byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.mkv *.asf *.x?m *.mov *.tga *.png *.tif *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\\w)"
+    "byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.mkv *.asf *.x?m *.mov *.tga *.png *.tif)"
+    "byext(Di *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\\w)"
