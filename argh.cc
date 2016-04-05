@@ -4,15 +4,14 @@
 #include "argh.hh"
 
 #ifdef ColourPrints
-#include "cons.hh"
-#define GPRINTF_ARGS
+# include "cons.hh"
+# define GPRINTF_ARGS
 #else
-#include <cstdio>
-
-#define GPRINTF_ARGS stderr,
-#define Gputch(x) putc((x), stderr)
-#define Gprintf fprintf
-#define SetAttr(x)
+# include <cstdio>
+# define GPRINTF_ARGS stderr,
+# define Gputch(x) putc((x), stderr)
+# define Gprintf fprintf
+# define SetAttr(x)
 #endif
 
 /* This file is part of Bisqwit's dirr and remotegcc packages. */
@@ -149,7 +148,7 @@ void arghandler::parse()
 
 void arghandler::argerror(char c)
 {
-    Gprintf(GPRINTF_ARGS "%s: illegal option -- %c\n", a0.c_str(), c);
+    Gprintf(GPRINTF_ARGS "%s: illegal option -- %c\n", a0, c);
     suggesthelp();
     exit(1);
 }
@@ -157,16 +156,16 @@ void arghandler::argerror(char c)
 void arghandler::argerror(const string &s, bool param)
 {
     Gprintf(GPRINTF_ARGS "%s: %s%s'\n",
-        a0.c_str(),
+        a0,
         param ? "invalid parameter `" : "unrecognized option `--",
-        s.c_str());
+        s);
     if(!param)suggesthelp();
     exit(1);
 }
 
 void arghandler::suggesthelp()
 {
-    Gprintf(GPRINTF_ARGS "Try `%s --help' for more information.\n", a0.c_str());
+    Gprintf(GPRINTF_ARGS "Try `%s --help' for more information.\n", a0);
 }
 
 void arghandler::listoptions()
@@ -188,17 +187,17 @@ void arghandler::listoptions()
 
         SetAttr(*s ? 3 : 0);
         Gprintf(GPRINTF_ARGS "  -");
-        SetAttr(7);
+        SetAttr(DEFAULTATTR);
         Gprintf(GPRINTF_ARGS "%s", s);
 
         SetAttr(*l ? 3 : 0);
         Gprintf(GPRINTF_ARGS ", --");
-        SetAttr(7);
+        SetAttr(DEFAULTATTR);
         Gprintf(GPRINTF_ARGS "%s", l);
 
         Gprintf(GPRINTF_ARGS "%*s", int(space-(strlen(s) + strlen(l))), "");
 
-        SetAttr(7);
+        SetAttr(DEFAULTATTR);
 
         const char *q = i->Descr.c_str();
         bool needspace = false;

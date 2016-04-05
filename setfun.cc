@@ -132,14 +132,14 @@ public:
 
             if(i == colors.end() || i->first != Chr)
             {
-                Gprintf("DIRR_COLORS error: No color for '%c' found in '%s'\n", Chr, ColorModeName(key).c_str());
+                Gprintf("DIRR_COLORS error: No color for '%c' found in '%s'\n", Chr, ColorModeName(key));
                 return default_color;
             }
             return i->second;
         }
         else
         {
-            Gprintf("DIRR_COLORS error: No '%s'\n", ColorModeName(key).c_str());
+            Gprintf("DIRR_COLORS error: No '%s'\n", ColorModeName(key));
             return default_color;
         }
     }
@@ -155,7 +155,7 @@ public:
         else
         {
         fail:;
-            Gprintf("DIRR_COLORS error: No '%s'\n", ColorDescrName(key).c_str());
+            Gprintf("DIRR_COLORS error: No '%s'\n", ColorDescrName(key));
             return default_color;
         }
     }
@@ -257,7 +257,7 @@ private:
                 int m = ColorDescrFromName(s.first);
                 if(m == -1)
                 {
-                    Gprintf("DIRR_COLORS error: Unknown setting '%s'\n", s.first.c_str());
+                    Gprintf("DIRR_COLORS error: Unknown setting '%s'\n", s.first);
                     continue;
                 }
                 if(int(descr_sets.size()) <= m) descr_sets.resize(m+1);
@@ -310,7 +310,7 @@ int GetModeColor(ColorMode m, char Chr)
 //   If the number is negative, it is treated as positive but not set.
 int GetDescrColor(ColorDescr d, int index)
 {
-    int Dfl = 7;
+    int Dfl = DEFAULTATTR;
     if(!Colors || !Dumping)return Dfl;
 
     Settings.Load();
@@ -350,7 +350,7 @@ void PrintSettings()
     for(unsigned m=0; m<Settings.mode_sets.size(); ++m)
     {
         SetAttr(Dfl);
-        Gprintf("%s%s(", indent.c_str(), ColorModeName(ColorMode(m)).c_str());
+        Gprintf("%s%s(", indent, ColorModeName(ColorMode(m)));
         bool sep = false;
         for(const auto& c: Settings.mode_sets[m])
         {
@@ -366,7 +366,7 @@ void PrintSettings()
     for(unsigned m=0; m<Settings.descr_sets.size(); ++m)
     {
         SetAttr(Dfl);
-        Gprintf("%s%s(", indent.c_str(), ColorDescrName(ColorDescr(m)).c_str());
+        Gprintf("%s%s(", indent, ColorDescrName(ColorDescr(m)));
         const auto& table = Settings.descr_sets[m];
         for(std::size_t a=0; a<table.size(); ++a)
         {
@@ -384,7 +384,7 @@ void PrintSettings()
         while(pair.first != pair.second)
         {
             SetAttr(Dfl);
-            Gprintf("%sbyext(", indent.c_str());
+            Gprintf("%sbyext(", indent);
             const std::string& t = pair.first++->second;
 
             int color = -1;
@@ -405,7 +405,7 @@ void PrintSettings()
                     pos = spacepos;
                     continue;
                 }
-                Gprintf(" %s", token.c_str());
+                Gprintf(" %s", token);
                 pos = spacepos;
             }
             SetAttr(Dfl);

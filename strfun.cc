@@ -19,16 +19,22 @@ string NameOnly(const string &Name)
     if(p == Name.npos) p = 0; else p = p+1;
     return Name.substr(p, Name.size()-p-1);
 }
+/*
+#include "cons.hh"
+string NameOnly(const string &Name)
+{
+    auto r = NameOnly_(Name);
+    Gprintf("NameOnly(%s)=(%s)\n", Name,r);
+    return r;
+}*/
 
-// Ends with '/'.
+// Return value ends with '/'.
 // If no directory, returns empty string.
 string DirOnly(const string &Name)
 {
-    const char *q, *s = Name.c_str();
-    q = strrchr(s, '/');
-    if(!q)return "";
-
-    return string(s, 0, q-s+1);
+    std::size_t p = Name.rfind('/');
+    if(p == Name.npos) return {};
+    return Name.substr(0, p+1);
 }
 
 string LinkTarget(const string &link, bool fixit)
@@ -49,37 +55,6 @@ string LinkTarget(const string &link, bool fixit)
 
     // Relative link
     return DirOnly(link) + Target;
-}
-
-void PrintNum(string &Dest, int Seps, const char *fmt, ...)
-{
-    int Len;
-
-    Dest.resize(2048);
-
-    va_list ap;
-    va_start(ap, fmt);
-    Dest.erase(vsprintf(const_cast<char *>(Dest.c_str()), fmt, ap));
-    va_end(ap);
-
-    if(Seps)
-    {
-        int SepCount;
-        /* 7:2, 6:1, 5:1, 4:1, 3:0, 2:0, 1:0, 0:0 */
-
-        const char *End = strchr(Dest.c_str(), '.');
-        if(!End)End = Dest.c_str() + Dest.size();
-
-        Len = (int)(End-Dest.c_str());
-
-        SepCount = (Len - 1) / 3;
-
-        for(; SepCount>0; SepCount--)
-        {
-            Len -= 3;
-            Dest.insert(Len, " ");
-        }
-    }
 }
 
 string GetError(int e)

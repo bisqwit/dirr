@@ -100,7 +100,7 @@ Redo:
             Len += (a = Buf.size());
 
             if(a > Space)a = Space;
-            if(a)
+            if(a > 0)
             {
                 Buf.erase(a);
                 GetModeColor(ColorMode::INFO, '@');
@@ -173,6 +173,6 @@ Redo:
 
     #undef PutSet
 
-    if(Fill) while(Space) { Gputch(' '); --Space; }
+    if(Fill) while(Space > 0) { Gputch(' '); --Space; }
     return Len;
 }
