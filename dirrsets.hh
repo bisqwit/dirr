@@ -1,3 +1,27 @@
+/*
+Colors have the following format, in hexadecimal:
+
+For legacy 16-color formats:
+  color = blink*0x80 + background*0x10 + intensity*0x08 + foreground*0x01
+  where blink      = 0..1
+        background = 0..7
+        intensity  = 0..1
+        foreground = 0..7
+  where colors are: 0 = black, 1 = blue,    2 = green, 3 = cyan,
+                    4 = red,   5 = magenta, 6 = brown, 7 = white
+  Example: C  = black background, bright red
+           17 = blue background,  non-bright white foreground (light gray)
+
+For xterm-256color formats:
+  color = 0x100 + foreground*0x01 + background*0x200
+  where foreground = 0..255
+        background = 0..255
+  where colors are: 0..15 same as legacy 16-color formats
+                  16..255 are:  16 + 36*red + 6*green + blue
+                  where red=0..5, green=0..5, blue=0..5
+  Example: 164 = greenish yellow with black background
+*/
+
     /**************************************************************
      * mode() - How to color the drwxr-xr-x string.
      *

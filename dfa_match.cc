@@ -98,7 +98,7 @@ void DFA_Matcher::Compile()
         return Printf("%c", c);
     };*/
 
-    const long long hash = std::hash<std::string>{}(hash_str);
+    const unsigned long long hash = std::hash<std::string>{}(hash_str);
     std::string hash_save_fn;
     std::FILE* save_fp = nullptr;
     for(const std::string& path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
@@ -110,7 +110,7 @@ void DFA_Matcher::Compile()
             char StrBuf[128];
             try {
                 while(std::fgets(StrBuf, sizeof StrBuf, fp) && StrBuf[0]=='#') {}
-                if(std::stoll(StrBuf, nullptr, 16) == hash)
+                if(std::stoull(StrBuf, nullptr, 16) == hash)
                 {
                     // Read the rest of the state machine
                     std::fgets(StrBuf, sizeof StrBuf, fp);

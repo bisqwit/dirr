@@ -78,7 +78,7 @@ static string FieldOrder;
 
 struct FieldInfo
 {
-    enum: unsigned char {
+    enum: unsigned {
         literal,      // info = which character to print (00-FF)
         attribute,    // info = attribute mode (0..9) -- 0=DOS, 1=-rw-r--r--, 2..9 = number of octal digits (at least 3)
         color,        // info = which color to set (00-FF)
@@ -94,7 +94,7 @@ struct FieldInfo
         datetime,     // datetime, uses DateTime and DateForm
         num_different_fields
     } type; //
-    unsigned char info;
+    unsigned info;
 };
 static void SetDefaultOptions()
 {
@@ -1209,6 +1209,7 @@ public:
                                   "  .uid and .gid are .o and .g but always in numeric form\n"
                                   "  .z is .s in \"human-readable\" format\n"
                                   "   anything else=printed\n"
+                                  "  Colors follow the same format as in DIRR_COLORS\n"
                                   "   Default is `--format="+FieldOrder+"'",
                                   &Handle::opt_f);
         add("-F",  "--dates",     "Specify new date format. man strftime.\n"
