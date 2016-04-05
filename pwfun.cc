@@ -42,7 +42,7 @@ public:
         for(setgrent(); ;)
         {
             struct group *p = getgrent(); if(!p) break;
-            UidItems.emplace(p->gr_gid, p->gr_name);
+            GidItems.emplace(p->gr_gid, p->gr_name);
         }
         endgrent();
     }
