@@ -1,14 +1,3 @@
-#define HAVE_SYS_VFS_H 
-#define HAVE_SYS_MOUNT_H 
-#define HAVE_SYS_IOCTL_H 
-#define HAVE_SYS_STATVFS_H 
-#define HAVE_DIRENT_H 
-#define HAVE_GRP_H 
-#define HAVE_PWD_H 
-#define HAVE_TERMIO_H 
-#define HAVE_TERMIOS_H 
-#define HAVE_SYS_STAT_H 
-#define HAVE_SYS_TYPES_H 
 // These settings can be changed by user.
 
 // Recommended, adds speed
@@ -21,7 +10,7 @@
 #define STARTUP_COUNTER 0
 
 // Set this to 1 if your passwd file is quick to load.
-#define PRELOAD_UIDGID 0
+#define PRELOAD_UIDGID 1
 
 // Set this to 1 if you want dot-files always shown.
 #define ALWAYS_SHOW_DOTFILES 0
@@ -29,7 +18,31 @@
 // File containing the settings. Can be changed.
 #define SETTINGSFILE "dirrsets.hh"
 
-// statfs() support. It was automatically configured,
-// and _could_ be incorrect. Change it if you suspect
-// an error.
-#define HAVE_STATFS 1
+#define HAVE_TERMIO_H 
+#define HAVE_SYS_STAT_H 
+#define HAVE_SYS_TYPES_H 
+#define HAVE_VSNPRINTF_CSTDIO
+#define HAVE_VSNPRINTF
+#define HAVE_STATFS_SYS_VFS_H
+#define HAVE_STATFS
+#undef HAVE_STATFS_SYS_STATFS_H // Untested, redundant
+#undef HAVE_STATFS_SYS_MOUNT_H // Untested, redundant
+#undef HAVE_STATFS_SYS_STATVFS_H // Untested, redundant
+#undef HAVE_IOCTL_UNISTD_H
+#define HAVE_IOCTL_SYS_IOCTL_H
+#define HAVE_IOCTL
+#undef HAVE_IOCTL_SYS_LINUX_IOCTL_H // Untested, redundant
+#define HAVE_TCGETATTR_TERMIOS_H
+#define HAVE_TCGETATTR
+#define HAVE_READDIR_DIRENT_H
+#define HAVE_READDIR
+#undef HAVE_READDIR_DIRECT_H // Untested, redundant
+#undef HAVE_READDIR_DIR_H // Untested, redundant
+#define HAVE_GETGRENT_GRP_H
+#define HAVE_GETGRENT
+#define HAVE_GETPWENT_PWD_H
+#define HAVE_GETPWENT
+#define HAVE_GETGRGID_GRP_H
+#define HAVE_GETGRGID
+#define HAVE_GETPWUID_PWD_H
+#define HAVE_GETPWUID

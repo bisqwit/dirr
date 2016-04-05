@@ -46,7 +46,7 @@
      * D=door (used in Solaris).
      * ? is for file/link names which were not stat()able.
      **************************************************************/
-    "type(lB,d9,xA,cE,bE,p6,sD,?3,DC)"
+    "type(lB,d9,xA,cE,bE,p6,sD,?3,DC,-7)"
 
     /**************************************************************
      * descr() - How to color the <DIR>, <PIPE> etc texts

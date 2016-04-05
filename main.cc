@@ -6,10 +6,10 @@
 */
 
 #define VERSIONSTR \
-    "DIRR " VERSION " copyright (C) 1992,2010 Bisqwit (http://iki.fi/bisqwit/)\n" \
-    "This program is under GPL. dirr-" VERSION ".{rar,zip,tar.{gz,bz2}}\n" \
+    "DIRR " VERSION " copyright (C) 1992,2016 Bisqwit (http://iki.fi/bisqwit/)\n" \
+    "This program is under GPL. dirr-" VERSION ".tar.[gx]z\n" \
     "are available at the homepage of the author.\n" \
-    "About some ideas about this program, thanks to Warp.\n"
+    "Thanks to Warp for contributing ideas to this program.\n"
 
 #include <cstdio>
 #include <cstring>
@@ -33,19 +33,22 @@
 #include <algorithm>
 #include <vector>
 #include <string>
+#include <list>
 
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+# include <sys/types.h>
 #endif
+
 #include <unistd.h>
-#ifdef HAVE_DIR_H
-#include <dir.h>
+
+#ifdef HAVE_READDIR_DIR_H
+# include <dir.h>
 #endif
-#ifdef HAVE_DIRENT_H
-#include <dirent.h>
+#ifdef HAVE_READDIR_DIRENT_H
+# include <dirent.h>
 #endif
-#ifdef HAVE_DIRECT_H
-#include <direct.h>
+#ifdef HAVE_READDIR_DIRECT_H
+# include <direct.h>
 #endif
 
 #include "stat.h"
@@ -54,11 +57,11 @@ using namespace std;
 
 static int RowLen;
 
-static int LongestName;
-static int LongestSize, LongestSizeWithSeps, LongestSizeCompact;
-static int LongestUID, LongestUIDvalue;
-static int LongestGID, LongestGIDvalue;
-static int LongestLinks;
+static std::size_t LongestName;
+static std::size_t LongestSize, LongestSizeWithSeps, LongestSizeCompact;
+static std::size_t LongestUIDname, LongestUIDnumber;
+static std::size_t LongestGIDname, LongestGIDnumber;
+static std::size_t LongestLinks;
 
 static bool ShowDotFiles = ALWAYS_SHOW_DOTFILES;
 static bool Contents, PreScan, Sara;
@@ -67,6 +70,110 @@ static int DateTime;
 static string Sorting; /* n,d,s,u,g */
 static string DateForm;
 static string FieldOrder;
+
+struct FieldInfo
+{
+    enum: unsigned char {
+        literal,      // info = which character to print (00-FF)
+        attribute,    // info = attribute mode (0..9) -- 0=DOS, 1=-rw-r--r--, 2..9 = number of octal digits (at least 3)
+        color,        // info = which color to set (00-FF)
+        user_id,      // UID number (info: 1=fit, 0=don't fit)
+        user_name,    // UID name   (info: 1=fit, 0=don't fit)
+        group_id,     // GID number (info: 1=fit, 0=don't fit)
+        group_name,   // GID name   (info: 1=fit, 0=don't fit)
+        nrlinks,      // number of links    (info: 1=fit, 0=don't fit)
+        name,         // filename           (info: 1=fit, 0=don't fit)
+        size,         // filesize           (info: 1=fit, 0=don't fit)
+        size_compact, // filesize compactly (info: 1=fit, 0=don't fit)
+        size_sep,     // filesize with thousands-separator. info = which separator (00-7F) (&0x80 = fit)
+        datetime,     // datetime, uses DateTime and DateForm
+        num_different_fields
+    } type; //
+    unsigned char info;
+};
+struct FieldsToPrint: public std::vector<FieldInfo> // ParsedFieldOrder
+{
+    bool used[FieldInfo::num_different_fields]{};
+    bool need_column_separator = false;
+
+    void ParseFrom(const std::string& s)
+    {
+        unsigned char work;
+        for(std::size_t a=0, b=s.size(); a<b; ++a)
+            switch(s[a])
+            {
+                case '.':
+                    switch(s[++a])
+                    {
+                        case '\0': emplace_back(FieldInfo{FieldInfo::literal, '.'}); break;
+                        case 'a':
+                            if(s[a+1] >= '0' && s[a+1] <= '9')
+                                emplace_back(FieldInfo{FieldInfo::attribute, (unsigned char) s[++a]});
+                            else
+                                emplace_back(FieldInfo{FieldInfo::attribute, '1'});
+                            break;
+                        case 'x':
+                            #define x(c) (((c)>='0'&&(c)<='9') ? ((c)-'0') : ((c)>='A'&&(c)<='F') ? ((c)-'A') : ((c)-'a'))
+                            work=0;
+                            if(std::isxdigit(s[a+1])) { ++a; work = work*16 + x(s[a]);
+                            if(std::isxdigit(s[a+1])) { ++a; work = work*16 + x(s[a]); }}
+                            else work = 7;
+                            emplace_back(FieldInfo{FieldInfo::color, work});
+                            break;
+                        case 'o': emplace_back(FieldInfo{FieldInfo::user_name,1}); break;
+                        case 'O': emplace_back(FieldInfo{FieldInfo::user_name,0}); break;
+                        case 'u': if(s[a+1]=='i' && s[a+2]=='d')
+                                  { a+=2; emplace_back(FieldInfo{FieldInfo::user_id,1}); break; }
+                                  goto dfl_opt;
+                        case 'g': if(s[a+1]=='i' && s[a+2]=='d')
+                                  { a+=2; emplace_back(FieldInfo{FieldInfo::group_id,1}); break; }
+                                  emplace_back(FieldInfo{FieldInfo::group_name,1}); break;
+                        case 'G': emplace_back(FieldInfo{FieldInfo::group_name,0}); break;
+                        case 'h': emplace_back(FieldInfo{FieldInfo::nrlinks,1}); break;
+                        case 'f': emplace_back(FieldInfo{FieldInfo::name,   1}); break;
+                        case 'F': emplace_back(FieldInfo{FieldInfo::name,   0}); break;
+                        case 's': emplace_back(FieldInfo{FieldInfo::size,   1}); break;
+                        case 'z': emplace_back(FieldInfo{FieldInfo::size_compact, 1}); break;
+                        case 'S': emplace_back(FieldInfo{FieldInfo::size_sep,     (unsigned char)(s[a+1] ? s[++a] : ' ')}); break;
+                        case 'd': emplace_back(FieldInfo{FieldInfo::datetime,     1}); break;
+                        default: dfl_opt: emplace_back(FieldInfo{FieldInfo::literal, (unsigned char)s[a]});
+                    }
+                    break;
+                case '_':
+                    emplace_back(FieldInfo{FieldInfo::literal, ' '});
+                    break;
+                default:
+                    emplace_back(FieldInfo{FieldInfo::literal, (unsigned char)s[a]});
+            }
+        // If the last item is a "fit" item, convert into a non-fit item
+        for(auto i = rbegin(); i != rend(); ++i)
+        {
+            if(i->type == FieldInfo::attribute) break;
+            if(i->type == FieldInfo::literal) break;
+            if(i->type == FieldInfo::color) continue; // nonprinting
+            if(i->type == FieldInfo::datetime) break; // always no-fitting
+            if(i->type == FieldInfo::size_sep)
+                i->info &= 0x7F;
+            else
+                i->info &= 0x01;
+        }
+        // Collect info for which field types are needed for width calculation
+        for(bool& c: used) c = false;
+        for(auto i = begin(); i != end(); ++i)
+        {
+            used[ i->type ] = (i->type == FieldInfo::size_sep) ? (i->info & 0x80) : (i->info & 0x01);
+        }
+        // Don't need column separator (space), if the last non-color item is a literal
+        need_column_separator = true;
+        for(auto i = rbegin(); i != rend(); ++i)
+        {
+            if(i->type == FieldInfo::color) continue;
+            if(i->type == FieldInfo::literal)
+                need_column_separator = false;
+            break;
+        }
+    }
+} FieldsToPrint;
 
 static void EstimateFields();
 
@@ -103,12 +210,10 @@ static void SetDefaultOptions()
     ChrStr = "<C%u,%u>"; // Modify with -dc
 }
 
-#include <map>
+#include <unordered_map>
 static class Inodemap
 {
-    typedef map<ino_t, string> inomap;
-    typedef map<dev_t, inomap> devmap;
-    devmap items;
+    std::unordered_map<dev_t, std::unordered_map<ino_t, string>> items;
     bool enabled;
 public:
     Inodemap() : items(), enabled(true) { }
@@ -123,29 +228,29 @@ public:
     }
     void insert(dev_t dev, ino_t ino, const string &name)
     {
-        if(enabled && !has(dev, ino))
-            items[dev][ino] = name;
-    }
-    bool has(dev_t dev, ino_t ino) const
-    {
-        devmap::const_iterator i = items.find(dev);
-        if(i != items.end())
+        if(enabled)
         {
-            inomap::const_iterator j = i->second.find(ino);
-            if(j != i->second.end())return true;
+            auto i = items.find(dev);
+            if(i == items.end())
+                items.emplace(dev, std::unordered_map<ino_t,string>{{ino,name}} );
+            else
+            {
+                auto j = i->second.find(ino);
+                if(j == i->second.end())
+                    i->second.emplace(ino, name);
+            }
         }
-        return false;
     }
     const char *get(dev_t dev, ino_t ino) const
     {
-        devmap::const_iterator i = items.find(dev);
+        auto i = items.find(dev);
         if(i != items.end())
         {
-            inomap::const_iterator j = i->second.find(ino);
+            auto j = i->second.find(ino);
             if(j != i->second.end())
                 return j->second.c_str();
         }
-        return NULL;
+        return nullptr;
     }
 } Inodemap;
 
@@ -155,284 +260,197 @@ static void TellMe(const StatType &Stat, const string &Name
 #endif
     )
 {
-    int Len;
-    char OwNam[16];
-    char GrNam[16];
-    const char *Passwd, *Group;
-    int ItemLen, NameAttr;
-    int NeedSpace=0;
-    const char *s;
+    std::string OwNum,GrNum,OwNam,GrNam;
+    std::size_t ItemLen = 0;
 
-    if(S_ISDIR(Stat.st_mode))
+    if(true) // scope for updating totals
     {
-        SumCnt[SumDir]++;
-        Summa[SumDir] += Stat.st_size;
-    }
-    #ifdef S_ISFIFO
-    else if(S_ISFIFO(Stat.st_mode))
-    {
-        SumCnt[SumFifo]++;
-        Summa[SumFifo] += Stat.st_size;
-    }
-    #endif
-    #ifdef S_ISSOCK
-    else if(S_ISSOCK(Stat.st_mode))
-    {
-        SumCnt[SumSock]++;
-        Summa[SumSock] += Stat.st_size;
-    }
-    #endif
-    else if(S_ISCHR(Stat.st_mode))
-    {
-        SumCnt[SumChrDev]++;
-        Summa[SumChrDev] += 0; //Stat.st_size;
-    }
-    else if(S_ISBLK(Stat.st_mode))
-    {
-        SumCnt[SumBlkDev]++;
-        Summa[SumBlkDev] += 0; //Stat.st_size;
-    }
-    #ifdef S_ISLNK
-    else if(S_ISLNK(Stat.st_mode))
-    {
-        SumCnt[SumLink]++;
-        Summa[SumLink] += Stat.st_size;
-    }
-    #endif
-    else
-    {
-        SumCnt[SumFile]++;
-        Summa[SumFile] += Stat.st_size;
+        SizeType size = Stat.st_size;
+        int category  = SumFile;
+
+        if(S_ISDIR(Stat.st_mode)) { category = SumDir; }
+        #ifdef S_ISFIFO
+        else if(S_ISFIFO(Stat.st_mode)) { category = SumFifo; }
+        #endif
+        #ifdef S_ISSOCK
+        else if(S_ISSOCK(Stat.st_mode)) { category = SumSock; }
+        #endif
+        else if(S_ISCHR(Stat.st_mode)) { category = SumChrDev; size = 0; }
+        else if(S_ISBLK(Stat.st_mode)) { category = SumBlkDev; size = 0; }
+        #ifdef S_ISLNK
+        else if(S_ISLNK(Stat.st_mode)) { category = SumLink; }
+        #endif
+        SumCnt[category]   += 1;
+        SumSizes[category] += size;
     }
 
-    NameAttr = GetNameAttr(Stat, NameOnly(Name));
-
-    Passwd = Getpwuid((int)Stat.st_uid);
-    Group  = Getgrgid((int)Stat.st_gid);
-    if(Passwd && *Passwd)strcpy(OwNam, Passwd);else sprintf(OwNam,"%d",(int)Stat.st_uid);
-    if( Group &&  *Group)strcpy(GrNam,  Group);else sprintf(GrNam,"%d",(int)Stat.st_gid);
-
-    Len = strlen(OwNam); if(Len > LongestUID)LongestUID = Len;
-    Len = strlen(GrNam); if(Len > LongestGID)LongestGID = Len;
-
-    for(ItemLen=0, s=FieldOrder.c_str(); *s; )
-    {
-        NeedSpace=0;
-        switch(*s)
+    for(const auto& f: FieldsToPrint)
+        switch(f.type)
         {
-            case '.':
-                NeedSpace=1;
-                switch(*++s)
+            case FieldInfo::literal:
+            {
+                Gputch(f.info);
+                ++ItemLen;
+                break;
+            }
+            case FieldInfo::color:
+            {
+                SetAttr(f.info);
+                break;
+            }
+            case FieldInfo::attribute:
+            {
+                auto i = PrintAttr(Stat, f.info
+                #ifdef DJGPP
+                                   , dosattr
+                #endif
+                                  );
+                ItemLen += i;
+                break;
+            }
+            case FieldInfo::user_name:
+            {
+                GetDescrColor(ColorDescr::OWNER, (Stat.st_uid==getuid())?1:2);
+                if(OwNam.empty())
                 {
-                    case 'a':
-                    {
-                        s++;
-                        Len = '1';
-                        if((*s>='0')&&(*s<='9'))Len = *s;
-                        int i = PrintAttr(Stat, Len
-            #ifdef DJGPP
-                                          , dosattr
-            #endif
-                                         );
-                        ItemLen += i;
-                        RowLen += i;
-                        break;
-                    }
-                    case 'x':
-                    {
-                        ++s;
-                        int attr = -1;
-                        #define x(c) (((c)>='0'&&(c)<='9') ? ((c)-'0') : ((c)>='A'&&(c)<='F') ? ((c)-'A') : ((c)-'a'))
-                        if(std::isxdigit(*s)) { attr =           x(*s); ++s;
-                        if(std::isxdigit(*s)) { attr = attr*16 + x(*s); ++s; }}
-                        SetAttr(attr < 0 ? 7 : attr);
-                        #undef x
-                        s--;
-                        NeedSpace=0;
-                        break;
-                    }
-                    case 'o':
-                    case 'O':
-                    {
-                        int i;
-                        GetDescrColor("owner", (Stat.st_uid==getuid())?1:2);
-                        if(isupper((int)*s) || !s[1])
-                            i = Gprintf("%s", OwNam);
-                        else
-                            i = Gprintf("%*s", -LongestUID, OwNam);
-                        ItemLen += i;
-                        RowLen += i;
-                        break;
-                    }
-                    case 'u':
-                    {
-                        if(s[1]=='i' && s[2]=='d')
-                        {
-                            s += 2;
-                            GetDescrColor("owner", (Stat.st_uid==getuid())?1:2);
-                            int i = Gprintf("%*u", LongestUIDvalue, Stat.st_uid);
-                            ItemLen += i;
-                            RowLen  += i;
-                        }
-                        break;
-                    }
-#ifdef DJGPP
-                    case 'G':
-                    case 'g':
-                    case 'h':
-                        break;
-#else
-                    case 'G':
-                    case 'g':
-                    {
-                        if(s[1]=='i' && s[2]=='d')
-                        {
-                            s += 2;
-                            GetDescrColor("group", (Stat.st_gid==getgid())?1:2);
-                            int i = Gprintf("%*u", LongestGIDvalue, Stat.st_gid);
-                            ItemLen += i;
-                            RowLen  += i;
-                            break;
-                        }
-
-                        int i;
-                        GetDescrColor("group", (Stat.st_gid==getgid())?1:2);
-                        if(isupper((int)*s) || !s[1])
-                            i = Gprintf("%s", GrNam);
-                        else
-                            i = Gprintf("%*s", -LongestGID, GrNam);
-                        ItemLen += i;
-                        RowLen += i;
-                        break;
-                    }
-                    case 'h':
-                    {
-                        GetDescrColor("nrlink", 1);
-                        int i = Gprintf("%*d", LongestLinks, (int)Stat.st_nlink);
-                        ItemLen += i;
-                        RowLen += i;
-                        break;
-                    }
-#endif
-                    case 'F':
-                    case 'f':
-                    {
-                        SetAttr(NameAttr);
-
-                        const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
-
-                        if(hardlinkfn && Name == hardlinkfn)
-                            hardlinkfn = NULL;
-
-                        GetName(Name, Stat, LongestName,
-                                (Sara||s[1]) && (*s=='f'),
-                                (*s=='f'),
-                                hardlinkfn);
-
-                        ItemLen += LongestName;
-                        RowLen += LongestName;
-                        break;
-                    }
-                    case 's':
-                        Gprintf("%s", GetSize(Name, Stat, LongestSize, 0).c_str());
-                        ItemLen += LongestSize;
-                        RowLen += LongestSize;
-                        break;
-                    case 'z':
-                        Gprintf("%s", GetSize(Name, Stat, LongestSizeCompact, -1).c_str());
-                        ItemLen += LongestSizeCompact;
-                        RowLen += LongestSizeCompact;
-                        break;
-                    case 'S':
-                    {
-                        s++; /* Skip 'S' */
-                        int i = Gprintf("%s", GetSize(Name, Stat, LongestSizeWithSeps, *s?*s:' ').c_str());
-                        ItemLen += i;
-                        RowLen += i;
-                        break;
-                    }
-                    case 'd':
-                    {
-                        char Buf[64]; /* For the date */
-                        char *s;
-                        int i;
-
-                        time_t t;
-
-                        switch(DateTime)
-                        {
-                            case 1: t = Stat.st_atime; break;
-                            case 2: t = Stat.st_mtime; break;
-                            case 3: t = Stat.st_ctime;
-                        }
-
-                        if(DateForm == "%u")
-                        {
-                            time_t now = time(NULL);
-                            strcpy(Buf, ctime(&t));
-                            if(now > t + 6L * 30L * 24L * 3600L /* Old. */
-                            || now < t - 3600L)       /* In the future. */
-                            {
-                                /* 6 months in past, one hour in future */
-                                strcpy(Buf+11, Buf+19);
-                            }
-                            Buf[16] = 0;
-                            strcpy(Buf, Buf+4);
-                        }
-                        else if(DateForm == "%z")
-                        {
-                            struct tm *TM = localtime(&t);
-                            time_t now = time(NULL);
-                            int m = TM->tm_mon, d=TM->tm_mday, y=TM->tm_year;
-                            struct tm *NOW = localtime(&now);
-                            if(NOW->tm_year == y || (y==NOW->tm_year-1 && m>NOW->tm_mon))
-                            {
-                                sprintf(Buf, "%3d.%d", d,m+1);
-                                if(Buf[5])strcpy(Buf, Buf+1);
-                            }
-                            else
-                                sprintf(Buf, "%5d", y+1900);
-                        }
-                        else
-                            strftime(Buf, sizeof Buf, DateForm.c_str(), localtime(&t));
-
-                        while((s=strchr(Buf,'_'))!=NULL)*s=' ';
-                        GetDescrColor("date", 1);
-                        i = Gprintf("%s", Buf);
-                        ItemLen += i;
-                        RowLen += i;
-                        break;
-                    }
-                    default:
-                        Gputch(*s);
-                        ItemLen++;
-                        RowLen++;
+                    const char* Passwd = Getpwuid((int)Stat.st_uid);
+                    if(Passwd && *Passwd) OwNam = Passwd;
+                    else { if(OwNum.empty()) OwNum = std::to_string(Stat.st_uid); OwNam = OwNum; }
                 }
+                auto i = f.info ? Gwrite(OwNam, LongestUIDname) : Gwrite(OwNam);
+                ItemLen += i;
                 break;
-            case '_':
-                Gputch(' ');
-                ItemLen++;
-                RowLen++;
+            }
+            case FieldInfo::user_id:
+            {
+                GetDescrColor(ColorDescr::OWNER, (Stat.st_uid==getuid())?1:2);
+                if(OwNum.empty()) OwNum = std::to_string(Stat.st_uid);
+                auto i = f.info ? Gwrite(OwNum, LongestUIDnumber) : Gwrite(OwNum);
+                ItemLen += i;
                 break;
-            default:
-                Gputch(*s);
-                ItemLen++;
-                RowLen++;
-        }
-        if(*s)s++;
-    }
+            }
+            case FieldInfo::group_name:
+            {
+                GetDescrColor(ColorDescr::GROUP, (Stat.st_gid==getgid())?1:2);
+                if(GrNam.empty())
+                {
+                    const char* Passwd = Getgrgid((int)Stat.st_gid);
+                    if(Passwd && *Passwd) GrNam = Passwd;
+                    else { if(GrNum.empty()) GrNum = std::to_string(Stat.st_gid); GrNam = GrNum; }
+                }
+                auto i = f.info ? Gwrite(GrNam, LongestGIDname) : Gwrite(GrNam);
+                ItemLen += i;
+                break;
+            }
+            case FieldInfo::group_id:
+            {
+                GetDescrColor(ColorDescr::GROUP, (Stat.st_gid==getgid())?1:2);
+                if(GrNum.empty()) GrNum = std::to_string(Stat.st_gid);
+                auto i = f.info ? Gwrite(GrNum, LongestGIDnumber) : Gwrite(GrNum);
+                ItemLen += i;
+                break;
+            }
+            case FieldInfo::nrlinks:
+            {
+                GetDescrColor(ColorDescr::NRLINK, 1);
+                auto i = f.info ? Gwrite(std::to_string(Stat.st_nlink), LongestLinks) : Gwrite(std::to_string(Stat.st_nlink));
+                ItemLen += i;
+                break;
+            }
+            case FieldInfo::name:
+            {
+                SetAttr( GetNameAttr(Stat, NameOnly(Name)) );
 
-    if(FieldOrder.size())
+                const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
+                if(hardlinkfn && Name == hardlinkfn) hardlinkfn = nullptr;
+                // Undocumented feature: If fitting is disabled, long pathful filenames are printed
+                auto i = GetName(Name, Stat, LongestName, Sara || f.info, f.info, hardlinkfn);
+                ItemLen += std::max(std::size_t(i), LongestName);
+                break;
+            }
+            case FieldInfo::size:
+            {
+                auto i = Gwrite(GetSize(Name, Stat, f.info ? LongestSize : 0, 0));
+                ItemLen += i;
+                break;
+            }
+            case FieldInfo::size_compact:
+            {
+                auto i = Gwrite(GetSize(Name, Stat, f.info ? LongestSizeCompact : 0, -1));
+                ItemLen += i;
+                break;
+            }
+            case FieldInfo::size_sep:
+            {
+                auto i = Gwrite(GetSize(Name, Stat, (f.info & 0x80) ? LongestSizeWithSeps : 0, char(f.info & 0x7F)));
+                ItemLen += i;
+                break;
+            }
+            case FieldInfo::datetime:
+            {
+                char Buf[64]; /* For the date */
+
+                time_t t;
+                switch(DateTime)
+                {
+                    case 1: t = Stat.st_atime; break;
+                    case 2: t = Stat.st_mtime; break;
+                    case 3: t = Stat.st_ctime;
+                }
+
+                if(DateForm == "%u")
+                {
+                    time_t now = time(NULL);
+                    strcpy(Buf, ctime(&t));
+                    if(now > t + 6L * 30L * 24L * 3600L /* Old. */
+                    || now < t - 3600L)       /* In the future. */
+                    {
+                        /* 6 months in past, one hour in future */
+                        strcpy(Buf+11, Buf+19);
+                    }
+                    Buf[16] = 0;
+                    strcpy(Buf, Buf+4);
+                }
+                else if(DateForm == "%z")
+                {
+                    struct tm *TM = localtime(&t);
+                    time_t now = time(NULL);
+                    int m = TM->tm_mon, d=TM->tm_mday, y=TM->tm_year;
+                    struct tm *NOW = localtime(&now);
+                    if(NOW->tm_year == y || (y==NOW->tm_year-1 && m>NOW->tm_mon))
+                    {
+                        sprintf(Buf, "%3d.%d", d,m+1);
+                        if(Buf[5])strcpy(Buf, Buf+1);
+                    }
+                    else
+                        sprintf(Buf, "%5d", y+1900);
+                }
+                else
+                    strftime(Buf, sizeof Buf, DateForm.c_str(), localtime(&t));
+
+                char*s;
+                while((s=strchr(Buf,'_'))!=NULL)*s=' ';
+                GetDescrColor(ColorDescr::DATE, 1);
+                auto i = Gwrite(Buf);
+                ItemLen += i;
+                break;
+                break;
+            }
+            case FieldInfo::num_different_fields:;
+        }
+
+    if(!FieldsToPrint.empty())
     {
-        if(!Sara)goto P1;
-        if(RowLen + ItemLen >= COLS)
+        RowLen += ItemLen;
+        // Make a newline if the _next_ item of the same width would not fit
+        if(!Sara || int(RowLen + ItemLen) >= int(COLS))
         {
-P1:         Gprintf("\n");
+            Gprintf("\n");
             RowLen = 0;
         }
-        else
+        else if(FieldsToPrint.need_column_separator)
         {
-            if(NeedSpace)Gputch(' ');
+            Gputch(' ');
             RowLen++;
         }
     }
@@ -445,111 +463,107 @@ public:
     #ifdef DJGPP
     unsigned dosattr;
     #endif
-    string Name;
+    std::string Name;
 public:
     StatItem(const StatType &t,
     #ifdef DJGPP
              unsigned da,
     #endif
-             const string &n) : Stat(t),
+             std::string&& n) : Stat(t),
     #ifdef DJGPP
                                 dosattr(da),
     #endif
-                                Name(n) { }
+                                Name(std::move(n)) { }
+
+    StatItem(StatItem&&) = default;
+    StatItem(const StatItem&) = default;
+    StatItem& operator=(StatItem&&) = default;
+    StatItem& operator=(const StatItem&) = default;
 
     /* Returns the class code for grouping sort */
     int Class(int LinksAreFiles) const
     {
-        if(S_ISDIR(Stat.st_mode))return 0;
+        if(S_ISDIR(Stat.st_mode)) return 0;
         #ifdef S_ISLNK
-        if(S_ISLNK(Stat.st_mode))return 2-LinksAreFiles;
+        if(S_ISLNK(Stat.st_mode)) return 2-LinksAreFiles;
         #else
         LinksAreFiles = LinksAreFiles; /* Not used */
         #endif
-        if(S_ISCHR(Stat.st_mode))return 3;
-        if(S_ISBLK(Stat.st_mode))return 4;
+        if(S_ISCHR(Stat.st_mode)) return 3;
+        if(S_ISBLK(Stat.st_mode)) return 4;
         #ifdef S_ISFIFO
-        if(S_ISFIFO(Stat.st_mode))return 5;
+        if(S_ISFIFO(Stat.st_mode)) return 5;
         #endif
         #ifdef S_ISSOCK
-        if(S_ISSOCK(Stat.st_mode))return 6;
+        if(S_ISSOCK(Stat.st_mode)) return 6;
         #endif
         return 1;
     }
 
-    bool operator> (const StatItem &toka) const { return compare(toka, true); }
-    bool operator< (const StatItem &toka) const { return compare(toka, false); }
-
-    bool compare (const StatItem &toka, bool suur) const
+    bool operator< (const StatItem &other) const
     {
-        const class StatItem &eka = *this;
-
-        for(const char *s=Sorting.c_str(); *s; s++)
+        const class StatItem &me = *this;
+        for(char c: Sorting)
         {
             SizeType Result=0;
-
-            switch(tolower(*s))
+            switch(c)
             {
-                case 'c':
-                    Result = GetNameAttr(eka.Stat, eka.Name.c_str())
-                           - GetNameAttr(toka.Stat, toka.Name.c_str());
-                    break;
-                case 'n':
-                    Result = strcmp(eka.Name.c_str(), toka.Name.c_str());
-                    break;
-                case 'm':
-                    Result = strcasecmp(eka.Name.c_str(), toka.Name.c_str());
-                    break;
-                case 's':
-                    Result = eka.Stat.st_size - toka.Stat.st_size;
-                    break;
+                case 'c': Result = GetNameAttr(me.Stat, me.Name.c_str()) - GetNameAttr(other.Stat, other.Name.c_str()); break;
+                case 'C': Result = GetNameAttr(other.Stat, other.Name.c_str()) - GetNameAttr(me.Stat, me.Name.c_str()); break;
+                case 'n': Result = strcmp(me.Name.c_str(), other.Name.c_str()); break;
+                case 'N': Result = strcmp(other.Name.c_str(), me.Name.c_str()); break;
+                case 'm': Result = strcasecmp(me.Name.c_str(), other.Name.c_str()); break;
+                case 'M': Result = strcasecmp(other.Name.c_str(), me.Name.c_str()); break;
+                case 's': Result = me.Stat.st_size - other.Stat.st_size; break;
+                case 'S': Result = other.Stat.st_size - me.Stat.st_size; break;
                 case 'd':
                     switch(DateTime)
                     {
-                        case 1: Result = eka.Stat.st_atime-toka.Stat.st_atime; break;
-                        case 2: Result = eka.Stat.st_mtime-toka.Stat.st_mtime; break;
-                        case 3: Result = eka.Stat.st_ctime-toka.Stat.st_ctime;
+                        case 1: Result = me.Stat.st_atime-other.Stat.st_atime; break;
+                        case 2: Result = me.Stat.st_mtime-other.Stat.st_mtime; break;
+                        case 3: Result = me.Stat.st_ctime-other.Stat.st_ctime;
                     }
                     break;
-                case 'u':
-                    Result = (int)eka.Stat.st_uid - (int)toka.Stat.st_uid;
+                case 'D':
+                    switch(DateTime)
+                    {
+                        case 1: Result = other.Stat.st_atime-me.Stat.st_atime; break;
+                        case 2: Result = other.Stat.st_mtime-me.Stat.st_mtime; break;
+                        case 3: Result = other.Stat.st_ctime-me.Stat.st_ctime;
+                    }
                     break;
-                case 'g':
-                    Result = (int)eka.Stat.st_gid - (int)toka.Stat.st_gid;
-                    break;
-                case 'h':
-                    Result = (int)eka.Stat.st_nlink - (int)toka.Stat.st_nlink;
-                    break;
-                case 'r':
-                    Result = eka.Class(0) - toka.Class(0);
-                    break;
-                case 'p':
-                    Result = eka.Class(1) - toka.Class(1);
-                    break;
+                case 'u': Result = (int)me.Stat.st_uid - (int)other.Stat.st_uid; break;
+                case 'U': Result = (int)other.Stat.st_uid - (int)me.Stat.st_uid; break;
+                case 'g': Result = (int)me.Stat.st_gid - (int)other.Stat.st_gid; break;
+                case 'G': Result = (int)other.Stat.st_gid - (int)me.Stat.st_gid; break;
+                case 'h': Result = (int)me.Stat.st_nlink - (int)other.Stat.st_nlink; break;
+                case 'H': Result = (int)other.Stat.st_nlink - (int)me.Stat.st_nlink; break;
+                case 'r': Result = me.Class(0) - other.Class(0); break;
+                case 'R': Result = other.Class(0) - me.Class(0); break;
+                case 'p': Result = me.Class(1) - other.Class(1); break;
+                case 'P': Result = other.Class(1) - me.Class(1); break;
                 default:
                 {
                     const char *t = Sorting.c_str();
-                    SetAttr(GetDescrColor("txt", 1));
+                    SetAttr(GetDescrColor(ColorDescr::TEXT, 1));
                     Gprintf("\nError: `-o");
-                    while(t < s)Gputch(*t++);
-                    GetModeColor("info", '?');
-                    Gputch(*s++);
-                    SetAttr(GetDescrColor("txt", 1));
-                    Gprintf("%s'\n\n", s);
+                    while(*t != c)Gputch(*t++);
+                    GetModeColor(ColorMode::INFO, '?');
+                    Gputch(*t++);
+                    SetAttr(GetDescrColor(ColorDescr::TEXT, 1));
+                    Gprintf("%s'\n\n", t);
                     return (Sorting = ""), 0;
                 }
             }
-            if(Result)
-                return isupper((int)*s)^suur ? Result>0 : Result<0;
+            if(Result) return Result < 0;
         }
-
         return false;
     }
 };
 
-static vector <StatItem> StatPuu;
+static vector<StatItem> CollectedFilesForCurrentDirectory;
 
-static void Puuhun(const StatType &Stat, const string &Name
+static void CollectFilename(const StatType &Stat, std::string&& Name
 #ifdef DJGPP
     , unsigned int attr
 #endif
@@ -557,41 +571,15 @@ static void Puuhun(const StatType &Stat, const string &Name
 {
     if(PreScan)
     {
-        StatItem t(Stat,
+        CollectedFilesForCurrentDirectory.emplace_back(
+            Stat,
         #ifdef DJGPP
-                   attr,
+            attr,
         #endif
-                   Name);
-        StatPuu.push_back(t);
+            std::move(Name));
 
-        if(Colors)
-        {
-            #if STARTUP_COUNTER
-            if(AnsiOpt)
-            {
-                int b, c, d;
-
-                unsigned prevsize = StatPuu.size() - 1;
-
-                for(b=d=1; (c=prevsize/b) != 0; b*=10, d++)if(c%10)break;
-                if(!prevsize) d = 0;
-
-                for(c=0; c<d; c++)Gputch('\b');
-                if(!prevsize) c = 1;
-
-                while(c)
-                {
-                    Gprintf("%d", (StatPuu.size()/b)%10);
-                    b /= 10;
-                    c--;
-                }
-
-                fflush(stdout);
-            }
-            else
-                Gprintf("%u\r", StatPuu.size());
-            #endif
-        }
+        if(Colors && STARTUP_COUNTER)
+            Gprintf("%u\r", unsigned(CollectedFilesForCurrentDirectory.size()));
     }
     else
     {
@@ -607,32 +595,27 @@ static void Puuhun(const StatType &Stat, const string &Name
 
 static void SortFiles()
 {
-    sort(StatPuu.begin(), StatPuu.end());
+    std::sort(CollectedFilesForCurrentDirectory.begin(), CollectedFilesForCurrentDirectory.end());
 }
 
-static void DropOut()
+static void PrintAllFilesCollectedSoFar()
 {
     EstimateFields();
 
-    if(Sorting.size())SortFiles();
+    if(Sorting.size()) SortFiles();
 
     Dumping = true;
 
-    unsigned a, b = StatPuu.size();
+    if(Colors && !CollectedFilesForCurrentDirectory.empty() && AnsiOpt)Gprintf("\r");
 
-    if(Colors && b && AnsiOpt)Gprintf("\r");
-
-    for(a=0; a<b; ++a)
-    {
-        StatItem &tmp = StatPuu[a];
+    for(const StatItem& tmp: CollectedFilesForCurrentDirectory)
         TellMe(tmp.Stat, tmp.Name.c_str()
         #ifdef DJGPP
             , tmp.dosattr
         #endif
             );
-    }
 
-    StatPuu.clear();
+    CollectedFilesForCurrentDirectory.clear();
 
     LongestName = 0;
     LongestSize = 0;
@@ -643,8 +626,7 @@ static void DropOut()
     Dumping = false;
 }
 
-/* This function is supposed to stat() to Stat! */
-static void SingleFile(const string &Buffer, StatType &Stat)
+static void SingleFile(string&& Buffer)
 {
     #ifndef S_ISLNK
     int Links=0; /* hack */
@@ -659,6 +641,7 @@ static void SingleFile(const string &Buffer, StatType &Stat)
     }
     #endif
 
+    StatType Stat;
     if((LStatFunc(Buffer.c_str(), &Stat) == -1) && !Links)
         Gprintf("%s - stat() error: %d (%s)\n", Buffer.c_str(), errno, GetError(errno).c_str());
     #ifdef S_ISLNK
@@ -667,45 +650,43 @@ static void SingleFile(const string &Buffer, StatType &Stat)
     #endif
     else
     {
-        char OwNam[16], OwNum[16];
-        char GrNam[16], GrNum[16];
-        const char *Group, *Passwd;
+        if(FieldsToPrint.used[FieldInfo::name])
+        {
+            const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
+            if(hardlinkfn && Buffer == hardlinkfn) hardlinkfn = nullptr;
+            LongestName = std::max(LongestName, std::size_t(GetName(Buffer, Stat, 0, false, true, hardlinkfn)));
+        }
 
-        const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
-        if(hardlinkfn && Buffer == hardlinkfn)hardlinkfn = NULL;
+        if(FieldsToPrint.used[FieldInfo::size])
+            LongestSize = std::max(LongestSize, GetSize(Buffer, Stat, 0, 0).size());
 
-        int i = GetName(Buffer, Stat, 0, false, true, hardlinkfn);
+        if(FieldsToPrint.used[FieldInfo::size_compact])
+            LongestSizeCompact  = std::max(LongestSizeCompact,  GetSize(Buffer, Stat, 0, -1).size());
 
-        if(i > LongestName)LongestName = i;
+        if(FieldsToPrint.used[FieldInfo::size_sep])
+            LongestSizeWithSeps = std::max(LongestSizeWithSeps, GetSize(Buffer, Stat, 0, '\'').size());
 
-        i = GetSize(Buffer, Stat, 0, 0).size();
-        if(i > LongestSize)LongestSize = i;
+        if(!S_ISDIR(Stat.st_mode)) Inodemap.insert(Stat.st_dev, Stat.st_ino, Buffer);
 
-        i = GetSize(Buffer, Stat, 0, -1).size();
-        if(i > LongestSizeCompact)LongestSizeCompact = i;
+        if(FieldsToPrint.used[FieldInfo::nrlinks])
+            LongestLinks = std::max(LongestLinks, std::to_string(Stat.st_nlink).size());
 
-        i = GetSize(Buffer, Stat, 0, '\'').size();
-        if(i > LongestSizeWithSeps)LongestSizeWithSeps = i;
+        if(FieldsToPrint.used[FieldInfo::user_id] || FieldsToPrint.used[FieldInfo::user_name])
+        {
+            const char* Passwd = Getpwuid(Stat.st_uid);
+            std::string OwNum = std::to_string(Stat.st_uid);
+            LongestUIDname = std::max(LongestUIDname, (Passwd && *Passwd) ? strlen(Passwd) : OwNum.size());
+            LongestUIDnumber = std::max(LongestUIDnumber, OwNum.size());
+        }
+        if(FieldsToPrint.used[FieldInfo::group_id] || FieldsToPrint.used[FieldInfo::group_name])
+        {
+            const char* Group  = Getgrgid(Stat.st_gid);
+            std::string GrNum = std::to_string(Stat.st_gid);
+            LongestGIDname = std::max(LongestGIDname, (Group  && *Group)  ? strlen(Group)  : GrNum.size());
+            LongestGIDnumber = std::max(LongestGIDnumber, GrNum.size());
+        }
 
-        if(!S_ISDIR(Stat.st_mode))
-            Inodemap.insert(Stat.st_dev, Stat.st_ino, Buffer);
-
-        Passwd = Getpwuid((int)Stat.st_uid);
-        Group  = Getgrgid((int)Stat.st_gid);
-        sprintf(OwNum,"%d",(int)Stat.st_uid);
-        sprintf(GrNum,"%d",(int)Stat.st_gid);
-        if(Passwd && *Passwd)strcpy(OwNam, Passwd);else strcpy(OwNam, OwNum);
-        if( Group &&  *Group)strcpy(GrNam,  Group);else strcpy(GrNam, GrNum);
-
-        i = strlen(OwNam); if(i > LongestUID)LongestUID = i;
-        i = strlen(GrNam); if(i > LongestGID)LongestGID = i;
-        i = strlen(OwNum); if(i > LongestUIDvalue)LongestUIDvalue = i;
-        i = strlen(GrNum); if(i > LongestGIDvalue)LongestGIDvalue = i;
-
-        sprintf(OwNam, "%d", (int)Stat.st_nlink);
-        i = strlen(OwNam); if(i > LongestLinks) LongestLinks = i;
-
-        Puuhun(Stat, Buffer
+        CollectFilename(Stat, std::move(Buffer)
         #ifdef DJGPP
         , Bla.ff_attrib
         #endif
@@ -713,7 +694,7 @@ static void SingleFile(const string &Buffer, StatType &Stat)
     }
 }
 
-static void DirChangeCheck(string Source)
+static void DirChangeCheck(std::string Source)
 {
     unsigned ss = Source.size();
     if(ss)
@@ -725,11 +706,11 @@ static void DirChangeCheck(string Source)
     }
     if(LastDir != Source)
     {
-        DropOut();
+        PrintAllFilesCollectedSoFar();
         if(Totals)
         {
             static int Eka=1;
-            GetDescrColor("txt", 1);
+            GetDescrColor(ColorDescr::TEXT, 1);
             if(WhereX)Gprintf("\n");
             if(!Eka)
             {
@@ -744,208 +725,154 @@ static void DirChangeCheck(string Source)
     }
 }
 
-static void ScanDir(const char *Dirrikka)
+// ScanDir: Called with parameter = the verbatim string passed on commandline.
+// Will not call recursively.
+static void ScanDir(std::string&& Source) // Directory to list
 {
-    string Source;
-    string DirName;
-    int Tried = 0;
-
-    StatType Stat;
-    struct dirent *ent;
-    DIR *dir;
-
-    DirName = Dirrikka;
+    DIR *dir = nullptr;
 
     #ifdef DJGPP
-    if(DirName.size() && DirName[DirName.size()-1] == ':')
-        DirName += '.';
+    if(!Source.empty() && Source.back() == ':')
+        Source += '.';
     #endif
 
-    Source = DirName;
-
-R1: if((dir = opendir(Source.c_str())) == NULL)
+    // Was null. It was not a directory, or could not be read.
+    // Or, when we're not supposed to read its contents
+    if(!Contents || ((dir = opendir(Source.c_str())) == NULL
+    && (
+    #if defined(DJGPP) || (defined(SUNOS)||defined(__sun)||defined(SOLARIS))
+        errno==EACCES  ||
+    #endif
+        errno==ENOENT  ||   /* Might have been a link */
+        errno==ENOTDIR ||
+        errno==ELOOP        /* For circular loops */
+      )))
     {
-        /* It was not a directory, or could not be read */
+        // Then list it as a file.
+        if(dir) closedir(dir);
 
-        if(
-        #if defined(DJGPP) || (defined(SUNOS)||defined(__sun)||defined(SOLARIS))
-            errno==EACCES  ||
-        #endif
-            errno==ENOENT  ||    /* Piti lisätä linkkejä varten */
-            errno==ENOTDIR ||
-            errno==ELOOP        /* Tämä myös, ln -s a a varten */
-           )
-        {
-P1:         string Tmp = DirOnly(Source);
-            if(!Tmp.size())Tmp = "./";
+        std::string Tmp = DirOnly(Source);
+        if(Tmp.empty()) Tmp = "./";
+        DirChangeCheck(std::move(Tmp));
 
-            DirChangeCheck(Tmp.c_str());
-
-            SingleFile(Source, Stat);
-            goto End_ScanDir;
-        }
-        else if(!Tried && (!Source.size() || Source[Source.size()-1]!='/'))
-        {
-            Source += '/';
-            Tried = 1;
-            goto R1;
-        }
-
-        if(errno)
-            Gprintf("\n%s - error: %d (%s)\n", Source.c_str(),
-                    errno, GetError(errno).c_str());
-
-        goto End_ScanDir;
-    }
-    if(!Contents)
-    {
-        errno = 0;
-        Tried = 1;
-        goto P1;
+        SingleFile(std::move(Source));
+        return;
     }
 
+    if(!dir && (Source.empty() || Source.back() != '/'))
+    {
+        dir = opendir((Source + "/").c_str());
+    }
+
+    if(!dir)
+    {
+        Gprintf("\n%s - error: %d (%s)\n", Source.c_str(),
+                errno, GetError(errno).c_str());
+        return;
+    }
+
+    // Directory successfully opened.
     DirChangeCheck(Source);
 
+    struct dirent *ent;
     while((ent = readdir(dir)) != NULL)
     {
         if(!ShowDotFiles && ent->d_name[0] == '.') continue;
+
         string Buffer = Source;
-        if(Buffer[Buffer.size()-1] != '/')Buffer += '/';
+        if(Buffer.back() != '/') Buffer += '/';
         Buffer += ent->d_name;
 
-        SingleFile(Buffer, Stat);
+        SingleFile(std::move(Buffer));
     }
 
     if(closedir(dir) != 0)
-        Gprintf("Trouble #%d (%s) at closedir() call.\n",
-            errno, GetError(errno).c_str());
-
-End_ScanDir:
-    return;
+        Gprintf("\nclosedir(%s) - error: %d (%s)\n", Source.c_str(),
+                errno, GetError(errno).c_str());
 }
 
 static void EstimateFields()
 {
-    int RowLen;
-
     if(PreScan)
+    {
+        // If pre-scanning was done, we already know the length of the longest name.
+        // Add +1 just in case.
         LongestName++;
+    }
     else
     {
+        // Otherwise make reasonable guesses on the longest fields
         LongestSize = Sara?7:9;
-        LongestGID  = 8;
-        LongestUID  = 8;
+        LongestGIDname  = 8;
+        LongestUIDname  = 8;
         LongestSizeWithSeps = LongestSize+3;
         LongestSizeCompact = 9;
     }
-    const char *s;
-    for(RowLen=0, s=FieldOrder.c_str(); *s; )
-    {
-        switch(*s)
+
+    // Calculate the width of the string to be displayed.
+    std::size_t RowLen = 0;
+    for(const auto& f: FieldsToPrint)
+        switch(f.type)
         {
-            case '.':
-                s++;
-                switch(*s)
+            case FieldInfo::literal: ++RowLen; break;
+            case FieldInfo::color: break;
+            case FieldInfo::attribute:
+                if(f.info == '1') RowLen += 10;
+                #ifdef DJGPP
+                else if(f.info == '0') RowLen += 4;
+                #endif
+                else RowLen += f.info - '0';
+                break;
+            case FieldInfo::nrlinks: RowLen += LongestLinks; break;
+            case FieldInfo::name: break; // Not estimating
+            case FieldInfo::size: RowLen += LongestSize; break;
+            case FieldInfo::size_compact: RowLen += LongestSizeCompact; break;
+            case FieldInfo::size_sep: RowLen += LongestSizeWithSeps; break;
+            case FieldInfo::datetime:
+            {
+                if(DateForm == "%u")
+                    RowLen += 12;
+                else if(DateForm == "%z")
+                    RowLen += 5;
+                else
                 {
-                    case 'x':
-                    {
-                        ++s;
-                        if(std::isxdigit(*s)) { ++s; if(std::isxdigit(*s)) ++s; }
-                        s--;
-                        break;
-                    }
-                    case 'F':
-                    case 'f':
-                        break;
-                    case 'S':
-                        ++s;
-                        RowLen += LongestSizeWithSeps;
-                        break;
-                    case 's':
-                        RowLen += LongestSize;
-                        break;
-                    case 'z':
-                        RowLen += LongestSizeCompact;
-                        break;
-                    case 'd':
-                        if(DateForm == "%u")
-                            RowLen += 12;
-                        else if(DateForm == "%z")
-                            RowLen += 5;
-                        else
-                        {
-                            char Buf[64];
-                            struct tm TM;
-                            memset(&TM, 0, sizeof(TM));
-                            strftime(Buf, sizeof Buf, DateForm.c_str(), &TM);
-                            RowLen += strlen(Buf);
-                        }
-                        break;
-#ifndef DJGPP
-                    case 'h':
-                        RowLen += 4;
-                        break;
-                    case 'g':
-                        if(s[1]=='i' && s[2]=='d')
-                        {
-                            s += 2;
-                            RowLen += LongestGIDvalue;
-                            break;
-                        }
-                        RowLen += LongestGID;
-                        break;
-#endif
-                    case 'o':
-                        RowLen += LongestUID;
-                        break;
-                    case 'u':
-                    {
-                        if(s[1]=='i' && s[2]=='d')
-                        {
-                            s += 2;
-                            RowLen += LongestUIDvalue;
-                        }
-                        break;
-                    }
-                    case 'a':
-                    {
-                        int Len = '1';
-                        s++;
-                        if((*s>='0')&&(*s<='9'))Len = *s;
-                        RowLen += (Len < '2')?10:Len-'0';
-                        break;
-                    }
-                    default:
-                        RowLen++;
+                    char Buf[64];
+                    struct tm TM;
+                    memset(&TM, 0, sizeof(TM));
+                    strftime(Buf, sizeof Buf, DateForm.c_str(), &TM);
+                    RowLen += strlen(Buf);
                 }
                 break;
-            default:
-                RowLen++;
+            }
+            case FieldInfo::user_id:    RowLen += LongestUIDnumber; break;
+            case FieldInfo::user_name:  RowLen += LongestUIDname; break;
+            case FieldInfo::group_id:   RowLen += LongestGIDnumber; break;
+            case FieldInfo::group_name: RowLen += LongestGIDname; break;
+            case FieldInfo::num_different_fields:;
         }
-        if(*s)s++;
-    }
 
-    RowLen = (Sara?COLS/2:COLS)-1-RowLen;
-    if(RowLen < 0)RowLen = 0;
+    // Calculate the room that there is for a filename
+    int room = Sara ? COLS/2 : COLS;
+    room -= 1;
+    room -= RowLen;
+    if(room < 0) room = 0;
 
-    if(!PreScan || LongestName > RowLen)
-        LongestName = RowLen;
+    if(!PreScan || int(LongestName) > room)
+        LongestName = room;
 }
 
-static vector<string> Dirpuu;
+static std::list<std::string> FilesToList_FromCommandline;
 
 static void DumpDirs()
 {
     EstimateFields();
 
-    unsigned a, b=Dirpuu.size();
+    // For each file that was listed on the commandline:
+    for(std::string& s: FilesToList_FromCommandline)
+        ScanDir( std::move(s) );
 
-    for(a=0; a<b; ++a)
-        ScanDir(Dirpuu[a].c_str());
-
-    Dirpuu.clear();
-
-    DropOut();
+    FilesToList_FromCommandline.clear();
+    PrintAllFilesCollectedSoFar();
 }
 
 class Handle : public arghandler
@@ -1218,18 +1145,18 @@ public:
     }
     virtual void defarg(const string &s)
     {
-        Dirpuu.push_back(s);
+        FilesToList_FromCommandline.push_back(s);
         Files = true;
     }
     virtual void parse()
     {
         arghandler::parse();
-        if(!Files)Dirpuu.push_back(".");
+        if(!Files)FilesToList_FromCommandline.push_back(".");
         if(Help)
         {
             Dumping = true;
 
-            GetDescrColor("txt", 1);
+            GetDescrColor(ColorDescr::TEXT, 1);
 
             Gprintf(VERSIONSTR);
 
@@ -1244,7 +1171,7 @@ public:
 
             listoptions();
 
-            GetDescrColor("txt", 1);
+            GetDescrColor(ColorDescr::TEXT, 1);
 
             Gprintf(
                 "\n"
@@ -1290,6 +1217,7 @@ int main(int argc, const char *const *argv)
 
     // cute
     Handle parameters (getenv("DIRR"), argc, argv);
+    FieldsToPrint.ParseFrom(FieldOrder);
 
     Dumping = true;
     DumpDirs();

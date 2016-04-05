@@ -53,6 +53,7 @@ const BitMap *BitMap::find(const State *x)
 	return nullptr;
 }
 
+#if 0
 static void doGen(const Go *g, const State *s, uint32_t *bm, uint32_t f, uint32_t m)
 {
 	Span *b = g->span, *e = &b[g->nSpans];
@@ -72,7 +73,6 @@ static void doGen(const Go *g, const State *s, uint32_t *bm, uint32_t f, uint32_
 	}
 }
 
-#if 0
 void BitMap::gen(OutputFile & o, uint32_t ind, uint32_t lb, uint32_t ub)
 {
 	if (first && bUsedYYBitmap)

@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.6.3
+# depfun.mak version 1.6.4
 #
 # Required vars:
 #
@@ -27,7 +27,6 @@
 #                       but without dependency checking
 
 
-# Note: This requires perl. FIXME change it to sed
 .depend: ${ARCHFILES}
 	@echo "Checking dependencies..."
 	@rm -f $@.tmp
@@ -39,7 +38,7 @@
 	       then \
 	       cd "$$n";\
 	       ${CPP} ${CPPFLAGS} -MM -MG "$$dir""$$s" |\
-	        perl -pe "s|^([^ ])|$$dir\\1|" \
+	        sed -r "s|^([^ ])|$$dir\\1|" \
 	         > $@."$$s";\
 	    fi&done; \
 	    cd "$$n"; \

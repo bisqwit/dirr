@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <cstring>
 #include <cstdlib>
+#include <algorithm>
 
 //#include <regex>
 //#include "wildmatch.hh"
@@ -48,22 +49,51 @@ bool Dumping = false; // If 0, save some time
  *** how the color codes work.
  ***/
 
-namespace std { template<> struct hash<std::pair<std::string,char>> {
-    std::size_t operator() (const std::pair<std::string,char>& v) const
+static std::string ColorModeName(ColorMode m)
+{
+    #define o(val,str) case ColorMode::val: return str;
+    switch(m)
     {
-        return std::hash<std::string>{}(v.first) ^ ((unsigned char)(v.second) * (~std::size_t(0)/255u));
-}   };  }
+        ColorModes(o)
+        default: return "??"+std::to_string(int(m));
+    }
+    #undef o
+}
+static std::string ColorDescrName(ColorDescr m)
+{
+    #define o(val,str) case ColorDescr::val: return str;
+    switch(m)
+    {
+        ColorDescrs(o)
+        default: return "??"+std::to_string(int(m));
+    }
+    #undef o
+}
+static int ColorModeFromName(const std::string& m)
+{
+    #define o(val,str) if(m==str) return (int)ColorMode::val;
+    ColorModes(o)
+    #undef o
+    return -1;
+}
+static int ColorDescrFromName(const std::string& m)
+{
+    #define o(val,str) if(m==str) return (int)ColorDescr::val;
+    ColorDescrs(o)
+    #undef o
+    return -1;
+}
 
 static class Settings
 {
     std::unordered_multimap<std::string/*key*/, std::string/*value*/> sets{};
 
 public:
-    // Cache of colors in "type", "mode" and "info"
-    std::unordered_map<std::pair<std::string/*key*/,char/*key*/>, int> mode_sets{};
-    std::unordered_map<std::string/*key*/,std::vector<int>> descr_sets{};
+    // Key: int(ModeDescr) - contains a sorted-by-char vector of colors
+    std::vector<std::vector<std::pair<char,int>>> mode_sets{};
+    // Key: int(ColorDescr)
+    std::vector<std::vector<int>> descr_sets{};
 public:
-    //std::vector<std::pair<std::regex, int/*color*/>> byext_sets{};
     DFA_Matcher byext_sets{};
 
 public:
@@ -90,30 +120,44 @@ public:
     {
         return sets.equal_range(key);
     }
-    /*std::multimap<std::string,std::string>::const_iterator begin() const { return sets.cbegin(); }
-    std::multimap<std::string,std::string>::const_iterator end()   const { return sets.cend();   }*/
 
-    int FindMode(const std::string& key, char Chr, int default_color) const
+    int FindMode(ColorMode key, char Chr, int default_color) const
     {
-        auto i = mode_sets.find({key,Chr});
-        if(i == mode_sets.end())
+        unsigned ukey = unsigned(key);
+        if(ukey < mode_sets.size())
         {
-            Gprintf("DIRR_COLORS error: No color for '%c' found in '%s'\n", Chr, key.c_str());
+            const auto& colors = mode_sets[ukey];
+            auto i = std::lower_bound(colors.begin(), colors.end(), Chr,
+                                      [](const std::pair<char,int>&a, char c) { return a.first < c; });
+
+            if(i == colors.end() || i->first != Chr)
+            {
+                Gprintf("DIRR_COLORS error: No color for '%c' found in '%s'\n", Chr, ColorModeName(key).c_str());
+                return default_color;
+            }
+            return i->second;
+        }
+        else
+        {
+            Gprintf("DIRR_COLORS error: No '%s'\n", ColorModeName(key).c_str());
             return default_color;
         }
-        return i->second;
     }
-    int FindDescr(const std::string& key, std::size_t index, int default_color) const
+    int FindDescr(ColorDescr key, std::size_t index, int default_color) const
     {
-        auto i = descr_sets.find(key);
-        if(i == descr_sets.end())
+        unsigned ukey = unsigned(key);
+        if(ukey < descr_sets.size())
         {
-            Gprintf("DIRR_COLORS error: No '%s'\n", key.c_str());
+            const auto& colors = descr_sets[ukey];
+            if(colors.empty()) goto fail;
+            return index < colors.size() ? colors[index] : default_color;
+        }
+        else
+        {
+        fail:;
+            Gprintf("DIRR_COLORS error: No '%s'\n", ColorDescrName(key).c_str());
             return default_color;
         }
-        if(index < i->second.size()) return i->second[index];
-        if(i->second.empty()) return default_color;
-        return i->second.back();
     }
 private:
     void Load(const std::string& s)
@@ -151,16 +195,19 @@ private:
 private:
     void Parse()
     {
-        //std::map<std::pair<int/*color*/,bool/*icase*/>, std::vector<std::string>> byext_patterns;
         for(const auto& s: sets)
         {
             if(s.first == "mode" || s.first == "type" || s.first == "info")
             {
-                // Parse "text", "mode" and "info".
+                // Parse "txt", "mode" and "info".
                 // These strings in DIRR_SETS have the format: text(sC,...)
                 // Where s is the character key
                 // and   C is the color code.
                 const std::string& t = s.second;
+                int m = ColorModeFromName(s.first);
+                if(int(mode_sets.size()) <= m) mode_sets.resize(m+1);
+                auto& table = mode_sets[m];
+
                 std::size_t pos = 0;
                 while(pos < t.size())
                 {
@@ -168,12 +215,13 @@ private:
                     char key = t[pos];
                     int color = std::stoi(t.substr(pos+1), nullptr, 16);
 
-                    mode_sets.emplace( std::pair<std::string,char>{s.first,key}, color );
+                    table.emplace_back(key, color);
 
                     std::size_t comma = t.find(',', pos);
                     if(comma == t.npos) break;
                     pos = comma+1;
                 }
+                std::sort(table.begin(), table.end());
             }
             else if(s.first == "byext")
             {
@@ -182,12 +230,6 @@ private:
                 // The first token is a hex code, that is optionally followed by 'i'.
                 bool ignore_case = false;
                 int  color = -1;
-
-                std::string dot  = "\\.";
-                std::string star = ".*";
-                std::string qmark = ".";
-                std::string escd = "[0-9]";
-                std::string escw = "[A-Za-z]";
 
                 std::size_t pos = 0;
                 while(pos < t.size())
@@ -204,44 +246,7 @@ private:
                         pos = spacepos;
                         continue;
                     }
-#if 1
                     byext_sets.AddMatch(token, ignore_case, color);
-#endif
-                    /*
-                    std::string pattern;
-                    bool escmode = false;
-                    for(char c: token)
-                    {
-                        if(escmode)
-                        {
-                            switch(c)
-                            {
-                                case 'd': pattern += escd; break;
-                                case 'w': pattern += escw; break;
-                                case '\\': pattern += "\\\\"; break;
-                                default:  pattern += c; break;
-                            }
-                            escmode = false;
-                        }
-                        switch(c)
-                        {
-                            case '.': pattern += dot; break;
-                            case '*': pattern += star; break;
-                            case '?': pattern += qmark; break;
-                            case '(': case '|': case ')':
-                            case '[': case ']': case '^': case '$':
-                                pattern += '\\';
-                                pattern += c;
-                                break;
-                            case '\\':
-                                escmode = true;
-                                break;
-                            default:
-                                pattern += c;
-                        }
-                    }
-                    byext_patterns[std::pair<int,bool>{color,ignore_case}].push_back(pattern);
-                    */
                     pos = spacepos;
                 }
             }
@@ -249,7 +254,15 @@ private:
             {
                 // Parse "txt", "owner", "group", "nrlink", "date", or "num".
                 // These strings in DIRR_SETS have the format: text(color,...)
-                auto& target = descr_sets[s.first];
+                int m = ColorDescrFromName(s.first);
+                if(m == -1)
+                {
+                    Gprintf("DIRR_COLORS error: Unknown setting '%s'\n", s.first.c_str());
+                    continue;
+                }
+                if(int(descr_sets.size()) <= m) descr_sets.resize(m+1);
+                auto& target = descr_sets[m];
+
                 const std::string& t = s.second;
                 std::size_t pos = 0;
                 while(pos < t.size())
@@ -264,37 +277,7 @@ private:
                 }
             }
         }
-#if 0
-        byext_sets.AddMatch("test",  false, 1);
-        byext_sets.AddMatch("tes",   false, 2);
-        //byext_sets.AddMatch("abra",  false, 1);
-        //byext_sets.AddMatch("koe",   true,  2);
-        //byext_sets.AddMatch("*.exe", false, 3);
-#endif
         byext_sets.Compile();
-        /*for(const auto& p: byext_patterns)
-        {
-            int color        = p.first.first;
-            bool ignore_case = p.first.second;
-            std::string patterns = "(?:";
-            for(const auto& s: p.second)
-            {
-                if(!patterns.empty()) patterns += '|';
-                patterns += s;
-            }
-            patterns += ")";
-
-            if(ignore_case)
-                printf("'%s'    { return %d; }\n", patterns.c_str(), color);
-            else
-                printf("\"%s\"  { return %d; }\n", patterns.c_str(), color);
-
-            byext_sets.emplace_back(std::regex(patterns,
-                std::regex_constants::syntax_option_type(
-                    std::regex::optimize | (ignore_case ? std::regex::icase : 0)
-                )),
-                color);
-        }*/
     }
 } Settings;
 
@@ -305,14 +288,14 @@ private:
 //   and   C is the color code.
 //   If Chr is positive, the color is also set using SetAttr()!
 //   If Chr is negative, it is treated as positive but not set.
-int GetModeColor(const string &text, char Chr)
+int GetModeColor(ColorMode m, char Chr)
 {
     Settings.Load();
 
     bool set_color = true;
     if(Chr < 0) { set_color = false; Chr = -Chr; }
 
-    int res = Settings.FindMode(text,Chr, 7);
+    int res = Settings.FindMode(m, Chr, 7);
     if(set_color) SetAttr(res);
     return res;
 }
@@ -325,7 +308,7 @@ int GetModeColor(const string &text, char Chr)
 //           2 is the second, and so on.
 //   If the number is positive, the color is also set using SetAttr()!
 //   If the number is negative, it is treated as positive but not set.
-int GetDescrColor(const string &descr, int index)
+int GetDescrColor(ColorDescr d, int index)
 {
     int Dfl = 7;
     if(!Colors || !Dumping)return Dfl;
@@ -335,8 +318,23 @@ int GetDescrColor(const string &descr, int index)
     bool set_color = true;
     if(index < 0) { set_color = false; index = -index; }
 
-    int res = Settings.FindDescr(descr, index-1, -1);
-    if(res != -1) Dfl = res;
+    if(d == ColorDescr::TEXT)
+    {
+        static int txt_color=-1;
+        if(txt_color >= 0)
+            Dfl = txt_color;
+        else
+        {
+            int res = Settings.FindDescr(d, index-1, -1);
+            if(res != -1) Dfl = res;
+            txt_color = Dfl;
+        }
+    }
+    else
+    {
+        int res = Settings.FindDescr(d, index-1, -1);
+        if(res != -1) Dfl = res;
+    }
 
     if(set_color) SetAttr(Dfl);
     return Dfl;
@@ -346,49 +344,40 @@ void PrintSettings()
 {
     Settings.Load();
 
-    int Dfl = GetDescrColor("txt", -1);
+    int Dfl = GetDescrColor(ColorDescr::TEXT, -1);
     const std::string indent(3,' ');
 
-    if(true) // scope for modes
+    for(unsigned m=0; m<Settings.mode_sets.size(); ++m)
     {
-        std::map<std::string,std::vector<std::pair<char,int>>> parsed_modes;
-        for(const auto& s: Settings.mode_sets)
-            parsed_modes[s.first.first].emplace_back(s.first.second, s.second);
+        SetAttr(Dfl);
+        Gprintf("%s%s(", indent.c_str(), ColorModeName(ColorMode(m)).c_str());
+        bool sep = false;
+        for(const auto& c: Settings.mode_sets[m])
+        {
+            if(sep) Gputch(',');
+            sep = true;
+            SetAttr(c.second); Gputch(c.first);
+            SetAttr(Dfl);      Gprintf("%X", c.second);
+        }
+        SetAttr(Dfl);
+        Gprintf(")\n");
+    }
 
-        for(const auto& p: parsed_modes)
-        {
-            SetAttr(Dfl);
-            Gprintf("%s%s(", indent.c_str(), p.first.c_str());
-            bool sep = false;
-            for(const auto& c: p.second)
-            {
-                if(sep) Gputch(',');
-                sep = true;
-                SetAttr(c.second); Gputch(c.first);
-                SetAttr(Dfl);      Gprintf("%X", c.second);
-            }
-            SetAttr(Dfl);
-            Gprintf(")\n");
-        }
-    }
-    if(true) // scope for descr
+    for(unsigned m=0; m<Settings.descr_sets.size(); ++m)
     {
-        std::map<std::string,std::vector<int>> sorted_sets
-            ( Settings.descr_sets.begin(), Settings.descr_sets.end() );
-        for(const auto& p: sorted_sets)
+        SetAttr(Dfl);
+        Gprintf("%s%s(", indent.c_str(), ColorDescrName(ColorDescr(m)).c_str());
+        const auto& table = Settings.descr_sets[m];
+        for(std::size_t a=0; a<table.size(); ++a)
         {
-            SetAttr(Dfl);
-            Gprintf("%s%s(", indent.c_str(), p.first.c_str());
-            for(std::size_t a=0; a<p.second.size(); ++a)
-            {
-                if(a > 0) { SetAttr(Dfl); Gputch(','); }
-                SetAttr(p.second[a]);
-                Gprintf("%X", p.second[a]);
-            }
-            SetAttr(Dfl);
-            Gprintf(")\n");
+            if(a > 0) { SetAttr(Dfl); Gputch(','); }
+            SetAttr(table[a]);
+            Gprintf("%X", table[a]);
         }
+        SetAttr(Dfl);
+        Gprintf(")\n");
     }
+
     if(true) // scope for byext
     {
         auto pair = Settings.find_range("byext");
@@ -443,33 +432,8 @@ void PrintSettings()
 
 */
 
-bool WasNormalColor;
-int NameColor(const string &Name)
+int NameColor(const string &Name, int default_color)
 {
     Settings.Load();
-
-    WasNormalColor = false;
-
-    // NameColorCache2 contains the colors for
-    // whole filenames that we have already matched.
-    static std::unordered_map<string, int> NameColorCache2;
-
-    auto i = NameColorCache2.find(Name);
-    if(i != NameColorCache2.end()) return i->second;
-
-    int colour = Settings.byext_sets.Test(Name, -1);
-    /*for(const auto& p: Settings.byext_sets)
-        if(std::regex_match(Name, p.first))
-        {
-            int colour = p.second;
-            NameColorCache2.emplace(Name, colour);
-            return colour;
-        }*/
-    if(colour == -1)
-    {
-        WasNormalColor = true;
-        colour = GetDescrColor("txt", -1);
-    }
-    NameColorCache2.emplace(Name, colour);
-    return colour;
+    return Settings.byext_sets.Test(Name, default_color);
 }
