@@ -283,7 +283,7 @@ int Gputch(int x)
         {
             while(Spaces < 0) { ++Spaces; put('\b'); }
     #ifndef DJGPP
-            static const char spacebuf[16] = {' ',' ',' ',' '};
+            static const char spacebuf[16] = {' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '};
             if(Spaces >= 5 && AnsiOpt && Colors)
             {
                 // TODO: Don't do AnsiOpt if background color changed

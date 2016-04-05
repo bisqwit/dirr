@@ -19,6 +19,14 @@ string NameOnly(const string &Name)
     if(p == Name.npos) p = 0; else p = p+1;
     return Name.substr(p, Name.size()-p-1);
 }
+/*
+#include "cons.hh"
+string NameOnly(const string &Name)
+{
+    auto r = NameOnly_(Name);
+    Gprintf("NameOnly(%s)=(%s)\n", Name,r);
+    return r;
+}*/
 
 // Return value ends with '/'.
 // If no directory, returns empty string.

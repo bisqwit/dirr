@@ -204,7 +204,10 @@ struct FieldsToPrint: public std::vector<FieldInfo> // ParsedFieldOrder
         for(bool& c: used) c = false;
         for(auto i = begin(); i != end(); ++i)
         {
-            used[ i->type ] = (i->type == FieldInfo::size_sep) ? (i->info & 0x80) : (i->info & 0x01);
+            if(i->type == FieldInfo::name)
+                used[i->type] = true;
+            else
+                used[ i->type ] = (i->type == FieldInfo::size_sep) ? (i->info & 0x80) : (i->info & 0x01);
         }
         // Don't need column separator (space), if the last non-color item is a literal
         need_column_separator = true;
@@ -373,7 +376,9 @@ static void TellMe(const StatType &Stat, string&& Name
                 const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
                 if(hardlinkfn && Name == hardlinkfn) hardlinkfn = nullptr;
                 // Undocumented feature: If fitting is disabled, long pathful filenames are printed
-                auto i = GetName(Name, Stat, Limits.Name, MultiColumn || f.info, f.info, hardlinkfn);
+                bool nameonly = f.info;
+                if(!nameonly && Name.rfind('/')==1 && Name.substr(0,2)=="./") nameonly = true;
+                auto i = GetName(Name, Stat, Limits.Name, MultiColumn || f.info, nameonly, hardlinkfn);
                 ItemLen += std::max(std::size_t(i), Limits.Name);
                 break;
             }
@@ -409,13 +414,17 @@ static void TellMe(const StatType &Stat, string&& Name
                     char Buf[64];
                     time_t now = time(NULL);
                     strcpy(Buf, ctime(&t));
+
+                    str = Buf+4;
+                    if(!str.empty() && str.back()=='\n') str.erase(str.size()-1);
+
                     if(now > t + 6L * 30L * 24L * 3600L /* Old. */
                     || now < t - 3600L)       /* In the future. */
                     {
                         /* 6 months in past, one hour in future */
-                        strcpy(Buf+11, Buf+19);
+                        str.erase(7, 8); // delete time
                     }
-                    str = Buf+4;
+                    if(str.size() > 12) str.erase(12);
                 }
                 else if(DateForm == "%z")
                 {
@@ -649,7 +658,8 @@ static void EstimateFields()
     room -= RowLen;
     if(room < 0) room = 0;
 
-    if(!PreScan && !Limits.Name) Limits.Name = std::min(13, COLS/2);
+    if(!PreScan && !Limits.Name)
+        Limits.Name = std::min(13, COLS/2);
 
     // If there is no room for the Limits name that we've found,
     // cut the name to the available room
@@ -714,11 +724,8 @@ static void PrintAllFilesCollectedSoFar()
 
     EstimateFields();
 
-    if(Colors && !f.empty() && AnsiOpt)
-    {
-        Gprintf("\r");
-        CurrentColumn = 0;
-    }
+    if(Colors && !f.empty() && AnsiOpt) Gprintf("\r");
+    CurrentColumn = 0;
 
     if(VerticalColumns && MultiColumn)
     {
@@ -1163,7 +1170,7 @@ public:
     : arghandler(defopts, argc, argv), Files(false), Help(false)
     {
         add("-A",  "--dotfiles",  "Show files where names begin with a '.'", &Handle::opt_A);
-        add("-al", "--long",      "\"Standard\" listing format", &Handle::opt_al);
+        add("-al", "--long",      "Equal to -a5. Provided for ls compatibility.", &Handle::opt_al);
         add("-a",  "--predef",    "Predefined aliases.\n"
                                   "a0: -f\".f_.s.d|\" -F\"%z\" -C -m1 -l1\n"
                                   "a1: -f\".xF|.a1.xF|.f.s.xF|.d.xF|.o_.g.xF|\" -l1\n"
