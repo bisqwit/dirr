@@ -24,7 +24,7 @@ CPPFLAGS += -Ire2c
 #CXX += -pg -flto
 #OPTIM= -O2 -finline
 
-VERSION = 3.34
+VERSION = 3.35
 
 # Obligatory defines:
 #   CACHE_GETSET     Recommended, adds speed
@@ -44,6 +44,7 @@ INSTALL=install
 PROG=dirr
 OBJS=main.o pwfun.o cons.o setfun.o strfun.o colouring.o \
      getname.o getsize.o totals.o argh.o \
+     printf.o \
      \
      dfa_match.o \
      re2c/src/ir/rule_rank.o \
@@ -80,7 +81,8 @@ ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh config.h \
           pwfun.cc pwfun.hh \
           cons.cc cons.hh \
           argh.cc argh.hh \
-          stat.h \
+          printf.cc printf.hh \
+          stat.h likely.hh \
           TODO progdesc.php \
           Makefile.sets.in \
           Makefile.sets \

@@ -10,7 +10,7 @@
 #define STARTUP_COUNTER 0
 
 // Set this to 1 if your passwd file is quick to load.
-#define PRELOAD_UIDGID 1
+#define PRELOAD_UIDGID 0
 
 // Set this to 1 if you want dot-files always shown.
 #define ALWAYS_SHOW_DOTFILES 0
@@ -21,8 +21,6 @@
 #define HAVE_TERMIO_H 
 #define HAVE_SYS_STAT_H 
 #define HAVE_SYS_TYPES_H 
-#define HAVE_VSNPRINTF_CSTDIO
-#define HAVE_VSNPRINTF
 #define HAVE_STATFS_SYS_VFS_H
 #define HAVE_STATFS
 #undef HAVE_STATFS_SYS_STATFS_H // Untested, redundant

@@ -83,7 +83,6 @@ void DFA_Matcher::Compile()
 {
     /*auto str = [](char c) -> std::string
     {
-        char buf[8];
         switch(c)
         {
             case '\n': return "\\n";
@@ -94,9 +93,9 @@ void DFA_Matcher::Compile()
             case '\\': return "\\\\";
             case '\"': return "\\\"";
             case '\'': return "\\'";
-            default: if(c<32 || c==127) { std::sprintf(buf, "\\%04o", (unsigned char)c); return buf; }
+            default: if(c<32 || c==127) return Printf("\\%04o", (unsigned char)c);
         }
-        buf[0]=c; buf[1]='\0'; return buf;
+        return Printf("%c", c);
     };*/
 
     const long long hash = std::hash<std::string>{}(hash_str);

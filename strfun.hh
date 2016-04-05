@@ -4,6 +4,8 @@
 #include <string>
 #include <limits.h>
 
+#include "printf.hh"
+
 using namespace std;
 
 extern string NameOnly(const string &Name);
@@ -16,8 +18,23 @@ extern string DirOnly(const string &Name);
 // With fixit, it makes the link absolute, if it was relative.
 extern string LinkTarget(const string &link, bool fixit=false);
 
-extern void PrintNum(string &Dest, int Seps, const char *fmt, ...)
-	__attribute__((format(printf,3,4)));
+template<typename... Args>
+void PrintNum(std::string &Dest, char Seps, const std::string& fmt, Args&&... args)
+{
+    Dest = Printf(fmt, std::forward<Args>(args)...);
+    if(Seps)
+    {
+        std::size_t Len = Dest.find('.');
+        if(Len == Dest.npos) Len = Dest.size();
+
+        /* 7:2, 6:1, 5:1, 4:1, 3:0, 2:0, 1:0, 0:0 */
+        for(unsigned SepCount = (Len - 1) / 3; SepCount>0; SepCount--)
+        {
+            Len -= 3;
+            Dest.insert(Len, 1, Seps);
+        }
+    }
+}
 
 #ifndef NAME_MAX
  #define NAME_MAX 255  /* Chars in a file name */

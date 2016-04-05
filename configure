@@ -17,9 +17,6 @@ cat >config.h <<EOF
 // They can be disabled if you do not want them.
 #define SUPPORT_BRACKETS 1
 
-// Enable this if you want a progress meter. Slows down.
-#define STARTUP_COUNTER 0
-
 // Set this to 1 if your passwd file is quick to load.
 #define PRELOAD_UIDGID 0
 
@@ -110,12 +107,12 @@ fi
 
 
 
-AC_INCLUDES="termio.h sys/stat.h sys/types.h"
+AC_INCLUDES="termio.h sys/stat.h sys/types.h sys/ioctls.h"
 . ./config.sub3
 cat conftest.h >> config.h
 rm -f conftest.[ch]
 
-AC_FUNC="vsnprintf cstdio"
+AC_FUNC=''
 AC_FUNC="$AC_FUNC statfs sys/vfs.h  statfs sys/statfs.h  statfs sys/mount.h  statfs sys/statvfs.h"
 AC_FUNC="$AC_FUNC ioctl unistd.h  ioctl sys/ioctl.h  ioctl sys/linux_ioctl.h"
 AC_FUNC="$AC_FUNC tcgetattr termios.h"
@@ -173,13 +170,15 @@ else
     CPPFLAGS="$CPPFLAGS -std=c++14"
   else
     do_echo No
-    do_echo -n "Checking for -std=c++11... "
-    if cc_check '<stdio.h>' '-std=c++11' ''; then
-      do_echo Yes
-      CPPFLAGS="$CPPFLAGS -std=c++11"
-    else
-      do_echo No
-    fi
+    do_echo "Error: You need a compiler that supports C++ version C++14 or newer."
+    exit 1
+    #do_echo -n "Checking for -std=c++11... "
+    #if cc_check '<stdio.h>' '-std=c++11' ''; then
+    #  do_echo Yes
+    #  CPPFLAGS="$CPPFLAGS -std=c++11"
+    #else
+    #  do_echo No
+    #fi
   fi
 fi
 

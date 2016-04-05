@@ -50,7 +50,7 @@ void PrintSums()
 
     if(!Totals)
     {
-        if(Colors)Gprintf("\r \r"); /* Ensure color */
+        if(Colors)Gwrite("\r \r"); /* Ensure color */
         return;
     }
 
@@ -74,7 +74,7 @@ void PrintSums()
         SizeType Tmp2= SumCnt[SumFifo]+SumCnt[SumSock]+SumCnt[SumLink];
 
         PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast SumCnt[SumDir]);
-        Gprintf(" \1%s\1 dir%s%s", NumBuf.c_str(),
+        Gprintf(" \1%s\1 dir%s%s", NumBuf,
 #ifdef HAVE_STATFS
             (tmp.f_bavail > 0 && Tmp)?"":
 #endif
@@ -89,23 +89,23 @@ void PrintSums()
         {
             PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast SumCnt[SumFile]);
             Gprintf(", \1%s\1 file%s",
-                NumBuf.c_str(),
+                NumBuf,
                 SumCnt[SumFile]==1?"":"s");
            }
 
         if(Tmp)
         {
             PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast Tmp);
-            Gprintf(", \1%s\1 device%s", NumBuf.c_str(), Tmp==1?"":"s");
+            Gprintf(", \1%s\1 device%s", NumBuf, Tmp==1?"":"s");
         }
         if(Tmp2)
         {
             PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast Tmp2);
-            Gprintf(", \1%s\1 other%s", NumBuf.c_str(), Tmp2==1?"":"s");
+            Gprintf(", \1%s\1 other%s", NumBuf, Tmp2==1?"":"s");
         }
 
         PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast Koko);
-        Gprintf(", \1%s\1 bytes", NumBuf.c_str());
+        Gprintf(", \1%s\1 bytes", NumBuf);
 
 #ifdef HAVE_STATFS
         if(tmp.f_bavail > 0)
@@ -116,22 +116,22 @@ void PrintSums()
             if(Compact == 2)
             {
                 PrintNum(NumBuf, TotalSep, "%.0f", Size*1024.0);
-                Gprintf(", \1%s\1 bytes", NumBuf.c_str());
+                Gprintf(", \1%s\1 bytes", NumBuf);
             }
             else if(Size >= 1024)
             {
                 PrintNum(NumBuf, TotalSep, "%.1f", Size/1024.0);
-                Gprintf(", \1%s\1 MB", NumBuf.c_str());
+                Gprintf(", \1%s\1 MB", NumBuf);
             }
             else if(Size >= 1048576*10)
             {
                 PrintNum(NumBuf, TotalSep, "%.1f", Size/1048576.0);
-                Gprintf(", \1%s\1 GB", NumBuf.c_str());
+                Gprintf(", \1%s\1 GB", NumBuf);
             }
             else
             {
                 PrintNum(NumBuf, TotalSep, "%.1f", Size);
-                Gprintf(", \1%s\1 kB", NumBuf.c_str());
+                Gprintf(", \1%s\1 kB", NumBuf);
             }
 
             Gprintf(" free(\1%.1f\1%%)",
@@ -147,19 +147,19 @@ void PrintSums()
         if(Tmp)
         {
             PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast Tmp);
-            Gprintf("\1%5s\1 device%s (", NumBuf.c_str(), (Tmp==1)?"":"s");
+            Gprintf("\1%5s\1 device%s (", NumBuf, (Tmp==1)?"":"s");
 
             if(SumCnt[SumChrDev])
             {
                 PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast SumCnt[SumChrDev]);
-                Gprintf("\1%s\1 char", NumBuf.c_str());
+                Gprintf("\1%s\1 char", NumBuf);
             }
             if(SumCnt[SumChrDev]
             && SumCnt[SumBlkDev])Gprintf(", ");
             if(SumCnt[SumBlkDev])
             {
                 PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast SumCnt[SumBlkDev]);
-                Gprintf("\1%s\1 block", NumBuf.c_str());
+                Gprintf("\1%s\1 block", NumBuf);
             }
             Gprintf(")\n");
         }
@@ -170,7 +170,7 @@ void PrintSums()
             PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast SumCnt[SumDir]);
             PrintNum(TmpBuf, TotalSep, SizeFormat, SizeCast SumSizes[SumDir]);
             Gprintf("\1%5s\1 directories,\1%11s\1 bytes\n",
-                NumBuf.c_str(), TmpBuf.c_str());
+                NumBuf, TmpBuf);
         }
 
         if(SumCnt[SumFifo])
@@ -179,7 +179,7 @@ void PrintSums()
             PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast SumCnt[SumFifo]);
             PrintNum(TmpBuf, TotalSep, SizeFormat, SizeCast SumSizes[SumFifo]);
             Gprintf("\1%5s\1 fifo%s\1%17s\1 bytes\n",
-                NumBuf.c_str(), (SumCnt[SumFifo]==1)?", ":"s,", TmpBuf.c_str());
+                NumBuf, (SumCnt[SumFifo]==1)?", ":"s,", TmpBuf);
         }
         if(SumCnt[SumFile])
         {
@@ -187,7 +187,7 @@ void PrintSums()
             PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast SumCnt[SumFile]);
             PrintNum(TmpBuf, TotalSep, SizeFormat, SizeCast SumSizes[SumFile]);
             Gprintf("\1%5s\1 file%s\1%17s\1 bytes\n",
-                NumBuf.c_str(), (SumCnt[SumFile]==1)?", ":"s,", TmpBuf.c_str());
+                NumBuf, (SumCnt[SumFile]==1)?", ":"s,", TmpBuf);
         }
         if(SumCnt[SumLink])
         {
@@ -195,10 +195,10 @@ void PrintSums()
             PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast SumCnt[SumLink]);
             PrintNum(TmpBuf, TotalSep, SizeFormat, SizeCast SumSizes[SumLink]);
             Gprintf("\1%5s\1 link%s\1%17s\1 bytes\n",
-                NumBuf.c_str(), (SumCnt[SumLink]==1)?", ":"s,", TmpBuf.c_str());
+                NumBuf, (SumCnt[SumLink]==1)?", ":"s,", TmpBuf);
         }
         PrintNum(NumBuf, TotalSep, SizeFormat, SizeCast Koko);
-        Gprintf("Total\1%24s\1 bytes\n", NumBuf.c_str());
+        Gprintf("Total\1%24s\1 bytes\n", NumBuf);
 #ifdef HAVE_STATFS
         if(tmp.f_bavail > 0)
         {
@@ -212,7 +212,7 @@ void PrintSums()
             PrintNum(NumBuf, TotalSep, "%.0f", Size);
 
             Gprintf("Free space\1%19s\1 bytes (\1%.1f\1%%)\n",
-                NumBuf.c_str(),
+                NumBuf,
                 (double)((double)tmp.f_bavail * 100.0 / tmp.f_blocks));
         }
 #endif

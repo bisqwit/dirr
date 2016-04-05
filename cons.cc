@@ -25,8 +25,6 @@ using namespace std;
  #endif
 #endif
 
-#define DEFAULTATTR 7
-
 #ifdef DJGPP
 #include <crt0.h>
 #include <conio.h>
@@ -57,8 +55,8 @@ int LINES=25, COLS=80;
 /* Bigger COLS-values don't work. Change it if it's not ok. */
 #define MAX_COLS 1024
 
-static int TextAttr = DEFAULTATTR;
-static int OldAttr  = DEFAULTATTR;
+int TextAttr = DEFAULTATTR;
+int OldAttr  = DEFAULTATTR;
 
 static class GetScreenGeometry
 {
@@ -74,24 +72,24 @@ public:
         gettextinfo(&w);
         LINES=w.screenheight;
         COLS =w.screenwidth;
-#else
-#ifdef TIOCGWINSZ
+#elif defined(TIOCGWINSZ)
         struct winsize w;
-        if(ioctl(1, TIOCGWINSZ, &w) >= 0)
+        if(ioctl(1, TIOCGWINSZ, &w) >= 0
+        || ioctl(0, TIOCGWINSZ, &w) >= 0
+        || ioctl(2, TIOCGWINSZ, &w) >= 0)
         {
             LINES=w.ws_row;
             COLS =w.ws_col;
         }
-#else
-#ifdef WIOCGETD
+#elif defined(WIOCGETD)
         struct uwdata w;
-        if(ioctl(1, WIOCGETD, &w) >= 0)
+        if(ioctl(1, WIOCGETD, &w) >= 0
+        || ioctl(0, WIOCGETD, &w) >= 0
+        || ioctl(2, WIOCGETD, &w) >= 0)
         {
             LINES = w.uw_height / w.uw_vs;
             COLS  = w.uw_width / w.uw_hs;
         }
-#endif
-#endif
 #endif
     }
 } ScreenInitializer;
@@ -112,7 +110,7 @@ static void FlushSetAttr()
         // max length: "e[0;1;5;40;30m" = 14 characters
         char Buffer[16]={'\33','['};
         unsigned Buflen=2;
-        if(TextAttr != 0x07)
+        if(TextAttr != DEFAULTATTR)
         {
             static const char Swap[] = "04261537";
 
@@ -125,7 +123,7 @@ static void FlushSetAttr()
                 {
                     // '0' resets both blink and intensity flags
                     Buffer[Buflen++] = '0'; pp=true;
-                    OldAttr = 0x07; // Presumed default color
+                    OldAttr = DEFAULTATTR; // Presumed default color
                 }
 
                 if((TextAttr&0x08) && !(OldAttr&0x08)){if(pp)Buffer[Buflen++]=';';Buffer[Buflen++]='1';pp=true;}
@@ -211,7 +209,7 @@ int Gputch(int x)
     // When printing a newline, always do that with default background color
     if(x=='\n' && (TextAttr&0xF0)) GetDescrColor(ColorDescr::TEXT, 1);
 
-    // If printing spaces, only change color when background color changes
+    // If printing spaces, only change color when the background color changes
     if(x!=' ' || ((TextAttr&0xF0) != (OldAttr&0xF0)))
         FlushSetAttr();
 
@@ -272,8 +270,8 @@ int Gputch(int x)
                         if(Key==' ')break;
                         Gputch('\a');
                        }
-                    Gprintf("\r        \r");
-                    if(More<0)exit(0);
+                    Gprintf("\r\33[K        \r");
+                    if(More<0) std::exit(0);
                     SetAttr(ta);
                     Line -= More;
                     GetScreenGeometry();
@@ -285,7 +283,7 @@ int Gputch(int x)
         {
             while(Spaces < 0) { ++Spaces; put('\b'); }
     #ifndef DJGPP
-            static const char spacebuf[4] = {' ',' ',' ',' '};
+            static const char spacebuf[16] = {' ',' ',' ',' '};
             if(Spaces >= 5 && AnsiOpt && Colors)
             {
                 // TODO: Don't do AnsiOpt if background color changed
@@ -294,8 +292,8 @@ int Gputch(int x)
             }
             else
             {
-                while(Spaces >= 4) { std::fwrite(spacebuf,1,     4,stdout); Spaces -= 4; }
-                if(Spaces > 0)     { std::fwrite(spacebuf,1,Spaces,stdout); Spaces = 0; }
+                while(Spaces > 0)
+                    Spaces -= std::fwrite(spacebuf, 1, std::min(int(sizeof spacebuf), Spaces), stdout);
             }
     #endif
             put(x);
@@ -306,32 +304,6 @@ int Gputch(int x)
 }
 
 int ColorNums = -1;
-int Gprintf(const char *fmt, ...)
-{
-    char Buf[2048];
-
-    va_list ap;
-    va_start(ap, fmt);
-#ifdef HAVE_VSNPRINTF
-    int n = vsnprintf(Buf, sizeof Buf, fmt, ap);
-#else
-    int n = vsprintf(Buf, fmt, ap);
-#endif
-    va_end(ap);
-
-    for(int a=0; a<n; ++a)
-        if(Buf[a] == '\1')
-        {
-            const int ta = TextAttr;
-            SetAttr(ColorNums);
-            while(++a < n && Buf[a] != '\1') Gputch(Buf[a]);
-            SetAttr(ta);
-        }
-        else
-            Gputch(Buf[a]);
-
-    return n;
-}
 
 std::size_t Gwrite(const std::string& s)
 {

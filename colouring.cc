@@ -1,9 +1,8 @@
-#include <cstdio>
-
 #include "config.h"
 #include "setfun.hh"
 #include "cons.hh"
 #include "colouring.hh"
+#include "printf.hh"
 
 int GetNameAttr(const StatType &Stat, const string &fn)
 {
@@ -114,18 +113,13 @@ int PrintAttr(const StatType &Stat, char Attrs
             break;
 
         }
-        case '2': Attrs = '3'; // passthru
-        default:
+        default: // anything else ('2'..'9')
         {
-            char Buf[32+4]; /* 4 is max extra */
-            Attrs -= '0';
-            sprintf(Buf, "%032o", (int)Stat.st_mode);
             GetModeColor(ColorMode::MODE, '#');
-            Len += Gwrite(Buf+32-Attrs);
+            std::string s = Printf("%032o", Stat.st_mode);
+            Len += Gwrite(s.substr(s.size()- (Attrs-'0')));
         }
     }
-
     #undef PutSet
-
     return Len;
 }
