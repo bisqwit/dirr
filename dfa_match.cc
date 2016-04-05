@@ -142,6 +142,7 @@ void DFA_Matcher::Compile()
                         }
                     }
                     std::fclose(fp);
+                    collection.clear();
                     return;
                 }
             }

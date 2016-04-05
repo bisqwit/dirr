@@ -2,7 +2,6 @@
 #define dirr3_getsize_hh
 
 #include <string>
-#include <sys/stat.h>
 
 extern string BlkStr, ChrStr;
 

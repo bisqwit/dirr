@@ -118,7 +118,7 @@ If::If (type_t t, const Span * sp, uint32_t nsp, const State * next)
 	}
 }
 
-SwitchIf::SwitchIf (const Span * sp, uint32_t nsp, const State * next)
+SwitchIf::SwitchIf (const Span * sp, uint32_t nsp, const State * /*next*/)
 	: type (IF)
 	, info ()
 {
@@ -195,7 +195,7 @@ void Go::init (const State * from)
 		return;
 	}
 
-	// initialize high (wide) spans
+	/*// initialize high (wide) spans
 	uint32_t hSpans = 0;
 	const Span * hspan = nullptr;
 	for (uint32_t i = 0; i < nSpans; ++i)
@@ -230,12 +230,12 @@ void Go::init (const State * from)
 	}
 
 	const uint32_t dSpans = nSpans - hSpans - nBitmaps;
-	//if (opts->target == opt_t::DOT)
-	{
+	if (opts->target == opt_t::DOT)
+	{*/
 		type = DOT;
 		info.dot = new Dot (span, nSpans, from);
-	}
-	/*else if (opts->gFlag && (dSpans >= opts->cGotoThreshold))
+	/*}
+	else if (opts->gFlag && (dSpans >= opts->cGotoThreshold))
 	{
 		type = CPGOTO;
 		info.cpgoto = new Cpgoto (span, nSpans, hspan, hSpans, from->next);

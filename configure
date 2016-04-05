@@ -8,25 +8,7 @@ fi
 . ./config.sub1
 . ./config.sub2
 
-echo $ac_n "Checking for g++... "$ac_c
-
-test -f `which g++ 2>&1 |cut -d\  -f1` && CPP=gcc
-if test -n "$CPP"; then
-  echo $CPP
-else
-  echo no
-  echo g++ is required. stop.
-  exit 1
-fi
-
-AC_INCLUDES="sys/vfs.h sys/mount.h dir.h crt0.h conio.h sys/ioctl.h sys/statvfs.h dirent.h direct.h grp.h pwd.h termio.h termios.h sys/stat.h sys/types.h"
-
-. ./config.sub3
-
-cp -pf conftest.h config.h
-rm -f conftest.[ch]
-
-cat >>config.h <<EOF
+cat >config.h <<EOF
 // These settings can be changed by user.
 
 // Recommended, adds speed
@@ -47,21 +29,7 @@ cat >>config.h <<EOF
 // File containing the settings. Can be changed.
 #define SETTINGSFILE "dirrsets.hh"
 
-// statfs() support. It was automatically configured,
-// and _could_ be incorrect. Change it if you suspect
-// an error.
 EOF
-if test "$os_type" = Linux || \
-   test "$os_type" = HP-UX || \
-   test "$os_type" = Darwin || \
-   test "$os_type" = SunOS; then
-  echo '#define HAVE_STATFS 1' >>config.h
-  echo "It seems like you're running $os_type... Ok."
-else
-  echo '#define HAVE_STATFS 0' >>config.h
-fi
-
-
 
 rm -f configure.log
 DEVNULL=configure.log
@@ -122,9 +90,9 @@ LDFLAGS=""
 OPTIM=""
 
 do_echo -n "Determining compiler version to use... "
-select_tool CXX g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done) 2>/dev/null` clang++
-select_tool CPP g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done) 2>/dev/null` clang++
-select_tool CC  gcc cc `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;done) 2>/dev/null` clang
+select_tool CXX g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
+select_tool CPP g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
+select_tool CC  gcc cc `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;done|grep -v libc) 2>/dev/null` clang
 #select_tool CXX clang++
 #select_tool CPP clang++
 #select_tool CC clang
@@ -140,22 +108,104 @@ else
   exit 1
 fi
 
-do_echo -n "Checking if your compiler supports -std=c++17... "
+
+
+AC_INCLUDES="termio.h sys/stat.h sys/types.h"
+. ./config.sub3
+cat conftest.h >> config.h
+rm -f conftest.[ch]
+
+AC_FUNC="vsnprintf cstdio"
+AC_FUNC="$AC_FUNC statfs sys/vfs.h  statfs sys/statfs.h  statfs sys/mount.h  statfs sys/statvfs.h"
+AC_FUNC="$AC_FUNC ioctl unistd.h  ioctl sys/ioctl.h  ioctl sys/linux_ioctl.h"
+AC_FUNC="$AC_FUNC tcgetattr termios.h"
+AC_FUNC="$AC_FUNC readdir dirent.h  readdir direct.h  readdir dir.h"
+AC_FUNC="$AC_FUNC getgrent grp.h"
+AC_FUNC="$AC_FUNC getpwent pwd.h"
+AC_FUNC="$AC_FUNC getgrgid grp.h"
+AC_FUNC="$AC_FUNC getpwuid pwd.h"
+function test_func()
+{
+	while [ ! "$1" = "" ]; do
+		ac_f="$1"
+		ac_inc="$2"
+		ac_g=`echo "$ac_f" | sed 'y%./+-%__p_%'`
+		ac_gi=`echo "$ac_inc" | sed 'y%./+-%__p_%'`
+		eval ac_test='$'"ac_has_$ac_g"
+		shift
+		shift
+		if [ ! "$ac_test" = "yes" ]; then
+			echo $ac_n Checking for "$ac_f in $ac_inc"...$ac_c
+			if cc_check "<$ac_inc>" '' "void*p  = (void*) $ac_f; "; then
+				echo " yes"
+				echo $ac_n "#define HAVE_$ac_c" >>config.h
+				echo "$ac_f"_"$ac_gi" | sed y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/ >> config.h
+				echo $ac_n "#define HAVE_$ac_c" >>config.h
+				echo "$ac_f" | sed y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/ >> config.h
+				eval "ac_has_$ac_g=yes"
+			else
+				echo " no"
+				echo $ac_n "#undef HAVE_$ac_c" >> config.h
+				echo "$ac_f"_"$ac_gi" | sed y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/ >> config.h
+			fi
+		else
+			echo $ac_n "#undef HAVE_$ac_c" >> config.h
+			echo $ac_n "$ac_f"_"$ac_gi"$ac_c | sed y/abcdefghijklmnopqrstuvwxyz/ABCDEFGHIJKLMNOPQRSTUVWXYZ/ >> config.h
+			echo " // Untested, redundant" >> config.h
+		fi
+	done
+}
+test_func $AC_FUNC
+
+
+
+
+
+do_echo -n "Checking for -std=c++17... "
 if cc_check '<stdio.h>' '-std=c++17' ''; then
   do_echo Yes
   CPPFLAGS="$CPPFLAGS -std=c++17"
 else
   do_echo No
-  do_echo -n "Checking if your compiler supports -std=c++14... "
+  do_echo -n "Checking for -std=c++14... "
   if cc_check '<stdio.h>' '-std=c++14' ''; then
     do_echo Yes
     CPPFLAGS="$CPPFLAGS -std=c++14"
   else
     do_echo No
-    do_echo -n "Checking if your compiler supports -std=c++11... "
+    do_echo -n "Checking for -std=c++11... "
     if cc_check '<stdio.h>' '-std=c++11' ''; then
       do_echo Yes
       CPPFLAGS="$CPPFLAGS -std=c++11"
+    else
+      do_echo No
+    fi
+  fi
+fi
+
+do_echo -n "Checking for -Ofast... "
+if cc_check '<stdio.h>' '-Ofast' ''; then
+  do_echo Yes
+  OPTIM="$OPTIM -Ofast"
+else
+  do_echo No
+  do_echo -n "Checking for -ffast-math... "
+  if cc_check '<string.h>' '-ffast-math' ''; then
+    do_echo Yes
+    OPTIM="$OPTIM -ffast-math"
+  else
+    do_echo No
+  fi
+  do_echo -n "Checking for -O3... "
+  if cc_check '<stdio.h>' '-O3' ''; then
+    do_echo Yes
+    OPTIM="$OPTIM -O3"
+  else
+    do_echo No
+    do_echo -n "Checking for -O2... "
+    if cc_check '<stdio.h>' '-O2' ''; then
+      do_echo Yes
+      OPTIM="$OPTIM -O2"
     else
       do_echo No
     fi
@@ -167,7 +217,7 @@ CWARNINGS=""
 CXXWARNINGS=""
 
 if [ "$CC" = "icc" ]; then
-  #do_echo -n "Checking if your compiler supports -pch... "
+  #do_echo -n "Checking for -pch... "
   #if cc_check '<stdio.h>' '-pch' 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
   #  do_echo Yes
   #  OPTIM="$OPTIM -pch"
@@ -178,7 +228,7 @@ if [ "$CC" = "icc" ]; then
 else
   #LDFLAGS="$LDFLAGS -Xlinker --gc-sections"
 
-  do_echo -n "Checking if your compiler supports -minline-stringops-dynamically... "
+  do_echo -n "Checking for -minline-stringops-dynamically... "
   if cc_check '<string.h>' '-minline-stringops-dynamically' 'char buf1[64],buf2[80]="kissa"; memcpy(buf1,buf2,sizeof(buf2)-strlen(buf2));'; then
     do_echo Yes
     OPTIM="$OPTIM -minline-stringops-dynamically"
@@ -194,10 +244,9 @@ else
   #                  the included source files consist of entire
   #                  program, messing link semantics)
 
-  T_OPTIM="\
-    -ffast-math -mrecip -fvpt -ffunction-cse -ffunction-sections -fdata-sections"
+  T_OPTIM="-ffunction-cse -ffunction-sections -fdata-sections"
   for s in $T_OPTIM;do
-    do_echo -n "Checking if your compiler supports $s... "
+    do_echo -n "Checking for $s... "
     if cc_check '<stdio.h>' "$s" 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
       do_echo Yes
       OPTIM="$OPTIM $s"
@@ -209,7 +258,7 @@ else
   T_LDFLAGS="\
     -Wl,--gc-sections"
   for s in $T_LDFLAGS;do
-    do_echo -n "Checking if your compiler supports $s... "
+    do_echo -n "Checking for $s... "
     if cc_check '<stdio.h>' "$s" 'int x,y[100];for(x=0; x<100;++x)y[x]=5;'; then
       do_echo Yes
       LDFLAGS="$LDFLAGS $s"
@@ -241,7 +290,7 @@ else
   T_CXXWARNINGS="-Woverloaded-virtual -Weffc++ -Wno-non-virtual-dtor"
 
   for s in $T_WARNINGS;do
-    do_echo -n "Checking if your compiler supports $s... "
+    do_echo -n "Checking for $s... "
     if cc_check '<stdio.h>' "$s" ''; then
       do_echo Yes
       WARNINGS="$WARNINGS $s"
@@ -250,7 +299,7 @@ else
     fi
   done
   for s in $T_CWARNINGS;do
-    do_echo -n "Checking if your compiler supports $s... "
+    do_echo -n "Checking for $s... "
     if cc_check '<stdio.h>' "$s" ''; then
       do_echo Yes
       CWARNINGS="$CWARNINGS $s"
@@ -259,7 +308,7 @@ else
     fi
   done
   for s in $T_CXXWARNINGS;do
-    do_echo -n "Checking if your compiler supports $s... "
+    do_echo -n "Checking for $s... "
     if cc_check '<stdio.h>' "$s" ''; then
       do_echo Yes
       CXXWARNINGS="$CXXWARNINGS $s"
@@ -269,9 +318,10 @@ else
   done
 fi  
 
-(echo "Your CPU has these features:"
- grep flags /proc/cpuinfo | uniq | sed 's/.*://' | tr ' ' '\012'|sort|grep .|(fmt -w60||cat)|sed 's/^/- /'
-) >> $DEVNULL
+if [ -f /proc/cpuinfo ]; then
+  echo "Your CPU has these features:"
+  grep flags /proc/cpuinfo | uniq | sed 's/.*://' | tr ' ' '\012'|sort|grep .|(fmt -w60||cat)|sed 's/^/- /'
+fi >> $DEVNULL
 
 do_echo "Updating Makefile.sets ..."
 

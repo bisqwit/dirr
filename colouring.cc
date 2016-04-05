@@ -7,102 +7,106 @@
 
 int GetNameAttr(const StatType &Stat, const string &fn)
 {
-    int NameAttr = NameColor(fn);
-
-    if(!WasNormalColor)return NameAttr;
+    int NameAttr = NameColor(fn, -1);
+    if(NameAttr != -1) return NameAttr;
 
     #ifdef S_ISLNK
-    if(S_ISLNK(Stat.st_mode))       NameAttr = GetModeColor("type", -'l');
+    if(S_ISLNK(Stat.st_mode))       return GetModeColor(ColorMode::TYPE, -'l');
     else
     #endif
-         if(S_ISDIR(Stat.st_mode))  NameAttr = GetModeColor("type", -'d');
-    else if(S_ISCHR(Stat.st_mode))  NameAttr = GetModeColor("type", -'c');
-    else if(S_ISBLK(Stat.st_mode))  NameAttr = GetModeColor("type", -'b');
+         if(S_ISDIR(Stat.st_mode))  return GetModeColor(ColorMode::TYPE, -'d');
+    else if(S_ISCHR(Stat.st_mode))  return GetModeColor(ColorMode::TYPE, -'c');
+    else if(S_ISBLK(Stat.st_mode))  return GetModeColor(ColorMode::TYPE, -'b');
     #ifdef S_ISFIFO
-    else if(S_ISFIFO(Stat.st_mode)) NameAttr = GetModeColor("type", -'p');
+    else if(S_ISFIFO(Stat.st_mode)) return GetModeColor(ColorMode::TYPE, -'p');
     #endif
     #ifdef S_ISSOCK
-    else if(S_ISSOCK(Stat.st_mode)) NameAttr = GetModeColor("type", -'s');
+    else if(S_ISSOCK(Stat.st_mode)) return GetModeColor(ColorMode::TYPE, -'s');
     #endif
     #ifdef S_ISDOOR
-    else if(S_ISDOOR(Stat.st_mode)) NameAttr = GetModeColor("type", -'D');
+    else if(S_ISDOOR(Stat.st_mode)) return GetModeColor(ColorMode::TYPE, -'D');
     #endif
-    else if(Stat.st_mode&00111)     NameAttr = GetModeColor("type", -'x');
+    else if(Stat.st_mode& (S_IXUSR|S_IXGRP|S_IXOTH)) return GetModeColor(ColorMode::TYPE, -'x');
+    else if(S_ISREG(Stat.st_mode))  return GetModeColor(ColorMode::TYPE, -'-');
 
-    return NameAttr;
+    return GetModeColor(ColorMode::TYPE, -'?'); // Unknown type
 }
 
 int PrintAttr(const StatType &Stat, char Attrs
 #ifdef DJGPP
-	, unsigned int dosattr
+    , unsigned int dosattr
 #endif
 )
 {
-    #define PutSet(c) {GetModeColor("mode", c);Gputch(c);Len++;}
-	int Len = 0;
+    #define PutSet(c) do { GetModeColor(ColorMode::MODE, c);Gputch(c);Len++; } while(0)
+    int Len = 0;
     switch(Attrs)
     {
         case '0':
 #ifdef DJGPP
-        	if(dosattr&0x20)PutSet('A')else PutSet('-')
-        	if(dosattr&0x02)PutSet('H')else PutSet('-')
-        	if(dosattr&0x04)PutSet('S')else PutSet('-')
-        	if(dosattr&0x01)PutSet('R')else PutSet('-')
+            if(dosattr&0x20)PutSet('A');else PutSet('-');
+            if(dosattr&0x02)PutSet('H');else PutSet('-');
+            if(dosattr&0x04)PutSet('S');else PutSet('-');
+            if(dosattr&0x01)PutSet('R');else PutSet('-');
 #endif
             break;
         case '1':
         {
 #ifndef DJGPP
-        	int Viva = GetModeColor("mode", '-');
 # ifdef S_ISLNK
-                 if(S_ISLNK(Stat.st_mode))  PutSet('l')
+                 if(S_ISLNK(Stat.st_mode))  PutSet('l');
             else
 # endif
-                 if(S_ISDIR(Stat.st_mode))  PutSet('d')
-            else if(S_ISCHR(Stat.st_mode))  PutSet('c')
-            else if(S_ISBLK(Stat.st_mode))  PutSet('b')
+                 if(S_ISDIR(Stat.st_mode))  PutSet('d');
+            else if(S_ISCHR(Stat.st_mode))  PutSet('c');
+            else if(S_ISBLK(Stat.st_mode))  PutSet('b');
 # ifdef S_ISFIFO
-            else if(S_ISFIFO(Stat.st_mode)) PutSet('p')
+            else if(S_ISFIFO(Stat.st_mode)) PutSet('p');
 # endif
 # ifdef S_ISSOCK
-            else if(S_ISSOCK(Stat.st_mode)) PutSet('s')
+            else if(S_ISSOCK(Stat.st_mode)) PutSet('s');
 # endif
 # ifdef S_ISDOOR
-            else if(S_ISDOOR(Stat.st_mode)) PutSet('D')
+            else if(S_ISDOOR(Stat.st_mode)) PutSet('D');
 # endif
-            else if(S_ISREG(Stat.st_mode))  PutSet('-')
+            else if(S_ISREG(Stat.st_mode))  PutSet('-');
             else
             {
-            	// not dir, not link, not chr, not blk, not fifo, not sock, not file...
-            	// not even a door (?)... what is it then???
-                PutSet('?')
+                // not dir, not link, not chr, not blk, not fifo, not sock, not file...
+                // not even a door (?)... what is it then???
+                PutSet('?');
             }
 
-            SetAttr(Viva);
-            Gputch((Stat.st_mode&00400)?'r':'-');
-            Gputch((Stat.st_mode&00200)?'w':'-');
+            auto mode = [&Stat](unsigned m) -> bool { return Stat.st_mode & m; };
 
-            GetModeColor("mode", (Stat.st_mode&00100)?'x':'-');
-
-            Gputch("-xSs"[((Stat.st_mode&04000)>>10)|((Stat.st_mode&00100)>>6)]);
-
-            SetAttr(Viva);
-            Gputch((Stat.st_mode&00040)?'r':'-');
-            Gputch((Stat.st_mode&00020)?'w':'-');
-
-            GetModeColor("mode", (Stat.st_mode&00010)?'x':'-');
         #if defined(SUNOS)||defined(__sun)||defined(SOLARIS)
-            Gputch("-xls"[((Stat.st_mode&02000)>>9)|((Stat.st_mode&00010)>>3)]);
+            static const char patterns[16] = {'-','r','-','w', '-','x','S','s', '-','x','l','s', '-','x','T','t'};
         #else
-            Gputch("-xSs"[((Stat.st_mode&02000)>>9)|((Stat.st_mode&00010)>>3)]);
+            static const char patterns[16] = {'-','r','-','w', '-','x','S','s', '-','x','S','s', '-','x','T','t'};
         #endif
 
-            SetAttr(Viva);
-            Gputch((Stat.st_mode&00004)?'r':'-');
-            Gputch((Stat.st_mode&00002)?'w':'-');
+            int defcolor = GetModeColor(ColorMode::MODE, -('-'));
+            int xcolor   = GetModeColor(ColorMode::MODE, -(mode(S_IXUSR)?'x':'-'));
+            SetAttr(defcolor);
+            Gputch(patterns[0+mode(S_IRUSR)]);
+            Gputch(patterns[2+mode(S_IWUSR)]);
 
-            GetModeColor("mode", (Stat.st_mode&00001)?'x':'-');
-            Gputch("-xTt"[((Stat.st_mode&01000)>>8)|((Stat.st_mode&00001))]);
+            SetAttr(xcolor);
+            Gputch(patterns[4+mode(S_ISUID)*2+mode(S_IXUSR)]);
+
+            SetAttr(defcolor);
+            Gputch(patterns[0+mode(S_IRGRP)]);
+            Gputch(patterns[2+mode(S_IWGRP)]);
+
+            SetAttr(xcolor);
+            Gputch(patterns[8+mode(S_ISGID)*2+mode(S_IXGRP)]);
+
+            SetAttr(defcolor);
+            Gputch(patterns[0+mode(S_IROTH)]);
+            Gputch(patterns[2+mode(S_IWOTH)]);
+
+            SetAttr(xcolor);
+            Gputch(patterns[12+mode(S_ISVTX)*2+mode(S_IXOTH)]);
 
             Len += 9;
 
@@ -110,19 +114,18 @@ int PrintAttr(const StatType &Stat, char Attrs
             break;
 
         }
-        case '2':
-            Attrs = '3';
+        case '2': Attrs = '3'; // passthru
         default:
         {
-    		char Buf[104]; /* 4 is max extra */
+            char Buf[32+4]; /* 4 is max extra */
             Attrs -= '0';
-            sprintf(Buf, "%0100o", (int)Stat.st_mode);
-            GetModeColor("mode", '#');
-            Len += Gprintf("%s", Buf+100-Attrs);
+            sprintf(Buf, "%032o", (int)Stat.st_mode);
+            GetModeColor(ColorMode::MODE, '#');
+            Len += Gwrite(Buf+32-Attrs);
         }
-	}
-	
-	#undef PutSet
-	
-	return Len;
+    }
+
+    #undef PutSet
+
+    return Len;
 }

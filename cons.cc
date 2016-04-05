@@ -8,21 +8,21 @@ using namespace std;
 
 #include "config.h"
 #include "cons.hh"
+#include "setfun.hh"
 
-#ifdef FREEBSD50
-#include <linux_ioctl.h>
-#define TCGETA LINUX_TCGETA
-#define TCSETA LINUX_TCSETA
-#endif
-
-#ifndef linux
-// In SunOS, sys/ioctl.h doesn't define ioctl()
-// function, but it's instead in unistd.h.
-#include <unistd.h>
-#endif
-
-#ifdef HAVE_SYS_IOCTL_H
-#include <sys/ioctl.h>
+#ifdef HAVE_IOCTL
+ #ifdef HAVE_IOCTL_UNISTD_H
+ // In SunOS, sys/ioctl.h doesn't define ioctl()
+ // function, but it's instead in unistd.h.
+  #include <unistd.h>
+ #elif defined(HAVE_IOCTL_SYS_IOCTL_H)
+  #include <sys/ioctl.h>
+ #elif defined(HAVE_IOCTL_SYS_LINUX_IOCTL_H)
+  // FREEBSD50
+  #include <linux_ioctl.h>
+  #define TCGETA LINUX_TCGETA
+  #define TCSETA LINUX_TCSETA
+ #endif
 #endif
 
 #define DEFAULTATTR 7
@@ -37,13 +37,14 @@ int _crt0_startup_flags =
     _CRT0_FLAG_PRESERVE_UPPER_CASE
   | _CRT0_FLAG_PRESERVE_FILENAME_CASE;
 #define Ggetch getch
-#else
+#endif
+
 #ifdef HAVE_TERMIO_H
-#include <termio.h>
+# include <termio.h>
 #endif
-#ifdef HAVE_TERMIOS_H
-#include <termios.h>
-#endif
+
+#ifdef HAVE_TCGETATTR_TERMIOS_H
+# include <termios.h>
 #endif
 
 bool Colors     = true;
@@ -58,9 +59,6 @@ int LINES=25, COLS=80;
 
 static int TextAttr = DEFAULTATTR;
 static int OldAttr  = DEFAULTATTR;
-static int ColorNumToggle = 0;
-
-extern int GetDescrColor(const string &descr, int index);
 
 static class GetScreenGeometry
 {
@@ -111,49 +109,56 @@ static void FlushSetAttr()
 #ifdef DJGPP
         textattr(TextAttr);
 #else
-        printf("\33[");
-
-        if(TextAttr != 7)
+        // max length: "e[0;1;5;40;30m" = 14 characters
+        char Buffer[16]={'\33','['};
+        unsigned Buflen=2;
+        if(TextAttr != 0x07)
         {
             static const char Swap[] = "04261537";
 
             if(AnsiOpt)
             {
-                int pp=0;
+                bool pp = false; // semicolon needed
 
                 if((OldAttr&0x80) > (TextAttr&0x80)
                 || (OldAttr&0x08) > (TextAttr&0x08))
                 {
-                    putchar('0'); pp=1;
-                    OldAttr = 7;
+                    // '0' resets both blink and intensity flags
+                    Buffer[Buflen++] = '0'; pp=true;
+                    OldAttr = 0x07; // Presumed default color
                 }
 
-                if((TextAttr&0x08) && !(OldAttr&0x08)){if(pp)putchar(';');putchar('1');pp=1;}
-                if((TextAttr&0x80) && !(OldAttr&0x80)){if(pp)putchar(';');putchar('5');pp=1;}
+                if((TextAttr&0x08) && !(OldAttr&0x08)){if(pp)Buffer[Buflen++]=';';Buffer[Buflen++]='1';pp=true;}
+                if((TextAttr&0x80) && !(OldAttr&0x80)){if(pp)Buffer[Buflen++]=';';Buffer[Buflen++]='5';pp=true;}
 
                 if((TextAttr&0x70) != (OldAttr&0x70))
                 {
-                    if(pp)putchar(';');
-                    putchar('4');
-                    putchar(Swap[(TextAttr>>4)&7]);
-                    pp=1;
+                    if(pp)Buffer[Buflen++] = (';');
+                    Buffer[Buflen++] = ('4');
+                    Buffer[Buflen++] = (Swap[(TextAttr>>4)&7]);
+                    pp=true;
                 }
 
                 if((TextAttr&7) != (OldAttr&7))
                 {
-                    if(pp)putchar(';');
-                    putchar('3');
-                    putchar(Swap[TextAttr&7]);
+                    if(pp)Buffer[Buflen++] = (';');
+                    Buffer[Buflen++] = ('3');
+                    Buffer[Buflen++] = (Swap[TextAttr&7]);
                 }
             }
             else
-                printf("0%s%s;4%c;3%c",
-                    (TextAttr&8)?";1":"",
-                    (TextAttr&0x80)?";5":"",
-                    Swap[(TextAttr>>4)&7],
-                    Swap[TextAttr&7]);
+            {
+                Buffer[Buflen++] = '0';
+                if(TextAttr&0x08) { Buffer[Buflen++]=';';Buffer[Buflen++]='1'; }
+                if(TextAttr&0x80) { Buffer[Buflen++]=';';Buffer[Buflen++]='5'; }
+                Buffer[Buflen++] = '4';
+                Buffer[Buflen++] = Swap[(TextAttr>>4)&7];
+                Buffer[Buflen++] = '3';
+                Buffer[Buflen++] = Swap[(TextAttr   )&7];
+            }
         }
-        putchar('m');
+        Buffer[Buflen++] = 'm';
+        std::fwrite(Buffer,1,Buflen,stdout);
 #endif
     }
     OldAttr = TextAttr;
@@ -162,7 +167,7 @@ static void FlushSetAttr()
 #ifndef DJGPP
 static int Ggetch()
 {
-#ifdef HAVE_TERMIOS_H
+#ifdef HAVE_TCGETATTR_TERMIOS_H
     struct termios term, back;
     int c;
     tcgetattr(0, &term);
@@ -173,7 +178,7 @@ static int Ggetch()
     c = getchar();
     tcsetattr(0, TCSAFLUSH, &back);
     return c;
-#else
+#elif defined(HAVE_TERMIO_H)
     struct termio term, back;
     int c;
     ioctl(0, TCGETA, &term);
@@ -184,6 +189,8 @@ static int Ggetch()
     c = getchar();
     ioctl(0, TCSETA, &back);
     return c;
+#else
+    return getchar();
 #endif
 }
 #endif
@@ -197,109 +204,104 @@ static int Line;
 int Gputch(int x)
 {
     int TmpAttr = TextAttr;
-    if(!TmpAttr && x > ' ')x = ' ';
-    if(x=='\n' && (TextAttr&0xF0))GetDescrColor("txt", 1);
 
+    // When background color = foreground color, print only blanks
+    if((TmpAttr>>4)==(TmpAttr&0x0F) && x > ' ') x = ' ';
+
+    // When printing a newline, always do that with default background color
+    if(x=='\n' && (TextAttr&0xF0)) GetDescrColor(ColorDescr::TEXT, 1);
+
+    // If printing spaces, only change color when background color changes
     if(x!=' ' || ((TextAttr&0xF0) != (OldAttr&0xF0)))
         FlushSetAttr();
 
-    #ifdef DJGPP
-
-    (Colors?putch:putchar)(x);
-
-    #else
-
-    static int Mask[MAX_COLS]={0};
-
-    if(x=='\a')
-    {
-        putchar(x);
-        return x;
-    }
-    if(AnsiOpt && Colors)
-    {
-        static int Spaces=0;
-        if(x==' ')
-        {
-            Spaces++;
-            return x;
-        }
-        while(Spaces)
-        {
-            int a=WhereX, Now, mask=Mask[a];
-
-            for(Now=0; Now<Spaces && Mask[a]==mask; Now++, a++);
-
-            Spaces -= Now;
-            if(mask)
-            {
-            Fill:
-                while(Now>0){Now--;putchar(' ');}
-            }
-            else if(Spaces || !(x=='\r' || x=='\n'))
-            {
-                if(Now<=4)goto Fill;
-                printf("\33[%dC", Now);
-            }
-            WhereX += Now;
-        }
-    }
-    putchar(x);
-
-    #endif
-
-    if(x=='\n')
-        SetAttr(TmpAttr);
-
-    if(x=='\r')
-        WhereX = 0;
-    else if(x != '\b')
+    auto put = [](char c)
     {
 #ifdef DJGPP
-        if(x < ' ')WhereX = 0;
+        (Colors?putch:putchar)(c);
 #else
-        if(x >= ' ')
-            Mask[WhereX++] = 1;
-        else
-            memset(Mask, WhereX=0, sizeof Mask);
+        putchar(c);
 #endif
-    }
-    else if(WhereX)
-        WhereX--;
+    };
 
-    // Newlinecheck
-    if(x=='\n')
+    static int Spaces=0;
+    switch(x)
     {
-        if(++Line >= LINES)
+        case '\a':
+            put(x);
+            return x;
+        case '\b':
+            --Spaces;
+            if(WhereX) --WhereX;
+            return x;
+        case '\r':
+            Spaces=WhereX=0;
+            put(x);
+            return x;
+    #ifndef DJGPP
+        case ' ':
+            ++Spaces;
+            ++WhereX;
+            return x;
+    #endif
+        case '\n':
         {
-            if(Pagebreaks)
+            Spaces=0; WhereX=0;
+            #ifdef DJGPP
+            put('\r');
+            #endif
+            put(x);
+            if(++Line >= LINES)
             {
-                int More=LINES-2;
-                int ta = TextAttr;
-                SetAttr(0x70);
-                Gprintf("\r--More--");
-                GetDescrColor("txt", 1);
-                Gprintf(" \b");
-                fflush(stdout);
-                for(;;)
+                if(Pagebreaks)
                 {
-                    int Key = Ggetch();
-                    if(Key=='q'
-                    || Key=='Q'
-                    || Key==3){More=-1;break;}
-                    if(Key=='\r'|| Key=='\n'){More=1;break;}
-                    if(Key==' ')break;
-                    Gputch('\a');
-                   }
-                Gprintf("\r        \r");
-                if(More<0)exit(0);
-                SetAttr(ta);
-                Line -= More;
-                GetScreenGeometry();
+                    int More=LINES-2;
+                    int ta = TextAttr;
+                    SetAttr(0x70);
+                    Gprintf("\r--More--");
+                    GetDescrColor(ColorDescr::TEXT, 1);
+                    Gprintf(" \b");
+                    fflush(stdout);
+                    for(;;)
+                    {
+                        int Key = Ggetch();
+                        if(Key=='q'
+                        || Key=='Q'
+                        || Key==3){More=-1;break;}
+                        if(Key=='\r'|| Key=='\n'){More=1;break;}
+                        if(Key==' ')break;
+                        Gputch('\a');
+                       }
+                    Gprintf("\r        \r");
+                    if(More<0)exit(0);
+                    SetAttr(ta);
+                    Line -= More;
+                    GetScreenGeometry();
+                }
             }
+            return x;
+        }
+        default:
+        {
+            while(Spaces < 0) { ++Spaces; put('\b'); }
+    #ifndef DJGPP
+            static const char spacebuf[4] = {' ',' ',' ',' '};
+            if(Spaces >= 5 && AnsiOpt && Colors)
+            {
+                // TODO: Don't do AnsiOpt if background color changed
+                std::printf("\33[%dC", Spaces);
+                Spaces = 0;
+            }
+            else
+            {
+                while(Spaces >= 4) { std::fwrite(spacebuf,1,     4,stdout); Spaces -= 4; }
+                if(Spaces > 0)     { std::fwrite(spacebuf,1,Spaces,stdout); Spaces = 0; }
+            }
+    #endif
+            put(x);
+            return x;
         }
     }
-
     return x;
 }
 
@@ -310,28 +312,37 @@ int Gprintf(const char *fmt, ...)
 
     va_list ap;
     va_start(ap, fmt);
-    int a = vsprintf(Buf, fmt, ap);
+#ifdef HAVE_VSNPRINTF
+    int n = vsnprintf(Buf, sizeof Buf, fmt, ap);
+#else
+    int n = vsprintf(Buf, fmt, ap);
+#endif
     va_end(ap);
 
-    for(char *s=Buf; *s; s++)
-    {
-        if(*s=='\1')
-            ColorNumToggle ^= 1;
-        else
+    for(int a=0; a<n; ++a)
+        if(Buf[a] == '\1')
         {
-#ifdef DJGPP
-            if(*s=='\n')Gputch('\r');
-#endif
-            if(ColorNumToggle)
-            {
-                int ta = TextAttr;
-                SetAttr(ColorNums);
-                Gputch(*s);
-                SetAttr(ta);
-            }
-            else
-                Gputch(*s);
+            const int ta = TextAttr;
+            SetAttr(ColorNums);
+            while(++a < n && Buf[a] != '\1') Gputch(Buf[a]);
+            SetAttr(ta);
         }
-    }
-    return a;
+        else
+            Gputch(Buf[a]);
+
+    return n;
+}
+
+std::size_t Gwrite(const std::string& s)
+{
+    for(char c: s) Gputch(c);
+    return s.size();
+}
+
+std::size_t Gwrite(const std::string& s, std::size_t pad)
+{
+    if(pad < s.size()) return Gwrite(s);
+    std::size_t res = Gwrite(s);
+    while(res < pad) { ++res; Gputch(' '); }
+    return pad;
 }

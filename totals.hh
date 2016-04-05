@@ -8,7 +8,7 @@
 enum {SumDir=1,SumFifo,SumSock,SumFile,SumLink,SumChrDev,SumBlkDev};
 
 extern SizeType SumCnt[10];
-extern SizeType Summa[10];
+extern SizeType SumSizes[10];
 
 extern bool Totals;
 extern int TotalSep;

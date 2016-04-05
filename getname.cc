@@ -15,22 +15,25 @@ static const char HLinkArrow[] = " = ";
 int Links;
 #endif
 
-static void TulostaNimi(unsigned maxlen, const string &buf)
+static std::size_t WidthPrint(std::size_t maxlen, const string &buf, bool fill)
 {
-    const unsigned char *s = (const unsigned char *)buf.c_str();
-
-    while(*s)
+    /* Print maximum of "maxlen" characters from buf.
+     * If buf is longer, print spaces.
+     * Convert unprintable characters into question marks.
+     * Printable (unsigned): 20..7E, A0..FF    Unprintable: 00..1F, 7F..9F
+     * Printable (signed):   32..126, -96..-1, Unprintable: -128..-97, 0..31
+     */
+    std::size_t n=0;
+    for(std::size_t limit=std::min(maxlen, buf.size()); n<limit; ++n)
     {
-        if(!maxlen)break;
-        if(*s < 32 || (*s >= 127 && *s <= 160))
-            Gputch('?');
+        unsigned char c = buf[n];
+        if((c >= 32 && c < 0x7F) || (c >= 0xA0))
+            Gputch(c);
         else
-            Gputch(*s);
-        --maxlen;
-        ++s;
+            Gputch('?');
     }
-
-    while(maxlen>0)Gputch(' ');
+    if(fill) for(; n < maxlen; ++n) Gputch(' ');
+    return n;
 }
 
 int GetName(const string &fn, const StatType &sta, int Space,
@@ -60,10 +63,17 @@ Redo:
     if(i > Space && nameonly)i = Space;
     Buf.erase(i);
 
-    TulostaNimi(i, Buf);
-    Space -= i;
+    Space -= WidthPrint(i, Buf, Fill);
 
-    #define PutSet(c) do if((++Len,Space)&&GetModeColor("info", c))Gputch(c),--Space;while(0)
+    #define PutSet(c) do \
+        if(Space) \
+        { \
+            char ch = (c); \
+            ++Len; --Space; \
+            GetModeColor(ColorMode::INFO, ch); \
+            Gputch(ch); \
+        } \
+    while(0)
 
     if(wasinvalid)
     {
@@ -78,7 +88,6 @@ Redo:
         if(S_ISFIFO(Stat->st_mode)) PutSet('|');
         #endif
     }
-
     #ifdef S_ISLNK
     if(!wasinvalid && S_ISLNK(Stat->st_mode))
     {
@@ -94,8 +103,8 @@ Redo:
             if(a)
             {
                 Buf.erase(a);
-                GetModeColor("info", '@');
-                Gprintf("%*s", -a, Buf.c_str());
+                GetModeColor(ColorMode::INFO, '@');
+                Gwrite(Buf, a);
             }
             Space -= a;
 
@@ -108,11 +117,11 @@ Redo:
                 if(LStatFunc(Buf.c_str(), &Stat1) < 0)
                 {
                     wasinvalid = true;
-                    if(Space)GetModeColor("type", '?');
+                    if(Space)GetModeColor(ColorMode::TYPE, '?');
                 }
                 else
                 {
-                    if(Space)GetModeColor("type", 'l');
+                    if(Space)GetModeColor(ColorMode::TYPE, 'l');
                 }
                 maysublink = false;
             }
@@ -120,7 +129,7 @@ Redo:
             {
                 StatType Stat2;
                 if(LStatFunc(Buf.c_str(), &Stat2) >= 0 && S_ISLNK(Stat2.st_mode))
-                   GetModeColor("type", 'l');
+                   GetModeColor(ColorMode::TYPE, 'l');
                 else
                    SetAttr(GetNameAttr(Stat1, Buf));
             }
@@ -142,7 +151,7 @@ Redo:
     {
         StatType Stat1;
 
-        SetAttr(GetModeColor("info", '&'));
+        SetAttr(GetModeColor(ColorMode::INFO, '&'));
 
         Len += Gprintf("%s", HLinkArrow);
         Space -= strlen(HLinkArrow);
@@ -164,12 +173,6 @@ Redo:
 
     #undef PutSet
 
-    if(Fill)
-        while(Space)
-        {
-            Gputch(' ');
-            Space--;
-        }
-
+    if(Fill) while(Space) { Gputch(' '); --Space; }
     return Len;
 }

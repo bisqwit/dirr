@@ -25,6 +25,7 @@ class RuleOp;
  * the same symbol that go to distinguishable states. The algorithm
  * loops until the matrix stops changing.
  */
+#if 0
 static void minimization_table(
 	size_t *part,
 	const std::vector<dfa_state_t*> &states,
@@ -98,6 +99,7 @@ static void minimization_table(
 	delete[] tbl[0];
 	delete[] tbl;
 }
+#endif
 
 /*
  * note [DFA minimization: Moore algorithm]
