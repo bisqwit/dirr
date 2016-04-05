@@ -24,7 +24,7 @@ CPPFLAGS += -Ire2c
 #CXX += -pg -flto
 #OPTIM= -O2 -finline
 
-VERSION = 3.34
+VERSION = 3.35
 
 # Obligatory defines:
 #   CACHE_GETSET     Recommended, adds speed
