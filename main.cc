@@ -59,16 +59,17 @@ static int RowLen;
 
 struct Estimation
 {
-    std::size_t Name;
-    std::size_t Size, SizeWithSeps, SizeCompact;
-    std::size_t UIDname, UIDnumber;
-    std::size_t GIDname, GIDnumber;
-    std::size_t Links;
+    std::size_t Name{0};
+    std::size_t Size{0}, SizeWithSeps{0}, SizeCompact{0};
+    std::size_t UIDname{0}, UIDnumber{0};
+    std::size_t GIDname{0}, GIDnumber{0};
+    std::size_t Links{0};
 };
-static Estimation Longest;
+static std::vector<Estimation> Longest; // Per-column limits
 
 static bool ShowDotFiles = ALWAYS_SHOW_DOTFILES;
-static bool Contents, PreScan, MultiColumn;
+static bool Contents, PreScan, MultiColumn, VerticalColumns;
+static unsigned CurrentColumn;
 static int DateTime, MyUid=-1, MyGid=-1;
 
 static string Sorting; /* n,d,s,u,g */
@@ -99,6 +100,7 @@ static void SetDefaultOptions()
 {
     PreScan     = true; // Clear with -e
     MultiColumn = false;// Set with -C
+    VerticalColumns = false; // Set with -vc
     Compact = 0;    // Set with -m
     #ifdef S_ISLNK
     Links   = 3;    // Modify with -l#
@@ -291,6 +293,8 @@ static void TellMe(const StatType &Stat, string&& Name
         SumSizes[category] += size;
     }
 
+    auto& Limits = CurrentColumn < Longest.size() ? Longest[CurrentColumn] : Longest.back();
+
     for(const auto& f: FieldsToPrint)
         switch(f.type)
         {
@@ -324,7 +328,7 @@ static void TellMe(const StatType &Stat, string&& Name
                     if(Passwd && *Passwd) OwNam = Passwd;
                     else { if(OwNum.empty()) OwNum = std::to_string(Stat.st_uid); OwNam = OwNum; }
                 }
-                ItemLen += (f.info ? Gwrite(OwNam, Longest.UIDname) : Gwrite(OwNam));
+                ItemLen += (f.info ? Gwrite(OwNam, Limits.UIDname) : Gwrite(OwNam));
                 break;
             }
             case FieldInfo::user_id:
@@ -332,7 +336,7 @@ static void TellMe(const StatType &Stat, string&& Name
                 if(MyUid<0)MyUid=getuid();
                 GetDescrColor(ColorDescr::OWNER, ((int)Stat.st_uid==MyUid)?1:2);
                 if(OwNum.empty()) OwNum = std::to_string(Stat.st_uid);
-                ItemLen += (f.info ? Gwrite(OwNum, Longest.UIDnumber) : Gwrite(OwNum));
+                ItemLen += (f.info ? Gwrite(OwNum, Limits.UIDnumber) : Gwrite(OwNum));
                 break;
             }
             case FieldInfo::group_name:
@@ -345,7 +349,7 @@ static void TellMe(const StatType &Stat, string&& Name
                     if(Group && *Group) GrNam = Group;
                     else { if(GrNum.empty()) GrNum = std::to_string(Stat.st_gid); GrNam = GrNum; }
                 }
-                ItemLen += (f.info ? Gwrite(GrNam, Longest.GIDname) : Gwrite(GrNam));
+                ItemLen += (f.info ? Gwrite(GrNam, Limits.GIDname) : Gwrite(GrNam));
                 break;
             }
             case FieldInfo::group_id:
@@ -353,13 +357,13 @@ static void TellMe(const StatType &Stat, string&& Name
                 if(MyGid<0)MyGid=getgid();
                 GetDescrColor(ColorDescr::GROUP, ((int)Stat.st_gid==MyGid)?1:2);
                 if(GrNum.empty()) GrNum = std::to_string(Stat.st_gid);
-                ItemLen += (f.info ? Gwrite(GrNum, Longest.GIDnumber) : Gwrite(GrNum));
+                ItemLen += (f.info ? Gwrite(GrNum, Limits.GIDnumber) : Gwrite(GrNum));
                 break;
             }
             case FieldInfo::nrlinks:
             {
                 GetDescrColor(ColorDescr::NRLINK, 1);
-                ItemLen += (f.info ? Gwrite(std::to_string(Stat.st_nlink), Longest.Links) : Gwrite(std::to_string(Stat.st_nlink)));
+                ItemLen += (f.info ? Gwrite(std::to_string(Stat.st_nlink), Limits.Links) : Gwrite(std::to_string(Stat.st_nlink)));
                 break;
             }
             case FieldInfo::name:
@@ -369,23 +373,23 @@ static void TellMe(const StatType &Stat, string&& Name
                 const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
                 if(hardlinkfn && Name == hardlinkfn) hardlinkfn = nullptr;
                 // Undocumented feature: If fitting is disabled, long pathful filenames are printed
-                auto i = GetName(Name, Stat, Longest.Name, MultiColumn || f.info, f.info, hardlinkfn);
-                ItemLen += std::max(std::size_t(i), Longest.Name);
+                auto i = GetName(Name, Stat, Limits.Name, MultiColumn || f.info, f.info, hardlinkfn);
+                ItemLen += std::max(std::size_t(i), Limits.Name);
                 break;
             }
             case FieldInfo::size:
             {
-                ItemLen += Gwrite(GetSize(Name, Stat, f.info ? Longest.Size : 0, 0));
+                ItemLen += Gwrite(GetSize(Name, Stat, f.info ? Limits.Size : 0, 0));
                 break;
             }
             case FieldInfo::size_compact:
             {
-                ItemLen += Gwrite(GetSize(Name, Stat, f.info ? Longest.SizeCompact : 0, -1));
+                ItemLen += Gwrite(GetSize(Name, Stat, f.info ? Limits.SizeCompact : 0, -1));
                 break;
             }
             case FieldInfo::size_sep:
             {
-                ItemLen += Gwrite(GetSize(Name, Stat, (f.info & 0x80) ? Longest.SizeWithSeps : 0, char(f.info & 0x7F)));
+                ItemLen += Gwrite(GetSize(Name, Stat, (f.info & 0x80) ? Limits.SizeWithSeps : 0, char(f.info & 0x7F)));
                 break;
             }
             case FieldInfo::datetime:
@@ -443,12 +447,14 @@ static void TellMe(const StatType &Stat, string&& Name
 
     if(!FieldsToPrint.empty())
     {
+        ++CurrentColumn;
         RowLen += ItemLen;
         // Make a newline if the _next_ item of the same width would not fit
         if(!MultiColumn || int(RowLen + ItemLen) >= int(COLS))
         {
             Gputch('\n');
             RowLen = 0;
+            CurrentColumn = 0;
         }
         else if(FieldsToPrint.need_column_separator)
         {
@@ -512,6 +518,8 @@ public:
             {
                 case 'c': Result = GetNameAttr(me.Stat, me.Name.c_str()) - GetNameAttr(other.Stat, other.Name.c_str()); break;
                 case 'C': Result = GetNameAttr(other.Stat, other.Name.c_str()) - GetNameAttr(me.Stat, me.Name.c_str()); break;
+                case 'e': Result = me.Name.size() - other.Name.size(); break;
+                case 'E': Result = other.Name.size() - me.Name.size(); break;                
                 case 'n': Result = strcmp(me.Name.c_str(), other.Name.c_str()); break;
                 case 'N': Result = strcmp(other.Name.c_str(), me.Name.c_str()); break;
                 case 'm': Result = strcasecmp(me.Name.c_str(), other.Name.c_str()); break;
@@ -565,22 +573,8 @@ public:
 
 static vector<StatItem> CollectedFilesForCurrentDirectory;
 
-static void EstimateFields()
+static std::size_t CalculateRowWidth(const Estimation& estimation, bool file_too)
 {
-    if(!PreScan)
-    {
-        // If pre-scanning was skipped with the -e option,
-        // we don't have real information about the widths
-        // of various fields. Make reasonable guesses.
-        Longest.Size         = MultiColumn?7:9;
-        Longest.SizeWithSeps = Longest.Size+3;
-        Longest.SizeCompact  = MultiColumn?5:6;
-        Longest.GIDname  = 8; Longest.GIDnumber = 5;
-        Longest.UIDname  = 8; Longest.UIDnumber = 5;
-        Longest.Links    = 3;
-    }
-
-    // Calculate the width of the string to be displayed.
     std::size_t RowLen = 0;
     for(const auto& f: FieldsToPrint)
         switch(f.type)
@@ -594,11 +588,13 @@ static void EstimateFields()
                 #endif
                 else RowLen += f.info - '0';
                 break;
-            case FieldInfo::nrlinks: RowLen += Longest.Links; break;
-            case FieldInfo::name: break; // Not estimating
-            case FieldInfo::size: RowLen += Longest.Size; break;
-            case FieldInfo::size_compact: RowLen += Longest.SizeCompact; break;
-            case FieldInfo::size_sep: RowLen += Longest.SizeWithSeps; break;
+            case FieldInfo::nrlinks: RowLen += estimation.Links; break;
+            case FieldInfo::name:
+                if(file_too) RowLen += estimation.Name;
+                break; // Not estimating
+            case FieldInfo::size: RowLen += estimation.Size; break;
+            case FieldInfo::size_compact: RowLen += estimation.SizeCompact; break;
+            case FieldInfo::size_sep: RowLen += estimation.SizeWithSeps; break;
             case FieldInfo::datetime:
             {
                 if(DateForm == "%u")
@@ -614,12 +610,38 @@ static void EstimateFields()
                 }
                 break;
             }
-            case FieldInfo::user_id:    RowLen += Longest.UIDnumber; break;
-            case FieldInfo::user_name:  RowLen += Longest.UIDname; break;
-            case FieldInfo::group_id:   RowLen += Longest.GIDnumber; break;
-            case FieldInfo::group_name: RowLen += Longest.GIDname; break;
+            case FieldInfo::user_id:    RowLen += estimation.UIDnumber; break;
+            case FieldInfo::user_name:  RowLen += estimation.UIDname; break;
+            case FieldInfo::group_id:   RowLen += estimation.GIDnumber; break;
+            case FieldInfo::group_name: RowLen += estimation.GIDname; break;
             case FieldInfo::num_different_fields:;
         }
+    if(file_too && FieldsToPrint.need_column_separator) ++RowLen;
+    return RowLen;
+}
+
+static void EstimateFields()
+{
+    if(!PreScan)
+    {
+        // If pre-scanning was skipped with the -e option,
+        // we don't have real information about the widths
+        // of various fields. Make reasonable guesses.
+        Longest.resize(1);
+        for(auto& Limits: Longest)
+        {
+            Limits.Size         = MultiColumn?7:9;
+            Limits.SizeWithSeps = Limits.Size+3;
+            Limits.SizeCompact  = MultiColumn?5:6;
+            Limits.GIDname  = 8; Limits.GIDnumber = 5;
+            Limits.UIDname  = 8; Limits.UIDnumber = 5;
+            Limits.Links    = 3;
+        }
+    }
+
+    // Calculate the width of the string to be displayed.
+    auto& Limits = Longest.front();
+    std::size_t RowLen = CalculateRowWidth(Limits, false);
 
     // Calculate the room that there is for a filename
     int room = MultiColumn ? COLS/2 : COLS;
@@ -627,88 +649,165 @@ static void EstimateFields()
     room -= RowLen;
     if(room < 0) room = 0;
 
-    if(!PreScan && !Longest.Name) Longest.Name = std::min(40, COLS/2);
+    if(!PreScan && !Limits.Name) Limits.Name = std::min(13, COLS/2);
 
-    // If there is no room for the longest name that we've found,
+    // If there is no room for the Limits name that we've found,
     // cut the name to the available room
-    if(int(Longest.Name) > room)
-        Longest.Name = room;
+    if(int(Limits.Name) > room)
+        Limits.Name = room;
 }
 
 static void ResetEstimations()
 {
-    Longest.Name = 0;
-    Longest.Size = 0;
-    Longest.SizeWithSeps = 0;
-    Longest.SizeCompact = 0;
-    Longest.Links = 0;
+    Longest.clear();
+    Longest.resize(1);
 
     // In no-prescan mode (-e), we must begin with an initial estimate.
     if(!PreScan) EstimateFields();
 }
 
-static void UpdateEstimations(const std::string& Buffer, const StatType& Stat)
+static void UpdateEstimations(Estimation& Limits, const std::string& name, const StatType& Stat)
 {
+    if(!S_ISDIR(Stat.st_mode)) Inodemap.insert(Stat.st_dev, Stat.st_ino, name);
+
     if(FieldsToPrint.used[FieldInfo::name])
     {
         const char *hardlinkfn = Inodemap.get(Stat.st_dev, Stat.st_ino);
-        if(hardlinkfn && Buffer == hardlinkfn) hardlinkfn = nullptr;
-        Longest.Name = std::max(Longest.Name, std::size_t(GetName(Buffer, Stat, 0, false, true, hardlinkfn)));
+        if(hardlinkfn && name == hardlinkfn) hardlinkfn = nullptr;
+        Limits.Name = std::max(Limits.Name, std::size_t(GetName(name, Stat, 0, false, true, hardlinkfn)));
     }
 
     if(FieldsToPrint.used[FieldInfo::size])
-        Longest.Size = std::max(Longest.Size, GetSize(Buffer, Stat, 0, 0).size());
+        Limits.Size = std::max(Limits.Size, GetSize(name, Stat, 0, 0).size());
 
     if(FieldsToPrint.used[FieldInfo::size_compact])
-        Longest.SizeCompact  = std::max(Longest.SizeCompact,  GetSize(Buffer, Stat, 0, -1).size());
+        Limits.SizeCompact  = std::max(Limits.SizeCompact,  GetSize(name, Stat, 0, -1).size());
 
     if(FieldsToPrint.used[FieldInfo::size_sep])
-        Longest.SizeWithSeps = std::max(Longest.SizeWithSeps, GetSize(Buffer, Stat, 0, '\'').size());
-
-    if(!S_ISDIR(Stat.st_mode)) Inodemap.insert(Stat.st_dev, Stat.st_ino, Buffer);
+        Limits.SizeWithSeps = std::max(Limits.SizeWithSeps, GetSize(name, Stat, 0, '\'').size());
 
     if(FieldsToPrint.used[FieldInfo::nrlinks])
-        Longest.Links = std::max(Longest.Links, std::to_string(Stat.st_nlink).size());
+        Limits.Links = std::max(Limits.Links, std::to_string(Stat.st_nlink).size());
 
     if(FieldsToPrint.used[FieldInfo::user_id] || FieldsToPrint.used[FieldInfo::user_name])
     {
         const char* Passwd = Getpwuid(Stat.st_uid);
         std::string OwNum = std::to_string(Stat.st_uid);
-        Longest.UIDname = std::max(Longest.UIDname, (Passwd && *Passwd) ? strlen(Passwd) : OwNum.size());
-        Longest.UIDnumber = std::max(Longest.UIDnumber, OwNum.size());
+        Limits.UIDname   = std::max(Limits.UIDname, (Passwd && *Passwd) ? strlen(Passwd) : OwNum.size());
+        Limits.UIDnumber = std::max(Limits.UIDnumber, OwNum.size());
     }
     if(FieldsToPrint.used[FieldInfo::group_id] || FieldsToPrint.used[FieldInfo::group_name])
     {
         const char* Group  = Getgrgid(Stat.st_gid);
         std::string GrNum = std::to_string(Stat.st_gid);
-        Longest.GIDname = std::max(Longest.GIDname, (Group  && *Group)  ? strlen(Group)  : GrNum.size());
-        Longest.GIDnumber = std::max(Longest.GIDnumber, GrNum.size());
+        Limits.GIDname   = std::max(Limits.GIDname, (Group  && *Group)  ? strlen(Group)  : GrNum.size());
+        Limits.GIDnumber = std::max(Limits.GIDnumber, GrNum.size());
     }
 }
 
 static void PrintAllFilesCollectedSoFar()
 {
+    auto& f = CollectedFilesForCurrentDirectory;
+
     if(!Sorting.empty())
-        std::sort(CollectedFilesForCurrentDirectory.begin(), CollectedFilesForCurrentDirectory.end());
+        std::sort(f.begin(), f.end());
 
     EstimateFields();
 
-    Dumping = true;
-
-    if(Colors && !CollectedFilesForCurrentDirectory.empty() && AnsiOpt)
-        Gprintf("\r");
-
-    for(StatItem& tmp: CollectedFilesForCurrentDirectory)
+    if(Colors && !f.empty() && AnsiOpt)
     {
-        TellMe(tmp.Stat, std::move(tmp.Name)
-        #ifdef DJGPP
-               , tmp.dosattr
-        #endif
-              );
+        Gprintf("\r");
+        CurrentColumn = 0;
     }
-    CollectedFilesForCurrentDirectory.clear();
 
-    Dumping = false;
+    if(VerticalColumns && MultiColumn)
+    {
+        // Check how many columns we can get away with.
+        // Try to get the shortest number of lines.
+
+        // Using binary search, find the shortest number of lines
+        // where printing still works.
+        unsigned columns = 0;
+        auto acceptable = [&f,&columns](unsigned lines)
+        {
+            Longest.clear();
+            unsigned column = 1, line = 0, total_width = 0;
+            //printf("Trying %u lines\n", lines);
+            for(unsigned a=0; a<f.size(); ++a)
+            {
+                if(line == 0) Longest.emplace_back(); // add column
+                UpdateEstimations(Longest.back(), f[a].Name, f[a].Stat);
+                unsigned width = CalculateRowWidth(Longest.back(), true);
+                //printf("item %u on line %u column %u: column width now %u+%u\n", a, line,column, total_width, width);
+                if(total_width + width >= unsigned(COLS-1))
+                {
+                    // This number of columns does not work.
+                    //printf("%u lines does not work at %u columns\n", lines,columns);
+                    return false;
+                }
+                if(++line >= lines)
+                {
+                    total_width += width;
+                    line = 0;
+                    ++column;
+                }
+            }
+            //printf("%u lines works at %u columns\n", lines,column);
+            columns = column;
+            return true;
+        };
+
+        unsigned minimum_lines = 1;
+        unsigned maximum_lines = f.size();
+        while(minimum_lines < maximum_lines)
+        {
+            unsigned middle = (minimum_lines + maximum_lines) / 2;
+            bool accept = acceptable(middle);
+            if(!accept) minimum_lines = middle+1;
+            else        maximum_lines = middle;
+        }
+        unsigned lines = minimum_lines;
+        acceptable(lines); // Repopulate "columns" and "longest[]"
+
+        // Okay, this number works!
+        //printf("Successful choice at %u lines, %u columns\n", lines, columns);
+        Dumping = true;
+        RowLen=0;
+        for(unsigned line=0; line<lines; ++line)
+        {
+            for(unsigned c=0; c<columns; ++c)
+            {
+                if(line + c*lines >= f.size()) break;
+                StatItem& tmp = f[line + c*lines];
+                TellMe(tmp.Stat, std::move(tmp.Name)
+                #ifdef DJGPP
+                       , tmp.dosattr
+                #endif
+                      );
+            }
+            if(CurrentColumn) { Gputch('\n'); RowLen=0; CurrentColumn=0; }
+        }
+        Dumping = false;
+    }
+    else
+    {
+        for(StatItem& tmp: f)
+            UpdateEstimations(Longest.front(), tmp.Name, tmp.Stat);
+
+        RowLen=0;
+        Dumping = true;
+        for(StatItem& tmp: f)
+        {
+            TellMe(tmp.Stat, std::move(tmp.Name)
+            #ifdef DJGPP
+                   , tmp.dosattr
+            #endif
+                  );
+        }
+        Dumping = false;
+    }
+
+    f.clear();
 }
 
 static void SingleFile(string&& Buffer)
@@ -737,7 +836,6 @@ static void SingleFile(string&& Buffer)
     #endif
     else
     {
-        UpdateEstimations(Buffer, Stat);
         if(PreScan)
         {
             CollectedFilesForCurrentDirectory.emplace_back(
@@ -750,6 +848,7 @@ static void SingleFile(string&& Buffer)
         else
         {
             Dumping = true;
+            UpdateEstimations(Longest.front(), Buffer, Stat);
             TellMe(Stat, std::move(Buffer)
                    #ifdef DJGPP
                    , attr
@@ -763,9 +862,10 @@ static void SingleFile(string&& Buffer)
 static void DirChangeCheck(std::string Source)
 {
     std::size_t ss = Source.size();
+    // Remove trailing /./ and /
     while(ss >= 1 && Source[ss-1] == '/')
         { --ss; if(ss==0 || (Source[ss-2]=='/' && Source[ss-1] == '.')) --ss; }
-    if(ss < Source.size()) Source.erase(ss);
+    Source.erase(ss);
 
     if(LastDir != Source)
     {
@@ -786,6 +886,7 @@ static void DirChangeCheck(std::string Source)
             Eka=0;
             Gprintf(" Directory of %s\n", Source.size() ? Source : ".");
         }
+        CurrentColumn = 0;
         LastDir = Source;
     }
 }
@@ -926,7 +1027,7 @@ private:
     }
     string opt_c1(const string &s) { Colors = true;    return s; }
     string opt_c(const string &s) { Colors = false;    return s; }
-    string opt_C(const string &s) { MultiColumn = true;       return s; }
+    string opt_C(const string &s) { MultiColumn = true; return s; }
     string opt_D(const string &s) { Contents = false;  return s; }
     string opt_p(const string &s) { Pagebreaks = true; return s; }
     string opt_P(const string &s) { AnsiOpt = false;   return s; }
@@ -934,6 +1035,7 @@ private:
     string opt_o(const string &s) { Sorting = s; return ""; }
     string opt_F(const string &s) { DateForm = s; return ""; }
     string opt_f(const string &s) { FieldOrder = s; return ""; }
+    string opt_vc(const string& s) { VerticalColumns = true; return s; }
     string opt_V(const string &)
     {
         printf(VERSIONSTR);
@@ -1034,6 +1136,7 @@ private:
         Links = 1;
 #endif
         MultiColumn = true;
+        VerticalColumns = true;
         return s;
     }
     string opt_A(const string &s)
@@ -1052,6 +1155,7 @@ private:
         Links = 1;
 #endif
         MultiColumn = true;
+        VerticalColumns = true;
         return s;
     }
 public:
@@ -1124,21 +1228,22 @@ public:
                                   " -m2: None.\n"
                                   " -m3: Compact with exact numbers.", &Handle::opt_m);
         add("-M", "--tstylsep",   "Like -m, but with a thousand separator. Example: -M0,", &Handle::opt_M);
-        add("-o", "--sort",       "Sort the list (disables -e), with n as combination of:\n"
-                                  "(n)ame, (s)ize, (d)ate, (u)id, (g)id, (h)linkcount, "
-                                  "(c)olor, na(m)e case insensitively, "
-                                  "g(r)oup dirs,files,links,chrdevs,blkdevs,fifos,socks, "
-                                  "grou(p) dirs,links=files,chrdevs,blkdevs,fifos,socks\n"
+        add("-o", "--sort",       "Sort the files (disables -e), with n as combination of:\n"
+                                  "  (n)ame, (s)ize, (d)ate, (u)id, (g)id, (h)linkcount,\n"
+                                  "  nam(e) length, na(m)e case insensitively, (c)olor,\n"
+                                  "  g(r)oup dirs,files,links,chrdevs,blkdevs,fifos,socks,\n"
+                                  "  grou(p) dirs,links=files,chrdevs,blkdevs,fifos,socks.\n"
                                   "Use Uppercase for reverse order.\n"
                                   "Default is `--sort="+Sorting+"'\n", &Handle::opt_o);
         add("-p",  "--paged",     "Use internal pager.", &Handle::opt_p);
         add("-P",  "--oldvt",     "Disables colour code optimizations.", &Handle::opt_P);
         add("-r",  "--restore",   "Undoes all options, including the DIRR environment variable.", &Handle::opt_r);
+        add("-vc", "--vertical",  "Uses vertical columns rather than horizontal in -C modes.", &Handle::opt_vc);
         add("-v",  "--version",   "Displays the version.", &Handle::opt_V);
         add("-V",  NULL,          "Alias to -v.", &Handle::opt_V);
-        add("-w",  "--wide",      "Equal to -l1HCm1f.f -opcm", &Handle::opt_w);
+        add("-w",  "--wide",      "Equal to -l1HCm1f.f -opcm -vc", &Handle::opt_w);
         add("-W",  "--ediw",      "Same as -w, but with reverse sort order.", &Handle::opt_W);
-        add("-X",  "--width",     "Force screen width, example: -X132",
+        add("-X",  "--width",     "Force screen width, example: -X132. -X0 debugs autodetection.",
                                   &Handle::opt_X);
 
         parse();
