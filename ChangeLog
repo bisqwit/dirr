@@ -1,6 +1,6 @@
-Wed 2016-04-06 19:26-21:08 Joel Yliluoma <bisqwit@iki.fi>
+Wed 2016-04-06 19:26-22:00 Joel Yliluoma <bisqwit@iki.fi>
 
-	* Version 3.36, 3.36.1, 3.36.2
+	* Version 3.36, 3.36.1, 3.36.2, 3.36.3
 	
 	    - Xterm-256color support
 	    - Smaller overhead NFA-DFA conversion

@@ -152,7 +152,7 @@ struct FieldsToPrint: public std::vector<FieldInfo> // ParsedFieldOrder
                                 emplace_back(FieldInfo{FieldInfo::attribute, '1'});
                             break;
                         case 'x':
-                            #define x(c) (((c)>='0'&&(c)<='9') ? ((c)-'0') : ((c)>='A'&&(c)<='F') ? ((c)-'A') : ((c)-'a'))
+                            #define x(c) (((c)>='0'&&(c)<='9') ? ((c)-'0') : ((c)>='A'&&(c)<='F') ? ((c)-'A'+10) : ((c)-'a'+10))
                             work=0;
                             if(std::isxdigit(s[a+1])) { ++a; work = work*16 + x(s[a]);
                             if(std::isxdigit(s[a+1])) { ++a; work = work*16 + x(s[a]); }}
