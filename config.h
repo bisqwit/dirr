@@ -3,10 +3,6 @@
 // Recommended, adds speed
 #define CACHE_UIDGID 1
 
-// Whether to support expressions like [a-z] and [^0-9] in DIRR_COLORS.
-// Support can be disabled if you do not want it.
-#define SUPPORT_BRACKETS 1
-
 // Set this to 1 if your passwd file is quick to load.
 #define PRELOAD_UIDGID 0
 

@@ -29,7 +29,6 @@ VERSION = 3.36.1
 
 # Obligatory defines:
 #   CACHE_UIDGID     This too
-#   SUPPORT_BRACKETS They can be disabled, but I don't see why.
 #   PRELOAD_UIDGID   Set this to 1 if your passwd file is quick to load
 #   SETTINGSFILE     File containing the settings. Default: dirrsets.hh
 
