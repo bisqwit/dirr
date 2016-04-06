@@ -58,6 +58,18 @@ int LINES=25, COLS=80;
 int TextAttr = DEFAULTATTR;
 int OldAttr  = DEFAULTATTR;
 
+/* DOS-compatible attributes:
+ *             BBBBffff   with BBBB=background, ffff=foreground
+ *                          Furthermore
+ *             B...I...       B=blink/bright, I=intensity/bold
+ * Xterm-256color compatible attributes:
+ *   uBBBBBBBB*ffffffff   where * = 0x100
+ *                              u = 0x20000 for underline
+ */
+
+static unsigned BackgroundOf(int attr) { return (attr & 0x100) ? (attr >> 9) & 0xFF : (attr >> 4) & 0x0F; }
+static unsigned ForegroundOf(int attr) { return (attr & 0x100) ? (attr & 0xFF)      : (attr & 0x0F); }
+
 static class GetScreenGeometry
 {
 public:
@@ -107,52 +119,117 @@ static void FlushSetAttr()
 #ifdef DJGPP
         textattr(TextAttr);
 #else
-        // max length: "e[0;1;5;40;30m" = 14 characters
-        char Buffer[16]={'\33','['};
+        // max length for 16-colors:   "e[0;1;5;40;30m"         = 14 characters
+        // max length for 256-colors:  "e[0;38;5;255;48;5;255m" = 22 characters
+        char Buffer[24]={'\33','['};
         unsigned Buflen=2;
         if(TextAttr != DEFAULTATTR)
         {
-            static const char Swap[] = "04261537";
-
+            static const char Swap[8] = {'0','4','2','6','1','5','3','7'};
             if(AnsiOpt)
             {
-                bool pp = false; // semicolon needed
+                bool pp           = false; // semicolon needed
+                bool reset_needed = false;
+                auto param = [&]{ if(pp) Buffer[Buflen++]=';'; pp=true; };
 
-                if((OldAttr&0x80) > (TextAttr&0x80)
-                || (OldAttr&0x08) > (TextAttr&0x08))
+                struct Data { bool legacy,blink,intens; unsigned bg,fg; } olddata, newdata;
+
+                if(TextAttr&0x100) newdata={false,false,false, unsigned(TextAttr>>9), TextAttr&0xFFu};
+                else               newdata={true,TextAttr&0x80,TextAttr&8, (TextAttr>>4u)&7u, TextAttr&7u };
+                if(OldAttr&0x100)  olddata={false,false,false, unsigned(OldAttr>>9), OldAttr&0xFFu};
+                else               olddata={true,OldAttr&0x80,OldAttr&8, (OldAttr>>4u)&7u, OldAttr&7u };
+
+                if( (olddata.blink && !newdata.blink) || (olddata.intens && !newdata.intens) )
+                    reset_needed = true;
+
+                if(reset_needed)
                 {
                     // '0' resets both blink and intensity flags
                     Buffer[Buflen++] = '0'; pp=true;
+                    olddata.intens = false;
+                    olddata.blink = false;
+                    olddata.bg = BackgroundOf(DEFAULTATTR);
+                    olddata.fg = ForegroundOf(DEFAULTATTR);
                     OldAttr = DEFAULTATTR; // Presumed default color
                 }
-
-                if((TextAttr&0x08) && !(OldAttr&0x08)){if(pp)Buffer[Buflen++]=';';Buffer[Buflen++]='1';pp=true;}
-                if((TextAttr&0x80) && !(OldAttr&0x80)){if(pp)Buffer[Buflen++]=';';Buffer[Buflen++]='5';pp=true;}
-
-                if((TextAttr&0x70) != (OldAttr&0x70))
+                if(newdata.intens && !olddata.intens) { param(); Buffer[Buflen++] = '1'; }
+                if(newdata.blink  && !olddata.blink)  { param(); Buffer[Buflen++] = '5'; }
+                if(newdata.bg != olddata.bg)
                 {
-                    if(pp)Buffer[Buflen++] = (';');
-                    Buffer[Buflen++] = ('4');
-                    Buffer[Buflen++] = (Swap[(TextAttr>>4)&7]);
-                    pp=true;
+                    param();
+                    if(newdata.legacy)
+                    {
+                        Buffer[Buflen++] = '4';
+                        Buffer[Buflen++] = Swap[newdata.bg];
+                    }
+                    else
+                    {
+                        Buffer[Buflen++] = '4';
+                        Buffer[Buflen++] = '8';
+                        Buffer[Buflen++] = ';';
+                        Buffer[Buflen++] = '5';
+                        Buffer[Buflen++] = ';';
+                        if(newdata.bg >= 100) Buffer[Buflen++] = '0' + (newdata.bg/100)%10;
+                        if(newdata.bg >= 10) Buffer[Buflen++] = '0' + (newdata.bg/10)%10;
+                        Buffer[Buflen++] = '0' + newdata.bg%10;
+                    }
                 }
-
-                if((TextAttr&7) != (OldAttr&7))
+                if(newdata.fg != olddata.fg)
                 {
-                    if(pp)Buffer[Buflen++] = (';');
-                    Buffer[Buflen++] = ('3');
-                    Buffer[Buflen++] = (Swap[TextAttr&7]);
+                    param();
+                    if(newdata.legacy)
+                    {
+                        Buffer[Buflen++] = '3';
+                        Buffer[Buflen++] = Swap[newdata.fg];
+                    }
+                    else
+                    {
+                        Buffer[Buflen++] = '3';
+                        Buffer[Buflen++] = '8';
+                        Buffer[Buflen++] = ';';
+                        Buffer[Buflen++] = '5';
+                        Buffer[Buflen++] = ';';
+                        if(newdata.fg >= 100) Buffer[Buflen++] = '0' + (newdata.fg/100)%10;
+                        if(newdata.fg >= 10) Buffer[Buflen++] = '0' + (newdata.fg/10)%10;
+                        Buffer[Buflen++] = '0' + newdata.fg%10;
+                    }
                 }
             }
             else
             {
                 Buffer[Buflen++] = '0';
-                if(TextAttr&0x08) { Buffer[Buflen++]=';';Buffer[Buflen++]='1'; }
-                if(TextAttr&0x80) { Buffer[Buflen++]=';';Buffer[Buflen++]='5'; }
-                Buffer[Buflen++] = '4';
-                Buffer[Buflen++] = Swap[(TextAttr>>4)&7];
-                Buffer[Buflen++] = '3';
-                Buffer[Buflen++] = Swap[(TextAttr   )&7];
+                if(TextAttr & 0x100) // 256color tag
+                {
+                    unsigned bg = (TextAttr>>9)&0xFF, fg = TextAttr&0xFF;
+                    Buffer[Buflen++] = ';';
+                    Buffer[Buflen++] = '3';
+                    Buffer[Buflen++] = '8';
+                    Buffer[Buflen++] = ';';
+                    Buffer[Buflen++] = '5';
+                    Buffer[Buflen++] = ';';
+                    Buffer[Buflen++] = '0' + (fg/100)%10;
+                    Buffer[Buflen++] = '0' + (fg/10)%10;
+                    Buffer[Buflen++] = '0' + (fg/1)%10;
+                    Buffer[Buflen++] = ';';
+                    Buffer[Buflen++] = '4';
+                    Buffer[Buflen++] = '8';
+                    Buffer[Buflen++] = ';';
+                    Buffer[Buflen++] = '5';
+                    Buffer[Buflen++] = ';';
+                    Buffer[Buflen++] = '0' + (bg/100)%10;
+                    Buffer[Buflen++] = '0' + (bg/10)%10;
+                    Buffer[Buflen++] = '0' + (bg/1)%10;
+                }
+                else
+                {
+                    unsigned bg = (TextAttr>>4)&7, fg = TextAttr&7;
+                    if(TextAttr&0x08) { Buffer[Buflen++]=';';Buffer[Buflen++]='1'; }
+                    if(TextAttr&0x80) { Buffer[Buflen++]=';';Buffer[Buflen++]='5'; }
+                    Buffer[Buflen++] = '4';
+                    Buffer[Buflen++] = Swap[bg];
+                    Buffer[Buflen++] = '3';
+                    Buffer[Buflen++] = Swap[fg];
+                }
             }
         }
         Buffer[Buflen++] = 'm';
@@ -201,16 +278,14 @@ void SetAttr(int newattr)
 static int Line;
 int Gputch(int x)
 {
-    int TmpAttr = TextAttr;
-
     // When background color = foreground color, print only blanks
-    if((TmpAttr>>4)==(TmpAttr&0x0F) && x > ' ') x = ' ';
+    if(BackgroundOf(TextAttr) == ForegroundOf(TextAttr) && x > ' ') x = ' ';
 
     // When printing a newline, always do that with default background color
-    if(x=='\n' && (TextAttr&0xF0)) GetDescrColor(ColorDescr::TEXT, 1);
+    if(x=='\n' && BackgroundOf(TextAttr) != 0) GetDescrColor(ColorDescr::TEXT, 1);
 
     // If printing spaces, only change color when the background color changes
-    if(x!=' ' || ((TextAttr&0xF0) != (OldAttr&0xF0)))
+    if(x != ' ' || BackgroundOf(TextAttr) != BackgroundOf(OldAttr))
         FlushSetAttr();
 
     auto put = [](char c)

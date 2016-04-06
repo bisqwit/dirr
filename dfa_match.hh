@@ -1,29 +1,29 @@
 #include <string>
-#include <map>
 #include <vector>
 #include <array>
-
-namespace re2c { class RegExp; }
+#include <cstdio>  // std::FILE
+#include <utility> // for std::pair
 
 class DFA_Matcher
 {
-    std::map<int, std::vector<re2c::RegExp*>> collection{};
-    std::string hash_str{};
+    // Collect data from AddMatch()
+    unsigned long long hash{};
+    std::vector<std::pair<std::string, std::pair<int,bool>>> matches{};
 
     /* state number -> { char number -> code }
-     *                      code: 0         = fail
-     *                            0x8000+n  = target (color)
-     *                            1..0x7FFF = new state number
+     *              code: =numstates = fail
+     *                    >numstates = target color +numstates+1
+     *                    <numstates = new state number
      */
-    std::vector<std::array<unsigned short,256>> statemachine{};
+    std::vector<std::array<unsigned,256>> statemachine{};
 
 public:
-    DFA_Matcher() {}
-    ~DFA_Matcher();
-    DFA_Matcher(const DFA_Matcher&) = delete;
-    void operator=(const DFA_Matcher&) = delete;
-
     void AddMatch(const std::string& wildpattern, bool icase, int target);
     void Compile();
     int Test(const std::string& s, int default_value) const;
+
+private:
+    void Generate();
+    void Save(std::FILE* fp) const;
+    bool Load(std::FILE* fp);
 };

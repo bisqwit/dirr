@@ -102,14 +102,16 @@ public:
     {
         if(sets.empty())
         {
+            Load(
+#include SETTINGSFILE
+                );
+
             const char* var = getenv("DIRR_COLORS");
             if(var)
-                Load(var);
-            else
             {
-                Load(
-#include SETTINGSFILE
-                    );
+                auto i = find_range("byext");
+                sets.erase(i.first, i.second);
+                Load(var);
             }
             Parse();
         }
@@ -200,7 +202,7 @@ private:
             if(s.first == "mode" || s.first == "type" || s.first == "info")
             {
                 // Parse "txt", "mode" and "info".
-                // These strings in DIRR_SETS have the format: text(sC,...)
+                // These strings in DIRR_COLORS have the format: text(sC,...)
                 // Where s is the character key
                 // and   C is the color code.
                 const std::string& t = s.second;
@@ -253,7 +255,7 @@ private:
             else
             {
                 // Parse "txt", "owner", "group", "nrlink", "date", or "num".
-                // These strings in DIRR_SETS have the format: text(color,...)
+                // These strings in DIRR_COLORS have the format: text(color,...)
                 int m = ColorDescrFromName(s.first);
                 if(m == -1)
                 {
@@ -283,7 +285,7 @@ private:
 
 // GetModeColor(text, Chr):
 //   text is either "type", "mode", or "info".
-//   These strings in DIRR_SETS have the format:  text(sC,...)
+//   These strings in DIRR_COLORS have the format:  text(sC,...)
 //   where s is the Chr given as parameter
 //   and   C is the color code.
 //   If Chr is positive, the color is also set using SetAttr()!
@@ -302,7 +304,7 @@ int GetModeColor(ColorMode m, char Chr)
 
 // GetDescrColor(descr, index)
 //   descr is either "txt", "owner", "group", "nrlink", "date", or "num".
-//   These strings in DIRR_SETS have the format: text(color,...)
+//   These strings in DIRR_COLORS have the format: text(color,...)
 //   index is the index of color to read.
 //           1 is the first
 //           2 is the second, and so on.

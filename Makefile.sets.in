@@ -12,12 +12,10 @@ CXXOPTS=$(WARNINGS) $(CXXWARNINGS)
 
 # Optimization
 OPTIM=
-#-march=pentiumpro
 
 # Flags.
 CFLAGS=$(OPTIM) $(CCOPTS)
 CXXFLAGS=$(OPTIM) $(CXXOPTS)
-#-fno-rtti
 
 #LDFLAGS=-pg -ax
 LDFLAGS=-g
