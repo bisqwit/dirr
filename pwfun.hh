@@ -1,5 +1,6 @@
 #ifndef dirr3_pwfun_h
 #define dirr3_pwfun_h
+#include <string>
 
 /***********************************************
  *
@@ -14,7 +15,7 @@
  *
  *************************************************************/
 
-extern const char *Getpwuid(int uid);
-extern const char *Getgrgid(int gid);
+extern std::string Getpwuid(int uid);
+extern std::string Getgrgid(int gid);
 
 #endif

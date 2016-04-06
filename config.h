@@ -1,8 +1,5 @@
 // These settings can be changed by user.
 
-// Recommended, adds speed
-#define CACHE_UIDGID 1
-
 // Set this to 1 if your passwd file is quick to load.
 #define PRELOAD_UIDGID 0
 

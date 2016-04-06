@@ -327,16 +327,15 @@ static void TellMe(const StatType &Stat, string&& Name
                 GetDescrColor(ColorDescr::OWNER, ((int)Stat.st_uid==MyUid)?1:2);
                 if(OwNam.empty())
                 {
-                    const char* Passwd = Getpwuid((int)Stat.st_uid);
-                    if(Passwd && *Passwd) OwNam = Passwd;
-                    else { if(OwNum.empty()) OwNum = std::to_string(Stat.st_uid); OwNam = OwNum; }
+                    OwNam = Getpwuid((int)Stat.st_uid);
+                    if(OwNam.empty()) { if(OwNum.empty()) OwNum = std::to_string(Stat.st_uid); OwNam = OwNum; }
                 }
                 ItemLen += (f.info ? Gwrite(OwNam, Limits.UIDname) : Gwrite(OwNam));
                 break;
             }
             case FieldInfo::user_id:
             {
-                if(MyUid<0)MyUid=getuid();
+                if(MyUid<0) MyUid=getuid();
                 GetDescrColor(ColorDescr::OWNER, ((int)Stat.st_uid==MyUid)?1:2);
                 if(OwNum.empty()) OwNum = std::to_string(Stat.st_uid);
                 ItemLen += (f.info ? Gwrite(OwNum, Limits.UIDnumber) : Gwrite(OwNum));
@@ -344,20 +343,19 @@ static void TellMe(const StatType &Stat, string&& Name
             }
             case FieldInfo::group_name:
             {
-                if(MyGid<0)MyGid=getgid();
+                if(MyGid<0) MyGid=getgid();
                 GetDescrColor(ColorDescr::GROUP, ((int)Stat.st_gid==MyGid)?1:2);
                 if(GrNam.empty())
                 {
-                    const char* Group = Getgrgid((int)Stat.st_gid);
-                    if(Group && *Group) GrNam = Group;
-                    else { if(GrNum.empty()) GrNum = std::to_string(Stat.st_gid); GrNam = GrNum; }
+                    GrNam = Getgrgid((int)Stat.st_gid);
+                    if(GrNam.empty()) { if(GrNum.empty()) GrNum = std::to_string(Stat.st_gid); GrNam = GrNum; }
                 }
                 ItemLen += (f.info ? Gwrite(GrNam, Limits.GIDname) : Gwrite(GrNam));
                 break;
             }
             case FieldInfo::group_id:
             {
-                if(MyGid<0)MyGid=getgid();
+                if(MyGid<0) MyGid=getgid();
                 GetDescrColor(ColorDescr::GROUP, ((int)Stat.st_gid==MyGid)?1:2);
                 if(GrNum.empty()) GrNum = std::to_string(Stat.st_gid);
                 ItemLen += (f.info ? Gwrite(GrNum, Limits.GIDnumber) : Gwrite(GrNum));
@@ -701,16 +699,16 @@ static void UpdateEstimations(Estimation& Limits, const std::string& name, const
 
     if(FieldsToPrint.used[FieldInfo::user_id] || FieldsToPrint.used[FieldInfo::user_name])
     {
-        const char* Passwd = Getpwuid(Stat.st_uid);
+        std::string Passwd = Getpwuid(Stat.st_uid);
         std::string OwNum = std::to_string(Stat.st_uid);
-        Limits.UIDname   = std::max(Limits.UIDname, (Passwd && *Passwd) ? strlen(Passwd) : OwNum.size());
+        Limits.UIDname   = std::max(Limits.UIDname, Passwd.empty() ? OwNum.size() : Passwd.size());
         Limits.UIDnumber = std::max(Limits.UIDnumber, OwNum.size());
     }
     if(FieldsToPrint.used[FieldInfo::group_id] || FieldsToPrint.used[FieldInfo::group_name])
     {
-        const char* Group  = Getgrgid(Stat.st_gid);
+        std::string Group = Getgrgid(Stat.st_gid);
         std::string GrNum = std::to_string(Stat.st_gid);
-        Limits.GIDname   = std::max(Limits.GIDname, (Group  && *Group)  ? strlen(Group)  : GrNum.size());
+        Limits.GIDname   = std::max(Limits.GIDname, Group.empty() ? GrNum.size() : Group.size());
         Limits.GIDnumber = std::max(Limits.GIDnumber, GrNum.size());
     }
 }
