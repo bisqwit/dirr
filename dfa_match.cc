@@ -2,14 +2,26 @@
 #include <utility> // for std::hash
 #include <bitset>
 #include <unordered_map>
-#include <algorithm>
-#include <deque>
+#include <algorithm> // For sort & unique
+#include <list>
 #include <set>
 
 #include "dfa_match.hh"
+#include "likely.hh"
 #include "printf.hh"
 
 #include <stdlib.h> // For getenv("HOME")
+
+struct NFAnode
+{
+    // List the target states for each different input symbol.
+    // Target state & 0x80000000u means terminal state (accept with state & 0x7FFFFFFFu).
+    // Since this is a NFA, each input character may match to a number of different targets.
+    std::array<std::set<unsigned/*target node number*/>, 256> targets{};
+
+    // Use std::set rather than std::unordered_set, because we require
+    // sorted access for efficient set_intersection (lower_bound).
+};
 
 static std::string str(char c)
 {
@@ -26,6 +38,63 @@ static std::string str(char c)
         default: if(c<32 || c==127) return Printf("\\%04o", (unsigned char)c);
     }
     return Printf("%c", c);
+}
+
+static void DumpDFA(const char* title, const std::vector<std::array<unsigned,256>>& states)
+{
+    printf("%s\n", title);
+    for(unsigned n=0; n<states.size(); ++n)
+    {
+        printf("State %u:\n", n);
+        const auto& s = states[n];
+        std::string prev; unsigned first=0;
+        for(unsigned c=0; c<=256; ++c)
+        {
+            bool flush = false;
+            std::string t;
+            if(c < 256)
+            {
+                if(s[c] < states.size())
+                    t += Printf(" %u", s[c]);
+                else if(s[c] > states.size())
+                    t += Printf(" accept %d", s[c] - states.size()-1);
+            }
+            if(c==256 || t != prev) flush = true;
+            if(flush && c > 0 && !prev.empty())
+            {
+                printf("  in %5s .. %5s: %s\n", str(first).c_str(), str(c-1).c_str(), prev.c_str());
+            }
+            if(c == 0 || flush) { first = c; prev = t; }
+        }
+    }
+}
+
+static void DumpNFA(const char* title, const std::vector<NFAnode>& states)
+{
+    printf("%s\n", title);
+    for(unsigned n=0; n<states.size(); ++n)
+    {
+        printf("State %u:\n", n);
+        const auto& s = states[n];
+        std::string prev; unsigned first=0;
+        for(unsigned c=0; c<=256; ++c)
+        {
+            bool flush = false;
+            std::string t;
+            if(c < 256)
+                for(auto d: s.targets[c])
+                    if(d & 0x80000000u)
+                        t += Printf(" accept %d", d & 0x7FFFFFFFu);
+                    else
+                        t += Printf(" %u", d);
+            if(c==256 || t != prev) flush = true;
+            if(flush && c > 0 && !prev.empty())
+            {
+                printf("  in %5s .. %5s: %s\n", str(first).c_str(), str(c-1).c_str(), prev.c_str());
+            }
+            if(c == 0 || flush) { first = c; prev = t; }
+        }
+    }
 }
 
 void DFA_Matcher::AddMatch(const std::string& token, bool icase, int target)
@@ -76,13 +145,6 @@ void DFA_Matcher::Compile()
 void DFA_Matcher::Generate()
 {
     // STEP 1: Generate NFA
-    struct NFAnode
-    {
-        // List the target states for each different input symbol.
-        // Target state & 0x80000000u means terminal state (accept with state & 0x7FFFFFFFu).
-        // Since this is a NFA, each input character may match to a number of different targets.
-        std::array<std::set<unsigned/*target node number*/>, 256> targets{};
-    };
     std::vector<NFAnode> nfa_nodes(1); // node 0 = root
 
     // Parse each wildmatch expression into the NFA.
@@ -258,40 +320,13 @@ void DFA_Matcher::Generate()
     // Don't need the matches[] anymore, since it's all assembled in nfa_nodes[]
     matches.clear();
 
-    auto DumpNFA = [](const char* title, std::vector<NFAnode>& nodes)
-    {
-        printf("%s\n", title);
-        for(unsigned n=0; n<nodes.size(); ++n)
-        {
-            printf("State %u:\n", n);
-            const auto& s = nodes[n];
-            std::string prev; unsigned first=0;
-            for(unsigned c=0; c<=256; ++c)
-            {
-                bool flush = false;
-                std::string t;
-                if(c < 256)
-                    for(auto d: s.targets[c])
-                        if(d & 0x80000000u)
-                            t += Printf(" accept %d", d & 0x7FFFFFFFu);
-                        else
-                            t += Printf(" %u", d);
-                if(c==256 || t != prev) flush = true;
-                if(flush && c > 0 && !prev.empty())
-                {
-                    printf("  in %5s .. %5s: %s\n", str(first).c_str(), str(c-1).c_str(), prev.c_str());
-                }
-                if(c == 0 || flush) { first = c; prev = t; }
-            }
-        }
-    };
     //DumpNFA("Original NFA", nfa_nodes);
 
     // STEP 2: Convert NFA into DFA
     if(true) // scope
     {
         std::vector<NFAnode> newnodes;
-        std::deque<unsigned> pending;
+        std::list<unsigned> pending;
 
         // List of original state numbers -> new state number
         std::unordered_map<std::string, unsigned> combination_map;
@@ -377,16 +412,139 @@ void DFA_Matcher::Generate()
     // The NFA now follows DFA constraints.
     //DumpNFA("MERGED NODES", nfa_nodes);
 
-    // STEP 3: Finally, minimize the DFA.
-    // TODO
-
-    // STEP 4: Convert the DFA into the statemachine structure.
+    // STEP 3: Convert the DFA into the statemachine structure.
     statemachine.resize(nfa_nodes.size());
     for(unsigned c, n=0; n<nfa_nodes.size(); ++n)
         for(auto& s = nfa_nodes[c=0, n]; c<256; ++c)
-            statemachine[n][c] = s.targets[c].empty() ? 0
-                : ( (*s.targets[c].begin() / 0x80000000u)
-                + 2*(*s.targets[c].begin() & 0x7FFFFFFFu));
+        {
+            unsigned& v = statemachine[n][c];
+            if(s.targets[c].empty()) { v = statemachine.size(); continue; }
+            unsigned a = *s.targets[c].begin();
+            if(a & 0x80000000u)      { v = statemachine.size() + 1 + (a & 0x7FFFFFFFu); }
+            else                     { v = a; }
+        }
+    nfa_nodes.clear();
+
+    // STEP 4: Finally, minimize the DFA (state machine).
+    if(true)
+    {
+        //DumpDFA("DFA before minimization", statemachine);
+
+        // Find out if there are any unreachable states in the DFA
+        /*std::set<unsigned> reached, unvisited{0};
+        while(!unvisited.empty())
+        {
+            unsigned state = *unvisited.begin();
+            unvisited.erase(unvisited.begin());
+            reached.insert(state);
+            for(auto v: statemachine[state])
+                if(v < statemachine.size())
+                    if(reached.find(v) == reached.end())
+                        unvisited.insert(v);
+        }
+        if(reached.size() != statemachine.size())
+            printf("%u states, but only %u reached\n",
+                (int)statemachine.size(), (int)reached.size());*/
+
+        // Groups of states
+        typedef std::list<unsigned> group_t;
+        // Note: It is very important that group_t is a type of container
+        //       that retains its order. This ensures that node 0 will never
+        //       be moved into another group, but will stay in node 0.
+
+        // State number to group number mapping
+        std::unordered_map<unsigned,unsigned> mapping;
+
+        // Create a single group for all non-accepting states.
+        // Collect all states. Assume there are no unvisited states.
+        std::vector<std::pair<group_t,bool/*final*/>> groups(1);
+        for(unsigned n=0; n<statemachine.size(); ++n)
+            { groups[0].first.push_back(n); mapping.emplace(n, 0); }
+
+        // Don't create groups for terminal states, since they're
+        // not really states, but create a mapping for them, so that
+        // we don't need special handling in the group-splitting code.
+        for(unsigned n=0; n<statemachine.size(); ++n)
+            for(auto v: statemachine[n])
+                if(v >= statemachine.size()) // Accepting or failing state
+                    mapping.emplace(v, 0x80000000u | v);
+
+        // The final flag is not necessary for the algorithm,
+        // but it may make it slightly faster.
+    rewritten:;
+        /*printf("%u groups. Mapping is now:\n", unsigned(groups.size()));
+        for(auto p: mapping)
+            printf("%8X -> %X\n", p.first,p.second);*/
+        for(unsigned groupno=0; groupno<groups.size(); ++groupno)
+        {
+            if(groups[groupno].second) continue;
+            group_t& group = groups[groupno].first;
+            /*printf("Analyzing group:");
+            for(auto c: group) printf(" %u", c);
+            printf("\n");*/
+            auto j = group.begin();
+            unsigned first_state = *j++;
+
+            // For each state in this group that differs
+            // from first group, move them into the other group.
+            group_t othergroup;
+            while(j != group.end())
+            {
+                unsigned other_state = *j;
+                bool differs = false;
+                for(unsigned c=0; c<256; ++c)
+                {
+                    if(mapping.find(statemachine[first_state][c])->second
+                    != mapping.find(statemachine[other_state][c])->second)
+                    {
+                        differs = true;
+                        break;
+                    }
+                }
+                if(differs)
+                {
+                    // Move this element into other group.
+                    auto old = j++;
+                    othergroup.splice(othergroup.end(), group, old, j);
+                }
+                else
+                    ++j;
+            }
+            if(!othergroup.empty())
+            {
+                // Split the differing states into a new group
+                unsigned othergroup_id = groups.size();
+                /*printf("Split into new group %u:", othergroup_id);
+                for(auto n: othergroup) printf(" %u", n);
+                printf("\n");*/
+                // Change the mappings (we need overwriting, so don't use emplace here)
+                for(auto n: othergroup) mapping[n] = othergroup_id;
+                groups.emplace_back(std::move(othergroup), false);
+                goto rewritten;
+            }
+            groups[groupno].second = true; // No changes, so mark as final
+        }
+        // Create a new state machine based on these groups
+        std::vector<std::array<unsigned,256>> newstates(groups.size());
+        unsigned newstateno = 0;
+        for(auto& group: groups)
+        {
+            // All states in this group are identical. Just take any of them.
+            const auto& oldstate = statemachine[*group.first.begin()];
+            auto& newstate       = newstates[newstateno++];
+            // Convert the state using the mapping.
+            for(unsigned c=0; c<256; ++c)
+            {
+                unsigned v = oldstate[c];
+                if(v >= statemachine.size()) // Accepting or failing state?
+                    newstate[c] = v - statemachine.size() + newstates.size();
+                else
+                    newstate[c] = mapping.find(v)->second; // group number
+            }
+        }
+        statemachine = std::move(newstates);
+        //DumpDFA("DFA after minimization", statemachine);
+    }
 }
 
 bool DFA_Matcher::Load(std::FILE* fp)
@@ -484,15 +642,17 @@ void DFA_Matcher::Save(std::FILE* save_fp) const
 
 int DFA_Matcher::Test(const std::string& s, int default_value) const
 {
+    if(unlikely(statemachine.empty())) return default_value;
     unsigned cur_state = 0;
     const char* str = s.c_str(); // Use c_str() because we also need '\0'.
     for(std::size_t a=0, b=s.size(); a<=b; ++a) // Use <= to iterate '\0'.
     {
-        if(cur_state >= statemachine.size()) return default_value; // Invalid state machine
-        unsigned code = statemachine[cur_state][ (unsigned char) str[a] ];
-        if(code == 0) return default_value;
-        if(code & 1)  return code >> 1;
-        else          cur_state = code >> 1;
+        cur_state = statemachine[cur_state][ (unsigned char) str[a] ];
+        if(cur_state >= statemachine.size())
+        {
+            cur_state -= statemachine.size();
+            return cur_state ? cur_state-1 : default_value;
+        }
     }
     return default_value;
 }

@@ -11,9 +11,9 @@ class DFA_Matcher
     std::vector<std::pair<std::string, std::pair<int,bool>>> matches{};
 
     /* state number -> { char number -> code }
-     *                      code: 0       = fail
-     *                            1 + n*2 = target (color)
-     *                            0 + n*2 = new state number
+     *              code: =numstates = fail
+     *                    >numstates = target color +numstates+1
+     *                    <numstates = new state number
      */
     std::vector<std::array<unsigned,256>> statemachine{};
 
