@@ -25,7 +25,7 @@ include Makefile.sets
 #OPTIM=-Og -fno-inline
 #CXXFLAGS += -fsanitize=address
 
-VERSION = 3.36
+VERSION = 3.36.1
 
 # Obligatory defines:
 #   CACHE_UIDGID     This too

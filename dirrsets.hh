@@ -13,7 +13,7 @@ For legacy 16-color formats:
            17 = blue background,  non-bright white foreground (light gray)
 
 For xterm-256color formats:
-  color = 0x100 + foreground*0x01 + background*0x200
+  color = 0x100 + foreground*0x01 + background*0x200 + bold*0x20000
   where foreground = 0..255
         background = 0..255
   where colors are: 0..15 same as legacy 16-color formats
@@ -33,7 +33,7 @@ For xterm-256color formats:
      * D               is door. It's used in Solaris.
      **************************************************************/
 
-    "mode(SB,H8,R9,A3,DC,lB,d9,x9,cE,bE,p6,sD,-7,?C,#3)"
+    "mode(SB,H8,R9,A3,DC,lB,d9,x9,cE,bE,p6,sD,-7,?C,#16D)"
 
     /**************************************************************
      * info() - How to color the type characters
@@ -53,14 +53,6 @@ For xterm-256color formats:
     "info(/1,*2,@3,=5,|8,?C,&F)"
 
     /**************************************************************
-     * owner() - How to color the file owner name.
-     *
-     * First is the color in the case of own file,
-     * second for the case of file not owned by self.
-     **************************************************************/
-    "owner(4,8)"
-
-    /**************************************************************
      * type() - How to color the file names, if it does
      *          not belong to any class of byext()'s.
      *
@@ -75,7 +67,7 @@ For xterm-256color formats:
     /**************************************************************
      * descr() - How to color the <DIR>, <PIPE> etc texts
      **************************************************************/
-    "descr(3)"
+    "descr(13D)"
 
     /**************************************************************
      * date() - How to color the datetimes
@@ -85,9 +77,25 @@ For xterm-256color formats:
     /**************************************************************
      * size() - How to color the numeric file sizes
      **************************************************************/
-    "size(7)"
+    "size(16E)"
+
+    /**************************************************************
+     * owner() - How to color the file owner name.
+     *
+     * First is the color in the case of own file,
+     * second for the case of file not owned by self.
+     **************************************************************/
+    "owner(4,13B)"
 
 #ifndef DJGPP
+    /**************************************************************
+     * group() - How to color the file owner name.
+     *
+     * First is the color in the case of file of own group,
+     * second for the case of file of not belonging the group to.
+     **************************************************************/
+    "group(4,13B)"
+
     /**************************************************************
      * nrlink() - How to color the number of hard links
      **************************************************************/
@@ -98,16 +106,6 @@ For xterm-256color formats:
      * num() - How to color the numbers in total-sums
      **************************************************************/
     "num(3)"
-
-#ifndef DJGPP
-    /**************************************************************
-     * group() - How to color the file owner name.
-     *
-     * First is the color in the case of file of own group,
-     * second for the case of file of not belonging the group to.
-     **************************************************************/
-    "group(4,8)"
-#endif
 
     /**************************************************************
      * txt() - The default color used for all other texts
@@ -138,13 +136,16 @@ For xterm-256color formats:
     "byext(5i *.mid *.mod *.mtm *.s3m *.xm* *.mp2 *.mp3 *.wav *.ogg *.smp *.au *.ult *.669 *.aac *.spc *.nsf *.wma)"
     // brown: programming
     "byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.S *.s *.inc *.h *.hh *.pov *.irc *.hpp)"
-    "byext(6i *.src *.ttt *.pp *.p makefile *.mak configure *.in *.am)"
+    "byext(6i *.src *.ttt *.pp *.p makefile *.mak *.in *.am)"
+    "byext(201BAi configure *.sh)"
     // dark gray: temp files
-    "byext(8i *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
+    "byext(13Bi *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
     // bright green: executable files
-    "byext(Ai *.exe *.com *.bat *.sh)"
+    "byext(14Ei *.exe *.com *.bat)"
     // bright red: archives
-    "byext(Ci *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.arj *.7z *.lzma)"
+    "byext(1A7i *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.arj *.7z *.lzma)"
     // bright magenta: image and video files
     "byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.mkv *.asf *.x?m *.mov *.tga *.png *.tif)"
     "byext(Di *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\\w)"
+    // red background and yellow: files with clear mistakes in filenames
+    "byext(69D7 *\23 *\\?)"
