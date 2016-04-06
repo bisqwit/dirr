@@ -121,31 +121,41 @@ For xterm-256color formats:
      *
      * There may be multiple byext() definitions.
      *
-     * See the documentation at function WildMatch in this source
-     * code for more information about the wildcards.
+     * Wildcards recognized:
+     *    ?     Matches any byte
+     *    *     Matches zero or more bytes of anything
+     *    \d    Matches any digit (0..9)
+     *    \w    Matches any alphanumeric byte (0..9, A-Z, a-z)
+     *    \x##  Matches byte with hexadecimal value ##
+     *    \\    Matches the backslash
+     *    [...] Matches a byte matching the range, with:
+     *               ^    in the beginning of the range inverts the selection
+     *               b-e  matches characters b,c,d,e
+     *               \]   matches ]
+     *               Anything else matches the letter verbatim
      **************************************************************/
 
     // green: object files
-    "byext(2i *.so *.o *.vxd *.dll *.drv *.obj *.dll *.a)"
+    R"(byext(2i *.so *.o *.vxd *.dll *.drv *.obj *.dll *.a *.lo *.la *.so.*))"
     // cyan: text files
-    "byext(3i *.txt *.htm *.html *.xml *.xhtml *.1st *.wri *.ps *.doc)"
-    "byext(3i readme quickstart install)"
+    R"(byext(3i *.txt *.htm *.html *.xml *.xhtml *.1st *.wri *.ps *.doc *.docx *.odt))"
+    R"(byext(3i readme quickstart install))"
     // red: unwanted temp files
-    "byext(4i core DEADJOE)"
+    R"(byext(4i core DEADJOE))"
     // magenta: sound-only multimedia files
-    "byext(5i *.mid *.mod *.mtm *.s3m *.xm* *.mp2 *.mp3 *.wav *.ogg *.smp *.au *.ult *.669 *.aac *.spc *.nsf *.wma)"
+    R"(byext(5i *.mid *.mod *.mtm *.s3m *.xm* *.mp[23] *.wav *.ogg *.smp *.au *.ult *.669 *.aac *.spc *.nsf *.wma))"
     // brown: programming
-    "byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.S *.s *.inc *.h *.hh *.pov *.irc *.hpp)"
-    "byext(6i *.src *.ttt *.pp *.p makefile *.mak *.in *.am)"
-    "byext(201BAi configure *.sh)"
+    R"(byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.S *.s *.inc *.h *.hh *.pov *.irc *.hpp))"
+    R"(byext(6i *.src *.ttt *.pp *.p makefile *.mak *.in *.am))"
+    R"(byext(201BAi configure *.sh))"
     // dark gray: temp files
-    "byext(13Bi *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*)"
+    R"(byext(13Bi *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*))"
     // bright green: executable files
-    "byext(14Ei *.exe *.com *.bat)"
+    R"(byext(14Ei *.exe *.com *.bat))"
     // bright red: archives
-    "byext(1A7i *.tar *.*z *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.arj *.7z *.lzma)"
+    R"(byext(1A7i *.tar *.gz *.xz *.bz *.brotli *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.arj *.7z *.lzma))"
     // bright magenta: image and video files
-    "byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.mkv *.asf *.x?m *.mov *.tga *.png *.tif)"
-    "byext(Di *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\\w)"
+    R"(byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.ogv *.mkv *.asf *.x?m *.mov *.tga *.png *.tif))"
+    R"(byext(Di *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\w *.rm *.tiff))"
     // red background and yellow: files with clear mistakes in filenames
-    "byext(69D7 *\23 *\\?)"
+    R"(byext(69D7 *\x13 *\?))"

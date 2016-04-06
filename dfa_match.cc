@@ -282,147 +282,120 @@ void DFA_Matcher::Generate()
             return next;
         };
 
-        /* Translate a glob pattern (wildcard match) into a NFA*/
-        bool escmode = false;
-        unsigned bracketstate = 0;
-        // nonzero   = waiting for closing ]
-        // &       2 = inverted polarity
-        // &FFFF0000 = previous character (for ranges)
-        // &    8000 = got a range begin
+        /* Translate a glob pattern (wildcard match) into a NFA */
         std::bitset<256> states;
 
-        for(char c: token)
-        {
-            if(bracketstate)
+        unsigned pos=0;
+        auto end  = [&] { return pos >= token.size(); };
+        auto cget = [&] { return end() ? 0x00 : (unsigned char) token[pos++]; };
+        auto unget = [&] { if(pos>0) --pos; };
+
+        while(!end())
+            switch(unsigned c = cget())
             {
-                unsigned prev = bracketstate >> 16;
-                if(!escmode)
+                case '*':
                 {
-                    if(c == '\\') { escmode = true; continue; }
-                    if(states.none() && !(bracketstate&2) && c == '^') { bracketstate |= 2; continue; }
-                    if(c == ']')
+                    states.set(); states.reset(0x00); // 01..FF, i.e. all but 00
+                    // Repeat count of zero is allowed, so we begin with the same roots
+                    std::set<unsigned> newroots(rootnodes.begin(), rootnodes.end());
+                    // In each root, add an instance of these states
+                    unsigned newnewnode = ~0u;
+                    for(auto root: rootnodes)
                     {
-                        if(prev) states.set(prev);
-                        if(bracketstate&2) states.flip();
-                        bracketstate = 0;
-                        goto do_newnode;
-                    }
-                }
-                if(escmode || c != '-')
-                {
-                    if(prev)
-                    {
-                        if(bracketstate & 0x8000)
+                        unsigned nextnode = addtransition(root, states, newnewnode);
+                        if(nextnode != root)
                         {
-                            for(unsigned m=prev; m<=(unsigned char)c; ++m)
-                                states.set(m);
-                            bracketstate &= 0x7FFF;
-                            continue;
+                            // Loop the next node into itself
+                            for(unsigned c=0x01; c<0x100; ++c)
+                                nfa_nodes[nextnode].targets[c].insert(nextnode);
+                            newnewnode = nextnode;
                         }
-                        states.set(prev);
+                        newroots.insert(nextnode);
                     }
-                    bracketstate = (bracketstate & 0xFFFF) | ((c&0xFF)<<16); continue;
+                    rootnodes.assign(newroots.begin(), newroots.end());
+                    break;
                 }
-                else
+                case '?':
                 {
-                    bracketstate |= 0x8000;
-                    continue;
+                    states.set(); states.reset(0x00); // 01..FF, i.e. all but 00
+                    goto do_newnode;
+                }
+                case '\\': // ESCAPE
+                {
+                    switch(c = cget())
+                    {
+                        case 'd':
+                        {
+                            states.reset();
+                            for(unsigned a='0'; a<='9'; ++a) states.set(a);
+                            goto do_newnode;
+                        }
+                        case 'w':
+                        {
+                            states.reset();
+                            for(unsigned a='0'; a<='9'; ++a) states.set(a);
+                            for(unsigned a='A'; a<='Z'; ++a) states.set(a);
+                            for(unsigned a='a'; a<='z'; ++a) states.set(a);
+                            goto do_newnode;
+                        }
+                        case 'x':
+                        {
+                            #define x(c) (((c)>='0'&&(c)<='9') ? ((c)-'0') : ((c)>='A'&&(c)<='F') ? ((c)-'A'+10) : ((c)-'a'+10))
+                            states.reset();
+                            c = cget(); if(!std::isxdigit(c)) { unget(); states.set('x'); goto do_newnode; }
+                            unsigned hexcode = x(c);
+                            c = cget(); if(std::isxdigit(c)) { hexcode = hexcode*16 + x(c); } else unget();
+                            states.set(hexcode);
+                            #undef x
+                            goto do_newnode;
+                        }
+                        case '\\': //passthru
+                        default:
+                        {
+                            states.reset(); states.set(c);
+                            goto do_newnode;
+                        }
+                    }
+                    break;
+                }
+                case '[':
+                {
+                    bool inverse = false;
+                    states.reset();
+                    if(cget() == '^') inverse = true; else unget();
+                    while(!end())
+                    {
+                        c = cget();
+                        if(c == ']') break;
+                        unsigned begin = c; if(c == '\\') begin = cget();
+                        if(cget() != '-') { unget(); states.set(c); continue; }
+                        unsigned end   = cget();
+                        while(begin <= end) states.set(begin++);
+                    }
+                    if(inverse) states.flip();
+                    goto do_newnode;
+                }
+                default:
+                {
+                    states.reset(); states.set(c);
+                    if(icase && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')))
+                        states.set(c ^ 0x20);
+                do_newnode:;
+                    std::set<unsigned> newroots;
+                    unsigned newnewnode = ~0u;
+                    for(auto root: rootnodes)
+                    {
+                        unsigned newnode = addtransition(root, states, newnewnode);
+                        // newnewnode records the newly created node, so that in case
+                        // we need to create new child nodes in multiple roots, we can
+                        // use the same child node for all of them.
+                        // This helps keep down the NFA size.
+                        if(newnode != root) newnewnode = newnode;
+                        newroots.insert(newnode);
+                    }
+                    rootnodes.assign(newroots.begin(), newroots.end());
                 }
             }
-            else if(escmode)
-            {
-                switch(c)
-                {
-                    case 'd':
-                    {
-                        states.reset();
-                        for(unsigned a='0'; a<='9'; ++a) states.set(a);
-                    do_newnode:;
-                        std::set<unsigned> newroots;
-                        unsigned newnewnode = ~0u;
-                        for(auto root: rootnodes)
-                        {
-                            unsigned newnode = addtransition(root, states, newnewnode);
-                            // newnewnode records the newly created node, so that in case
-                            // we need to create new child nodes in multiple roots, we can
-                            // use the same child node for all of them.
-                            // This helps keep down the NFA size.
-                            if(newnode != root) newnewnode = newnode;
-                            newroots.insert(newnode);
-                        }
-                        rootnodes.assign(newroots.begin(), newroots.end());
-                        break;
-                    }
-                    case 'w':
-                    {
-                        states.reset();
-                        for(unsigned a='0'; a<='9'; ++a) states.set(a);
-                        for(unsigned a='A'; a<='Z'; ++a) states.set(a);
-                        for(unsigned a='a'; a<='z'; ++a) states.set(a);
-                        goto do_newnode;
-                    }
-                    case '\\': //passthru
-                    default:
-                    {
-                        states.reset(); states.set(c);
-                        goto do_newnode;
-                    }
-                }
-                escmode = false;
-            }
-            else
-            {
-                // not escmode
-                switch(c)
-                {
-                    case '*':
-                    {
-                        states.set(); states.reset(0x00);
-                        // Repeat count of zero is allowed, so we begin with the same roots
-                        std::set<unsigned> newroots(rootnodes.begin(), rootnodes.end());
-                        // In each root, add an instance of these states
-                        unsigned newnewnode = ~0u;
-                        for(auto root: rootnodes)
-                        {
-                            unsigned nextnode = addtransition(root, states, newnewnode);
-                            if(nextnode != root)
-                            {
-                                // Loop the next node into itself
-                                for(unsigned c=0x01; c<0x100; ++c)
-                                    nfa_nodes[nextnode].targets[c].insert(nextnode);
-                                newnewnode = nextnode;
-                            }
-                            newroots.insert(nextnode);
-                        }
-                        rootnodes.assign(newroots.begin(), newroots.end());
-                        break;
-                    }
-                    case '?':
-                    {
-                        states.set(); states.reset(0x00); // 01..FF, i.e. all but 00
-                        goto do_newnode;
-                    }
-                    case '\\':
-                    {
-                        escmode = true;
-                        break;
-                    }
-                    case '[':
-                    {
-                        states.reset();
-                        bracketstate = 1;
-                        break;
-                    }
-                    default:
-                    {
-                        states.reset(); states.set(c);
-                        if(icase && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')))
-                            states.set(c ^ 0x20);
-                        goto do_newnode;
-                    }
-                }
-            }
-        }
         // Add the end-of-stream tag
         for(auto root: rootnodes)
             nfa_nodes[root].targets[0x00].insert(target | 0x80000000u);
