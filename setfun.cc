@@ -111,8 +111,8 @@ public:
             {
                 auto i = find_range("byext");
                 sets.erase(i.first, i.second);
+                Load(var);
             }
-            Load(var);
             Parse();
         }
     }

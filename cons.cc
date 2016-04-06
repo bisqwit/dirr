@@ -134,10 +134,10 @@ static void FlushSetAttr()
 
                 struct Data { bool legacy,blink,intens; unsigned bg,fg; } olddata, newdata;
 
-                if(TextAttr&0x100) newdata={false,false,false, BackgroundOf(TextAttr),ForegroundOf(TextAttr)};
-                else               newdata={true,TextAttr&0x80,TextAttr&8, (TextAttr>>4)&7u, TextAttr&7u };
-                if(OldAttr&0x100)  olddata={false,false,false, BackgroundOf(OldAttr),ForegroundOf(OldAttr)};
-                else               olddata={true,OldAttr&0x80,OldAttr&8, (OldAttr>>4)&7u, OldAttr&7u };
+                if(TextAttr&0x100) newdata={false,false,false, unsigned(TextAttr>>9), TextAttr&0xFFu};
+                else               newdata={true,TextAttr&0x80,TextAttr&8, (TextAttr>>4u)&7u, TextAttr&7u };
+                if(OldAttr&0x100)  olddata={false,false,false, unsigned(OldAttr>>9), OldAttr&0xFFu};
+                else               olddata={true,OldAttr&0x80,OldAttr&8, (OldAttr>>4u)&7u, OldAttr&7u };
 
                 if( (olddata.blink && !newdata.blink) || (olddata.intens && !newdata.intens) )
                     reset_needed = true;
@@ -198,9 +198,9 @@ static void FlushSetAttr()
             else
             {
                 Buffer[Buflen++] = '0';
-                unsigned bg = BackgroundOf(TextAttr), fg = ForegroundOf(TextAttr);
                 if(TextAttr & 0x100) // 256color tag
                 {
+                    unsigned bg = (TextAttr>>9)&0xFF, fg = TextAttr&0xFF;
                     Buffer[Buflen++] = ';';
                     Buffer[Buflen++] = '3';
                     Buffer[Buflen++] = '8';
@@ -222,6 +222,7 @@ static void FlushSetAttr()
                 }
                 else
                 {
+                    unsigned bg = (TextAttr>>4)&7, fg = TextAttr&7;
                     if(TextAttr&0x08) { Buffer[Buflen++]=';';Buffer[Buflen++]='1'; }
                     if(TextAttr&0x80) { Buffer[Buflen++]=';';Buffer[Buflen++]='5'; }
                     Buffer[Buflen++] = '4';
