@@ -6,8 +6,9 @@
 
 class DFA_Matcher
 {
-    // Collect data from AddMatch()
     unsigned long long hash{};
+
+    /* Collect data from AddMatch() */
     std::vector<std::pair<std::string, std::pair<int,bool>>> matches{};
 
     /* state number -> { char number -> code }

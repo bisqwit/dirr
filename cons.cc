@@ -119,9 +119,9 @@ static void FlushSetAttr()
 #ifdef DJGPP
         textattr(TextAttr);
 #else
-        // max length for 16-colors:   "e[0;1;5;40;30m"         = 14 characters
-        // max length for 256-colors:  "e[0;38;5;255;48;5;255m" = 22 characters
-        char Buffer[24]={'\33','['};
+        // max length for 16-colors:   "e[0;1;5;40;30m"           = 14 characters
+        // max length for 256-colors:  "e[0;38;5;255;48;5;255;1m" = 24 characters
+        char Buffer[32]={'\33','['};
         unsigned Buflen=2;
         if(TextAttr != DEFAULTATTR)
         {
@@ -134,9 +134,9 @@ static void FlushSetAttr()
 
                 struct Data { bool legacy,blink,intens; unsigned bg,fg; } olddata, newdata;
 
-                if(TextAttr&0x100) newdata={false,false,false, unsigned(TextAttr>>9), TextAttr&0xFFu};
+                if(TextAttr&0x100) newdata={false,false,TextAttr&0x20000, unsigned(TextAttr>>9), TextAttr&0xFFu};
                 else               newdata={true,TextAttr&0x80,TextAttr&8, (TextAttr>>4u)&7u, TextAttr&7u };
-                if(OldAttr&0x100)  olddata={false,false,false, unsigned(OldAttr>>9), OldAttr&0xFFu};
+                if(OldAttr&0x100)  olddata={false,false,OldAttr&0x20000, unsigned(OldAttr>>9), OldAttr&0xFFu};
                 else               olddata={true,OldAttr&0x80,OldAttr&8, (OldAttr>>4u)&7u, OldAttr&7u };
 
                 if( (olddata.blink && !newdata.blink) || (olddata.intens && !newdata.intens) )
@@ -201,6 +201,11 @@ static void FlushSetAttr()
                 if(TextAttr & 0x100) // 256color tag
                 {
                     unsigned bg = (TextAttr>>9)&0xFF, fg = TextAttr&0xFF;
+                    if(TextAttr & 0x20000)
+                    {
+                        Buffer[Buflen++] = ';';
+                        Buffer[Buflen++] = '1';
+                    }
                     Buffer[Buflen++] = ';';
                     Buffer[Buflen++] = '3';
                     Buffer[Buflen++] = '8';

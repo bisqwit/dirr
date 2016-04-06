@@ -654,7 +654,7 @@ static void EstimateFields()
 
     // Calculate the room that there is for a filename
     int room = MultiColumn ? COLS/2 : COLS;
-    room -= 1;
+    room -= 2;
     room -= RowLen;
     if(room < 0) room = 0;
 
@@ -800,6 +800,7 @@ static void PrintAllFilesCollectedSoFar()
     {
         for(StatItem& tmp: f)
             UpdateEstimations(Longest.front(), tmp.Name, tmp.Stat);
+        EstimateFields(); // Make sure the file name remains clipped
 
         RowLen=0;
         Dumping = true;
@@ -871,7 +872,7 @@ static void DirChangeCheck(std::string Source)
     std::size_t ss = Source.size();
     // Remove trailing /./ and /
     while(ss >= 1 && Source[ss-1] == '/')
-        { --ss; if(ss==0 || (Source[ss-2]=='/' && Source[ss-1] == '.')) --ss; }
+        { --ss; if(ss>=2 || (Source[ss-2]=='/' && Source[ss-1] == '.')) --ss; }
     Source.erase(ss);
 
     if(LastDir != Source)

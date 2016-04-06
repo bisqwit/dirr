@@ -42,18 +42,6 @@ static std::string str(char c)
     return Printf("%c", c);
 }
 
-static unsigned long LoadVarLenFP(std::FILE* fp)
-{
-    unsigned long V=0, Shift=0, C;
-    do V |= ((unsigned long)(C = std::fgetc(fp)) & 0x7F) << (Shift++)*7; while(C & 0x80);
-    return V;
-}
-void PutVarLen(unsigned char* buffer, unsigned& ptr, unsigned long V)
-{
-    while(V > 0x7F) { buffer[ptr++] = 0x80 | (V & 0x7F); V >>= 7; }
-    buffer[ptr++] = V;
-}
-
 static void PutBits(unsigned char* buffer, unsigned& bitpos, unsigned long V, unsigned nbits)
 {
     while(nbits > 0)
@@ -93,7 +81,7 @@ static unsigned long LoadVarBit(unsigned char* buffer, unsigned& bitpos)
         result |= GetBits(buffer, bitpos, n) << shift;
         if(!GetBits(buffer, bitpos, 1)) break;
         shift += n;
-        if(n==2) n+=4; else n+=2;
+        if(n==2) n+=4; else if(n<10) n+=8;
     }
     return result;
 }
@@ -106,7 +94,7 @@ static void PutVarBit(unsigned char* buffer, unsigned& bitpos, unsigned long V)
         V >>= n;
         PutBits(buffer, bitpos, V!=0, 1);
         if(V==0) break;
-        if(n==2) n+=4; else n+=2;
+        if(n==2) n+=4; else if(n<10) n+=8;
     }
 }
 
@@ -178,11 +166,11 @@ void DFA_Matcher::Compile()
     {std::string hash_str;
     for(const auto& a: matches)
     {
-        unsigned char Buf[8]; unsigned ptr = 1;
-        Buf[0] = a.second.second;
-        PutVarLen(Buf, ptr, a.second.first);
+        unsigned char Buf[16] {}; unsigned ptr = 0;
+        PutBits(Buf, ptr, a.second.second, 1);
+        PutVarBit(Buf, ptr, a.second.first);
+        hash_str.append(Buf, Buf+(ptr+CHAR_BIT-1)/CHAR_BIT);
         hash_str += a.first;
-        hash_str.append(Buf, Buf+ptr);
     }
     hash = std::hash<std::string>{}(hash_str);}
 
@@ -474,13 +462,12 @@ void DFA_Matcher::Generate()
                 // If there are many, the grammar is ambiguous.
                 return *l;
             }
-            std::string target_key;
-            for(auto k: targets)
-            {
-                unsigned char Buf[8]; unsigned len = 0;
-                PutVarLen(Buf, len, k);
-                target_key.append(Buf, Buf+len);
-            }
+            std::vector<unsigned char> Buf(targets.size()*8);
+            unsigned ptr=0;
+            for(auto k: targets) PutVarBit(&Buf[0], ptr, k);
+            std::string target_key(&Buf[0], &Buf[(ptr+CHAR_BIT-1)/CHAR_BIT]);
+            //fprintf(stderr, "Buf %u bytes -> ptr=%u (%u)\n", unsigned(Buf.size()), ptr, (ptr+CHAR_BIT-1)/CHAR_BIT);
+
             // Find a node for the given list of targets
             auto i = combination_map.find(target_key);
             if(i != combination_map.end())
@@ -588,7 +575,7 @@ void DFA_Matcher::Generate()
         struct groupdata
         {
             group_t group{};
-            bool    final=false, unused=false;
+            bool    unused=false;
             unsigned uses=0, originalnumber=0;
         };
         std::vector<groupdata> groups(1);
@@ -603,15 +590,13 @@ void DFA_Matcher::Generate()
                 if(v >= statemachine.size()) // Accepting or failing state
                     mapping.emplace(v, 0x80000000u | v);
 
-        // The final flag is not necessary for the algorithm,
-        // but it may make it slightly faster.
     rewritten:;
         for(unsigned groupno=0; groupno<groups.size(); ++groupno)
         {
-            if(groups[groupno].final) continue;
             group_t& group = groups[groupno].group;
             auto j = group.begin();
             unsigned first_state = *j++;
+            if(j == group.end()) continue; // only 1 item
 
             // For each state in this group that differs
             // from first group, move them into the other group.
@@ -647,8 +632,8 @@ void DFA_Matcher::Generate()
                 groups.emplace_back(groupdata{std::move(othergroup)});
                 goto rewritten;
             }
-            groups[groupno].final = true; // No changes, so mark as final
         }
+
         // Sort the groups according to how many times they are
         // referred, so that most referred groups get smallest numbers.
         // This helps shrink down the .dirr_dfa file size.
@@ -731,26 +716,32 @@ bool DFA_Matcher::Load(std::FILE* fp)
         if(std::stoull(StrBuf, nullptr, 16) == hash)
         {
             // Read the rest of the state machine
-            std::fgets(StrBuf, sizeof StrBuf, fp);
-            unsigned num_states = std::stoi(StrBuf);
+            std::vector<unsigned char> Buf(32);
+            std::fread(&Buf[0], 1, Buf.size(), fp);
+            unsigned position   = 0;
+            unsigned num_states = LoadVarBit(&Buf[0], position);
+            unsigned num_bits   = LoadVarBit(&Buf[0], position);
 
             if(num_states*sizeof(statemachine[0]) > 2000000)
                 throw std::invalid_argument("implausible num_states");
 
+            unsigned num_bytes = (num_bits+CHAR_BIT-1)/CHAR_BIT;
+            if(num_bytes > Buf.size())
+            {
+                unsigned already = Buf.size(), missing = num_bytes - already;
+                Buf.resize(num_bytes);
+                std::fread(&Buf[already], 1, missing, fp);
+            }
+
             statemachine.resize(num_states);
             for(unsigned state_no=0; state_no<statemachine.size(); ++state_no)
             {
-                unsigned char Buf[256*7];
-                unsigned n = LoadVarLenFP(fp);
-                if(n == 0 || n > sizeof(Buf)) break;
-                std::fread(Buf, 1, n, fp);
-
                 auto& data = statemachine[state_no];
                 //fprintf(stderr, "%u:", state_no);
-                for(unsigned last = 0, position = 0; last < 256 && position < n*8; )
+                for(unsigned last = 0; last < 256 && position < num_bits; )
                 {
-                    unsigned end   = LoadVarBit(Buf, position) + last;
-                    unsigned value = LoadVarBit(Buf, position);
+                    unsigned end   = LoadVarBit(&Buf[0], position) + last;
+                    unsigned value = LoadVarBit(&Buf[0], position);
                     if(end==last) end = last+256;
                     while(last < end && last < 256) data[last++] = value;
                 }
@@ -769,33 +760,34 @@ void DFA_Matcher::Save(std::FILE* save_fp) const
 {
     std::fprintf(save_fp,
         "# This file caches the DFA used by DIRR for parsing filenames.\n"
-        "# The first number is the hash of DIRR_COLORS, the second number is\n"
-        "# the number of states and the rest is a RLE-compressed state machine.\n"
-        "%llX\n%lu\n",
-        hash,
-        (unsigned long) statemachine.size());
-    for(const auto& a: statemachine)
+        "# The first number is the hash of DIRR_COLORS in hexadecimal.\n"
+        "# The rest is a bitstream of a RLE-compressed state machine.\n"
+        "%llX\n",
+        hash);
+
+    std::vector<unsigned char> Buf;
+    unsigned numbits=0;
+    for(;;)
     {
-        // upper bound for varlen(value): ceil(32/7) = 5
-        // upper bound for varlen(sum):   ceil( 8/7) = 2
-        // upper bound for buffer: 256*7
-        // upper bound for varlen(buflen): ceil(log2(256*7)/7) = 2
-        const unsigned offset = 8;
-        unsigned char Buf[offset+256*7];
-        unsigned sum=0, ptr=0;
-        for(unsigned n=0; n<=256; ++n, ++sum)
-            if(sum > 0 && (n == 256 || a[n] != a[n-1]))
-            {
-                PutVarBit(Buf+offset, ptr, sum);
-                PutVarBit(Buf+offset, ptr, a[n-1]);
-                sum = 0;
-            }
-        ptr = (ptr+7)/8; // Bits into bytes, rounding up
-        unsigned n=0; sum=0;
-        PutVarLen(Buf,          n,   ptr);
-        PutVarLen(Buf+offset-n, sum, ptr);
-        std::fwrite(Buf+offset-n, 1, n+ptr, save_fp);
+        Buf.resize(256);
+        unsigned ptr=0;
+        PutVarBit(&Buf[0], ptr, statemachine.size());
+        PutVarBit(&Buf[0], ptr, numbits);
+        for(const auto& a: statemachine)
+            for(unsigned sum=0, n=0; n<=256; ++n, ++sum)
+                if(sum > 0 && (n == 256 || a[n] != a[n-1]))
+                {
+                    if(ptr/CHAR_BIT + 16 > Buf.size())
+                        Buf.resize(ptr/CHAR_BIT + 128);
+
+                    PutVarBit(&Buf[0], ptr, sum);
+                    PutVarBit(&Buf[0], ptr, a[n-1]);
+                    sum = 0;
+                }
+        if(ptr == numbits) break;
+        numbits = ptr;
     }
+    std::fwrite(&Buf[0], 1, (numbits+CHAR_BIT-1)/CHAR_BIT, save_fp);
 }
 
 int DFA_Matcher::Test(const std::string& s, int default_value) const
