@@ -1,4 +1,15 @@
-Sun 2016-04-05 17:29 Joel Yliluoma <bisqwit@iki.fi>
+Wed 2016-04-06 22:04 Joel Yliluoma <bisqwit@iki.fi>
+
+	* Version 3.36
+	
+	    - Xterm-256color support
+	    - Smaller overhead NFA-DFA conversion
+
+Tue 2016-04-05 22:04 Joel Yliluoma <bisqwit@iki.fi>
+
+	* Version 3.35
+
+Tue 2016-04-05 17:29 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.34
 	
@@ -10,35 +21,35 @@ Sun 2016-04-03 01:38 Joel Yliluoma <bisqwit@iki.fi>
 	
 	    - High-performance filename matching
 
-Sun 2013-11-14 15:21 Joel Yliluoma <bisqwit@iki.fi>
+Thu 2013-11-14 15:21 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.32.2
 	
 	    - Mac OSX support
 
-Sun 2011-06-20 20:23  Joel Yliluoma <bisqwit@iki.fi>
+Mon 2011-06-20 20:23  Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.32.1
 	
 	    - FreeBSD and Macos compatibility
 
-Sun 2011-06-13 20:29  Joel Yliluoma <bisqwit@iki.fi>
+Mon 2011-06-13 20:29  Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.32
 
-Sun 2010-04-10 21:44  Joel Yliluoma <bisqwit@iki.fi>
+Sat 2010-04-10 21:44  Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.31
 
-Sun 2010-04-03 23:59  Joel Yliluoma <bisqwit@iki.fi>
+Sat 2010-04-03 23:59  Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.30
 	
-Sun 2009-10-23 20:52 Joel Yliluoma <bisqwit@iki.fi>
+Fri 2009-10-23 20:52 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.29.2.2
 	
-Sun 2008-01-31 11:27 Joel Yliluoma <bisqwit@iki.fi>
+Thu 2008-01-31 11:27 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.29.2
 	

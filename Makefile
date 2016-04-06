@@ -25,17 +25,12 @@ include Makefile.sets
 #OPTIM=-Og -fno-inline
 #CXXFLAGS += -fsanitize=address
 
-VERSION = 3.35
+VERSION = 3.36
 
 # Obligatory defines:
-#   CACHE_GETSET     Recommended, adds speed
-#   CACHE_NAMECOLOR  This too
 #   CACHE_UIDGID     This too
-#   NEW_WILDMATCH    Recommended, disable if you have problems with it
 #   SUPPORT_BRACKETS They can be disabled, but I don't see why.
-#   STARTUP_COUNTER  Enable, if you want a progress meter
 #   PRELOAD_UIDGID   Set this to 1 if your passwd file is quick to load
-#   HAVE_STATFS      Disable it if you have no statfs() function.
 #   SETTINGSFILE     File containing the settings. Default: dirrsets.hh
 
 #-s

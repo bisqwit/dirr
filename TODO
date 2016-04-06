@@ -1,13 +1,7 @@
-
 - If user is a member of multiple groups,
   all groups be shown correctly in colouring.
 
-- Move the field length estimations (LongestName)
-  to be a completely different step than reading
-  the file stats (stat()).
-
-- Makefile: 
-   Move DEFINES to config.h, make it easily configurable.
-
 - When listing files from a number of directories, print a grand total.
 
+- Either remove SUPPORT_BRACKETS, or implement it
+  as it is currently not honored.

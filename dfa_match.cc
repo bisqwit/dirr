@@ -1,14 +1,16 @@
 #include <memory>
-#include <utility> // for std::hash
+#include <utility>   // for std::hash
 #include <bitset>
 #include <unordered_map>
 #include <algorithm> // For sort & unique
+#include <climits>   // For CHAR_BIT
 #include <list>
 #include <set>
 
 #include "dfa_match.hh"
 #include "likely.hh"
 #include "printf.hh"
+#include "config.h"
 
 #include <stdlib.h> // For getenv("HOME")
 
@@ -38,6 +40,74 @@ static std::string str(char c)
         default: if(c<32 || c==127) return Printf("\\%04o", (unsigned char)c);
     }
     return Printf("%c", c);
+}
+
+static unsigned long LoadVarLenFP(std::FILE* fp)
+{
+    unsigned long V=0, Shift=0, C;
+    do V |= ((unsigned long)(C = std::fgetc(fp)) & 0x7F) << (Shift++)*7; while(C & 0x80);
+    return V;
+}
+void PutVarLen(unsigned char* buffer, unsigned& ptr, unsigned long V)
+{
+    while(V > 0x7F) { buffer[ptr++] = 0x80 | (V & 0x7F); V >>= 7; }
+    buffer[ptr++] = V;
+}
+
+static void PutBits(unsigned char* buffer, unsigned& bitpos, unsigned long V, unsigned nbits)
+{
+    while(nbits > 0)
+    {
+        unsigned bytepos = bitpos/CHAR_BIT, bits_remain = CHAR_BIT-bitpos%CHAR_BIT, bits_taken = CHAR_BIT-bits_remain;
+        unsigned bits_to_write = std::min(nbits, bits_remain);
+        unsigned value_mask     = (1 << bits_to_write)-1;
+        unsigned value_to_write = V & value_mask;
+        buffer[bytepos] = (buffer[bytepos] & ~(value_mask << bits_taken)) | (value_to_write << bits_taken);
+        V >>= bits_to_write;
+        nbits  -= bits_to_write;
+        bitpos += bits_to_write;
+    }
+}
+static unsigned long GetBits(unsigned char* buffer, unsigned& bitpos, unsigned nbits)
+{
+    unsigned long result = 0, shift=0;
+    while(nbits > 0)
+    {
+        unsigned bytepos = bitpos/CHAR_BIT, bits_remain = CHAR_BIT-bitpos%CHAR_BIT, bits_taken = CHAR_BIT-bits_remain;
+        unsigned bits_to_take = std::min(nbits, bits_remain);
+        unsigned v = (buffer[bytepos] >> bits_taken) & ((1 << bits_to_take)-1);
+        result |= v << shift;
+        shift += bits_to_take;
+        nbits -= bits_to_take;
+        bitpos += bits_to_take;
+    }
+    return result;
+}
+
+static unsigned long LoadVarBit(unsigned char* buffer, unsigned& bitpos)
+{
+    unsigned long result = 0;
+    unsigned n = 2, shift = 0;
+    for(;;)
+    {
+        result |= GetBits(buffer, bitpos, n) << shift;
+        if(!GetBits(buffer, bitpos, 1)) break;
+        shift += n;
+        if(n==2) n+=4; else n+=2;
+    }
+    return result;
+}
+static void PutVarBit(unsigned char* buffer, unsigned& bitpos, unsigned long V)
+{
+    unsigned n = 2;
+    for(;;)
+    {
+        PutBits(buffer, bitpos, V, n);
+        V >>= n;
+        PutBits(buffer, bitpos, V!=0, 1);
+        if(V==0) break;
+        if(n==2) n+=4; else n+=2;
+    }
 }
 
 static void DumpDFA(const char* title, const std::vector<std::array<unsigned,256>>& states)
@@ -105,12 +175,16 @@ void DFA_Matcher::AddMatch(const std::string& token, bool icase, int target)
 void DFA_Matcher::Compile()
 {
     // Compose hash string
-    std::string hash_str;
+    {std::string hash_str;
     for(const auto& a: matches)
-        { hash_str += char(a.second.second); hash_str += std::to_string(a.second.first); }
-    for(const auto& a: matches)
-        { hash_str += a.first; hash_str += '\2'; }
-    hash = std::hash<std::string>{}(hash_str);
+    {
+        unsigned char Buf[8]; unsigned ptr = 1;
+        Buf[0] = a.second.second;
+        PutVarLen(Buf, ptr, a.second.first);
+        hash_str += a.first;
+        hash_str.append(Buf, Buf+ptr);
+    }
+    hash = std::hash<std::string>{}(hash_str);}
 
     std::string hash_save_fn;
     std::FILE* save_fp = nullptr;
@@ -222,9 +296,56 @@ void DFA_Matcher::Generate()
 
         /* Translate a glob pattern (wildcard match) into a NFA*/
         bool escmode = false;
+#if SUPPORT_BRACKETS
+        unsigned bracketstate = 0;
+        // nonzero   = waiting for closing ]
+        // &       2 = inverted polarity
+        // &FFFF0000 = previous character (for ranges)
+        // &    8000 = got a range begin
+#endif
+        std::bitset<256> states;
+
         for(char c: token)
         {
-            std::bitset<256> states;
+#if SUPPORT_BRACKETS
+            if(bracketstate)
+            {
+                unsigned prev = bracketstate >> 16;
+                if(!escmode)
+                {
+                    if(c == '\\') { escmode = true; continue; }
+                    if(states.none() && !(bracketstate&2) && c == '^') { bracketstate |= 2; continue; }
+                    if(c == ']')
+                    {
+                        if(prev) states.set(prev);
+                        if(bracketstate&2) states.flip();
+                        bracketstate = 0;
+                        goto do_newnode;
+                    }
+                }
+                if(escmode || c != '-')
+                {
+                    if(prev)
+                    {
+                        if(bracketstate & 0x8000)
+                        {
+                            for(unsigned m=prev; m<=(unsigned char)c; ++m)
+                                states.set(m);
+                            bracketstate &= 0x7FFF;
+                            continue;
+                        }
+                        states.set(prev);
+                    }
+                    bracketstate = (bracketstate & 0xFFFF) | ((c&0xFF)<<16); continue;
+                }
+                else
+                {
+                    bracketstate |= 0x8000;
+                    continue;
+                }
+            }
+            else
+#endif
             if(escmode)
             {
                 switch(c)
@@ -303,6 +424,14 @@ void DFA_Matcher::Generate()
                         escmode = true;
                         break;
                     }
+#if SUPPORT_BRACKETS
+                    case '[':
+                    {
+                        states.reset();
+                        bracketstate = 1;
+                        break;
+                    }
+#endif
                     default:
                     {
                         states.reset(); states.set(c);
@@ -345,11 +474,13 @@ void DFA_Matcher::Generate()
                 // If there are many, the grammar is ambiguous.
                 return *l;
             }
-
             std::string target_key;
             for(auto k: targets)
-                { target_key += '_'; target_key += std::to_string(k); }
-
+            {
+                unsigned char Buf[8]; unsigned len = 0;
+                PutVarLen(Buf, len, k);
+                target_key.append(Buf, Buf+len);
+            }
             // Find a node for the given list of targets
             auto i = combination_map.find(target_key);
             if(i != combination_map.end())
@@ -425,7 +556,7 @@ void DFA_Matcher::Generate()
         }
     nfa_nodes.clear();
 
-    // STEP 4: Finally, minimize the DFA (state machine).
+    // STEP 4: Finally, minimalize the DFA (state machine).
     if(true)
     {
         //DumpDFA("DFA before minimization", statemachine);
@@ -448,18 +579,21 @@ void DFA_Matcher::Generate()
 
         // Groups of states
         typedef std::list<unsigned> group_t;
-        // Note: It is very important that group_t is a type of container
-        //       that retains its order. This ensures that node 0 will never
-        //       be moved into another group, but will stay in node 0.
 
         // State number to group number mapping
         std::unordered_map<unsigned,unsigned> mapping;
 
         // Create a single group for all non-accepting states.
         // Collect all states. Assume there are no unvisited states.
-        std::vector<std::pair<group_t,bool/*final*/>> groups(1);
+        struct groupdata
+        {
+            group_t group{};
+            bool    final=false, unused=false;
+            unsigned uses=0, originalnumber=0;
+        };
+        std::vector<groupdata> groups(1);
         for(unsigned n=0; n<statemachine.size(); ++n)
-            { groups[0].first.push_back(n); mapping.emplace(n, 0); }
+            { groups[0].group.push_back(n); mapping.emplace(n, 0); }
 
         // Don't create groups for terminal states, since they're
         // not really states, but create a mapping for them, so that
@@ -472,16 +606,10 @@ void DFA_Matcher::Generate()
         // The final flag is not necessary for the algorithm,
         // but it may make it slightly faster.
     rewritten:;
-        /*printf("%u groups. Mapping is now:\n", unsigned(groups.size()));
-        for(auto p: mapping)
-            printf("%8X -> %X\n", p.first,p.second);*/
         for(unsigned groupno=0; groupno<groups.size(); ++groupno)
         {
-            if(groups[groupno].second) continue;
-            group_t& group = groups[groupno].first;
-            /*printf("Analyzing group:");
-            for(auto c: group) printf(" %u", c);
-            printf("\n");*/
+            if(groups[groupno].final) continue;
+            group_t& group = groups[groupno].group;
             auto j = group.begin();
             unsigned first_state = *j++;
 
@@ -514,24 +642,72 @@ void DFA_Matcher::Generate()
             {
                 // Split the differing states into a new group
                 unsigned othergroup_id = groups.size();
-                /*printf("Split into new group %u:", othergroup_id);
-                for(auto n: othergroup) printf(" %u", n);
-                printf("\n");*/
                 // Change the mappings (we need overwriting, so don't use emplace here)
                 for(auto n: othergroup) mapping[n] = othergroup_id;
-                groups.emplace_back(std::move(othergroup), false);
+                groups.emplace_back(groupdata{std::move(othergroup)});
                 goto rewritten;
             }
-            groups[groupno].second = true; // No changes, so mark as final
+            groups[groupno].final = true; // No changes, so mark as final
         }
+        // Sort the groups according to how many times they are
+        // referred, so that most referred groups get smallest numbers.
+        // This helps shrink down the .dirr_dfa file size.
+    recalculate_uses:
+        // VERY IMPORTANT: Make sure that whichever group contains the
+        // original state 0, emerges as group 0 in the new ordering.
+        groups[mapping.find(0)->second].uses = 0x80000000u;
+        for(unsigned groupno=0; groupno<groups.size(); ++groupno)
+        {
+            if(groups[groupno].unused) continue;
+            groups[groupno].originalnumber = groupno;
+
+            for(unsigned v: statemachine[*groups[groupno].group.begin()])
+                if(v < statemachine.size())
+                    ++groups[mapping.find(v)->second].uses;
+        }
+        // Go over the groups and check if some of them were unused
+        bool found_unused = false;
+        for(auto& g: groups)
+            if(!g.unused && g.uses == 0)
+                g.unused = found_unused = true;
+        if(found_unused)
+            { for(auto& g: groups) g.uses = 0; goto recalculate_uses; }
+
+        // Sort groups according to their use.
+        // The group that contained state 0 will emerge as group 0.
+        std::sort(groups.begin(), groups.end(), [](const groupdata& a, const groupdata& b)
+        {
+            return a.uses > b.uses;
+        });
+
+        // Delete groups that are never used
+        groups.erase(std::remove_if(groups.begin(),groups.end(),[](const groupdata& g)
+        {
+            return g.unused;
+        }), groups.end());
+
+        // Rewrite the mappings to reflect the new sorted order
+        {std::unordered_map<unsigned,unsigned> rewritten_mappings;
+        for(unsigned groupno=0; groupno<groups.size(); ++groupno)
+            rewritten_mappings.emplace(groups[groupno].originalnumber, groupno);
+        for(auto& m: mapping)
+            if(!(m.second & 0x80000000u))
+            {
+                auto i = rewritten_mappings.find(m.second);
+                if(i != rewritten_mappings.end())
+                    m.second = i->second;
+                else
+                    m.second = ~0u;
+        }   }
+
         // Create a new state machine based on these groups
         std::vector<std::array<unsigned,256>> newstates(groups.size());
-        unsigned newstateno = 0;
-        for(auto& group: groups)
+        for(unsigned newstateno=0; newstateno<groups.size(); ++newstateno)
         {
+            auto& group          = groups[newstateno];
+            auto& newstate       = newstates[newstateno];
             // All states in this group are identical. Just take any of them.
-            const auto& oldstate = statemachine[*group.first.begin()];
-            auto& newstate       = newstates[newstateno++];
+            const auto& oldstate = statemachine[*group.group.begin()];
             // Convert the state using the mapping.
             for(unsigned c=0; c<256; ++c)
             {
@@ -549,19 +725,6 @@ void DFA_Matcher::Generate()
 
 bool DFA_Matcher::Load(std::FILE* fp)
 {
-    auto LoadVarLen = [](const unsigned char* buffer, unsigned& ptr)
-    {
-        unsigned long V=0, Shift=0, C;
-        do V |= ((unsigned long)(C = buffer[ptr++]) & 0x7F) << (Shift++)*7; while(C & 0x80);
-        return V;
-    };
-    auto LoadVarLenFP = [](std::FILE* fp)
-    {
-        unsigned long V=0, Shift=0, C;
-        do V |= ((unsigned long)(C = std::fgetc(fp)) & 0x7F) << (Shift++)*7; while(C & 0x80);
-        return V;
-    };
-
     char StrBuf[128];
     try {
         while(std::fgets(StrBuf, sizeof StrBuf, fp) && StrBuf[0]=='#') {}
@@ -584,10 +747,10 @@ bool DFA_Matcher::Load(std::FILE* fp)
 
                 auto& data = statemachine[state_no];
                 //fprintf(stderr, "%u:", state_no);
-                for(unsigned last = 0, position = 0; last < 256 && position < n; )
+                for(unsigned last = 0, position = 0; last < 256 && position < n*8; )
                 {
-                    unsigned end   = LoadVarLen(Buf, position) + last;
-                    unsigned value = LoadVarLen(Buf, position);
+                    unsigned end   = LoadVarBit(Buf, position) + last;
+                    unsigned value = LoadVarBit(Buf, position);
                     if(end==last) end = last+256;
                     while(last < end && last < 256) data[last++] = value;
                 }
@@ -604,12 +767,6 @@ bool DFA_Matcher::Load(std::FILE* fp)
 
 void DFA_Matcher::Save(std::FILE* save_fp) const
 {
-    auto PutVarLen = [](unsigned char* buffer, unsigned& ptr, unsigned long V)
-    {
-        while(V > 0x7F) { buffer[ptr++] = 0x80 | (V & 0x7F); V >>= 7; }
-        buffer[ptr++] = V;
-    };
-
     std::fprintf(save_fp,
         "# This file caches the DFA used by DIRR for parsing filenames.\n"
         "# The first number is the hash of DIRR_COLORS, the second number is\n"
@@ -623,16 +780,17 @@ void DFA_Matcher::Save(std::FILE* save_fp) const
         // upper bound for varlen(sum):   ceil( 8/7) = 2
         // upper bound for buffer: 256*7
         // upper bound for varlen(buflen): ceil(log2(256*7)/7) = 2
-        const unsigned offset = 8; // just in case
+        const unsigned offset = 8;
         unsigned char Buf[offset+256*7];
         unsigned sum=0, ptr=0;
         for(unsigned n=0; n<=256; ++n, ++sum)
             if(sum > 0 && (n == 256 || a[n] != a[n-1]))
             {
-                PutVarLen(Buf+offset, ptr, sum);
-                PutVarLen(Buf+offset, ptr, a[n-1]);
+                PutVarBit(Buf+offset, ptr, sum);
+                PutVarBit(Buf+offset, ptr, a[n-1]);
                 sum = 0;
             }
+        ptr = (ptr+7)/8; // Bits into bytes, rounding up
         unsigned n=0; sum=0;
         PutVarLen(Buf,          n,   ptr);
         PutVarLen(Buf+offset-n, sum, ptr);

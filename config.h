@@ -3,11 +3,9 @@
 // Recommended, adds speed
 #define CACHE_UIDGID 1
 
-// They can be disabled if you do not want them.
+// Whether to support expressions like [a-z] and [^0-9] in DIRR_COLORS.
+// Support can be disabled if you do not want it.
 #define SUPPORT_BRACKETS 1
-
-// Enable this if you want a progress meter. Slows down.
-#define STARTUP_COUNTER 0
 
 // Set this to 1 if your passwd file is quick to load.
 #define PRELOAD_UIDGID 0

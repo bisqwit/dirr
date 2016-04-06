@@ -1,7 +1,7 @@
 #include <string>
 #include <vector>
 #include <array>
-#include <cstdio> // std::FILE
+#include <cstdio>  // std::FILE
 #include <utility> // for std::pair
 
 class DFA_Matcher
