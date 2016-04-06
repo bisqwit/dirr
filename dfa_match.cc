@@ -284,18 +284,15 @@ void DFA_Matcher::Generate()
 
         /* Translate a glob pattern (wildcard match) into a NFA*/
         bool escmode = false;
-#if SUPPORT_BRACKETS
         unsigned bracketstate = 0;
         // nonzero   = waiting for closing ]
         // &       2 = inverted polarity
         // &FFFF0000 = previous character (for ranges)
         // &    8000 = got a range begin
-#endif
         std::bitset<256> states;
 
         for(char c: token)
         {
-#if SUPPORT_BRACKETS
             if(bracketstate)
             {
                 unsigned prev = bracketstate >> 16;
@@ -332,9 +329,7 @@ void DFA_Matcher::Generate()
                     continue;
                 }
             }
-            else
-#endif
-            if(escmode)
+            else if(escmode)
             {
                 switch(c)
                 {
@@ -412,14 +407,12 @@ void DFA_Matcher::Generate()
                         escmode = true;
                         break;
                     }
-#if SUPPORT_BRACKETS
                     case '[':
                     {
                         states.reset();
                         bracketstate = 1;
                         break;
                     }
-#endif
                     default:
                     {
                         states.reset(); states.set(c);

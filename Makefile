@@ -25,15 +25,8 @@ include Makefile.sets
 #OPTIM=-Og -fno-inline
 #CXXFLAGS += -fsanitize=address
 
-VERSION = 3.36.1
+VERSION = 3.36.2
 
-# Obligatory defines:
-#   CACHE_UIDGID     This too
-#   SUPPORT_BRACKETS They can be disabled, but I don't see why.
-#   PRELOAD_UIDGID   Set this to 1 if your passwd file is quick to load
-#   SETTINGSFILE     File containing the settings. Default: dirrsets.hh
-
-#-s
 BINDIR=/usr/local/bin
 INSTALL=install
 
