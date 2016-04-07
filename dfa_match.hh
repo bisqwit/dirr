@@ -12,7 +12,7 @@ public:
      *   wildpattern : Pattern to be matched. May contain glob-like wildcards.
      *   icase       : true if pattern is case-insensitive, false if not.
      *   target      : Return value for Test() to produce when pattern matches.
-     *                 target values must be within 0..3FFFFFFF range (30 bits).
+     *                 target values must be within 0..7FFFFFFF range (31 bits).
      *
      * All patterns match the whole string. There are no "partial" matches.
      */

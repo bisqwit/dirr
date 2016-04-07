@@ -12,26 +12,41 @@
 #include "likely.hh"
 #include "printf.hh"
 
+// Whether to minimize the NFA as it is being generated.
 static constexpr bool NFA_PRE_MINIMIZATION         = true;
+// Whether to minimize the DFA
 static constexpr bool DFA_DO_MINIMIZATION          = true;
+// Whether to check for unused nodes before minimizing the DFA
 static constexpr bool DFA_PRE_CHECK_UNUSED_NODES   = false;
+// Whether to delete unused nodes after minimizing the DFA
 static constexpr bool DFA_POST_DELETE_UNUSED_NODES = true;
+// Whether to sort the DFA so most used nodes are first
 static constexpr bool DFA_POST_SORT_BY_USECOUNT    = true;
 
-struct NFAnode
-{
-    // List the target states for each different input symbol.
-    // Target state & 0x80000000u means terminal state (accept with state & 0x7FFFFFFFu).
-    // Since this is a NFA, each input character may match to a number of different targets.
-    std::array<std::set<unsigned/*target node number*/>, 256> targets{};
 
-    // Use std::set rather than std::unordered_set, because we require
-    // sorted access for efficient set_intersection (lower_bound).
-};
+/* In NFA, 00000000-7FFFFFFF = nodes, 80000000-FFFFFFFF = terminals */
+static constexpr unsigned NFA_TERMINAL_OFFSET               = 0x80000000u;
+/* In NFA determinization, 00000000-0FFFFFFF = old nodes, 10000000-7FFFFFFF = new nodes */
+static constexpr unsigned NFAOPT_NEWNODE_OFFSET             = 0x10000000u;
+/* In DFA minimization, 80000000-FFFFFFFF = terminals, 00000000-7FFFFFFF = nodes */
+static constexpr unsigned DFAOPT_TERMINAL_OFFSET            = 0x80000000u;
+/* A high enough value that it's guaranteed to put this group on top of the sorting list,
+ * but not too high that it will cause arithmetic overflow when incrementing the usecount:
+ */
+static constexpr unsigned DFAOPT_IMPLAUSIBLE_HIGH_USE_COUNT = 0x80000000u;
+
+
+// List the target states for each different input symbol.
+// Target state >= NFA_TERMINAL_OFFSET means terminal state (accept with state - NFA_TERMINAL_OFFSET).
+// Since this is a NFA, each input character may match to a number of different targets.
+typedef std::array<std::set<unsigned/*target node number*/>, 256> NFAnode;
+// Use std::set rather than std::unordered_set, because we require
+// sorted access for efficient set_intersection (lower_bound).
 
 
 /* Variable bit I/O */
 static constexpr unsigned VarBitCounts[] = {2,3,3,1,1,1,2,4,1,8,8,8,8,8,8,16,16,16,16};
+// VarBitCounts[] is hand-optimized to produce the smallest save file for DIRR.
 static unsigned long LoadVarBit(unsigned char* buffer, unsigned& bitpos)
 {
     unsigned long result = 0;
@@ -117,9 +132,9 @@ static void DumpNFA(const char* title, const std::vector<NFAnode>& states)
             bool flush = false;
             std::string t;
             if(c < 256)
-                for(auto d: s.targets[c])
-                    if(d & 0x80000000u)
-                        t += Printf(" accept %d", d & 0x7FFFFFFFu);
+                for(auto d: s[c])
+                    if(d >= NFA_TERMINAL_OFFSET)
+                        t += Printf(" accept %d", d - NFA_TERMINAL_OFFSET);
                     else
                         t += Printf(" %u", d);
             if(c==256 || t != prev) flush = true;
@@ -136,16 +151,16 @@ static void DumpNFA(const char* title, const std::vector<NFAnode>& states)
 
 void DFA_Matcher::AddMatch(const std::string& token, bool icase, int target)
 {
-    if(target < 0 || target >= 0x40000000)
-        throw std::out_of_range(Printf("AddMatch: target must be in range 0..3FFFFFFF, %X given", target));
+    if(target < 0 || target >= 0x80000000l)
+        throw std::out_of_range(Printf("AddMatch: target must be in range 0..7FFFFFFF, %X given", target));
     matches.emplace_back(token, std::pair<int,bool>{target,icase});
     hash.second = false;
 }
 
 void DFA_Matcher::AddMatch(std::string&& token, bool icase, int target)
 {
-    if(target < 0 || target >= 0x40000000)
-        throw std::out_of_range(Printf("AddMatch: target must be in range 0..3FFFFFFF, %X given", target));
+    if(target < 0 || target >= 0x80000000l)
+        throw std::out_of_range(Printf("AddMatch: target must be in range 0..7FFFFFFF, %X given", target));
     matches.emplace_back(std::move(token), std::pair<int,bool>{target,icase});
     hash.second = false;
 }
@@ -296,7 +311,7 @@ void DFA_Matcher::Compile()
                 bool first = true;
                 for(unsigned c=0; c<256; ++c)
                 {
-                    const auto& list = cur.targets[c];
+                    const auto& list = cur[c];
                     if(states.test(c))
                     {
                         if(first)
@@ -344,7 +359,7 @@ void DFA_Matcher::Compile()
             auto& cur = nfa_nodes[root];
             for(unsigned c=0; c<256; ++c)
                 if(states.test(c))
-                    cur.targets[c].insert(next);
+                    cur[c].insert(next);
             return next;
         };
 
@@ -377,7 +392,7 @@ void DFA_Matcher::Compile()
                         {
                             // Loop the next node into itself
                             for(unsigned c=0x01; c<0x100; ++c)
-                                nfa_nodes[nextnode].targets[c].insert(nextnode);
+                                nfa_nodes[nextnode][c].insert(nextnode);
                             newnewnode = nextnode;
                         }
                         newroots.insert(nextnode);
@@ -468,7 +483,7 @@ void DFA_Matcher::Compile()
             }
         // Add the end-of-stream tag
         for(auto root: rootnodes)
-            nfa_nodes[root].targets[0x00].insert(target | 0x80000000u);
+            nfa_nodes[root][0x00].insert(target + NFA_TERMINAL_OFFSET);
     }
     // Don't need the matches[] anymore, since it's all assembled in nfa_nodes[]
     matches.clear();
@@ -488,14 +503,15 @@ void DFA_Matcher::Compile()
 
         // AddSet: Generate a new node from the combination of given nodes
         //         Node numbers may refer to the original map, or to
-        //         the new map. New nodes are indicated by 0x40000000u bit.
+        //         the new map. New nodes are indicated being offset by NFAOPT_NEWNODE_OFFSET.
         auto AddSet = [&](std::vector<unsigned>&& targets)
         {
             auto l = targets.rbegin();
-            if(l != targets.rend() && *l & 0x80000000u)
+            if(l != targets.rend() && (*l >= NFA_TERMINAL_OFFSET))
             {
                 // If one of these targets is an accept, keep one.
-                // If there are many, the grammar is ambiguous.
+                // If there are many, the grammar is ambiguous, but
+                // we will only keep one (the highest-numbered).
                 return *l;
             }
 
@@ -516,17 +532,18 @@ void DFA_Matcher::Compile()
             if(target_id <= sources.size()) sources.resize(target_id+1);
             sources[target_id] = std::move(targets);
             // Don't resize newnodes[] here, as there are still references to it.
-            pending.push_back(target_id |= 0x40000000u);
-            combination_map.emplace(target_key, target_id);
-            return target_id;
+            pending.push_back(target_id);
+            combination_map.emplace(target_key, target_id + NFAOPT_NEWNODE_OFFSET);
+            return target_id + NFAOPT_NEWNODE_OFFSET;
         };
         AddSet({0});
 
         while(!pending.empty())
         {
             // Choose one of the pending states, and generate a new node for it.
-            unsigned chosen = *pending.begin() & 0x3FFFFFFFu;
-            unsigned cap = *pending.rbegin() & 0x3FFFFFFFu;
+            // Numbers in pending[] always refer to new nodes even without NFAOPT_NEWNODE_OFFSET.
+            unsigned chosen = *pending.begin();
+            unsigned cap   = *pending.rbegin();
             pending.erase(pending.begin());
             if(cap >= newnodes.size()) newnodes.resize(cap+1);
             NFAnode& st = newnodes[chosen];
@@ -536,33 +553,34 @@ void DFA_Matcher::Compile()
             {
                 std::vector<unsigned> merged_targets;
                 for(auto src: sources[chosen])
-                    if(src & 0x80000000u)
+                    if(src >= NFA_TERMINAL_OFFSET)
                         merged_targets.push_back(src);
                     else
                     {
-                        const auto& source = (src & 0x40000000u) ? newnodes[src & 0x3FFFFFFFu]
-                                                                 : nfa_nodes[src];
+                        const auto& source = (src >= NFAOPT_NEWNODE_OFFSET) ? newnodes[src - NFAOPT_NEWNODE_OFFSET]
+                                                                            : nfa_nodes[src];
                         merged_targets.insert(merged_targets.end(),
-                                              source.targets[c].begin(),
-                                              source.targets[c].end());
+                                              source[c].begin(),
+                                              source[c].end());
                     }
                 if(merged_targets.empty()) continue;
+                // Sort and keep only unique values in the merged_targets.
                 std::sort(merged_targets.begin(), merged_targets.end());
                 merged_targets.erase(std::unique(merged_targets.begin(), merged_targets.end()), merged_targets.end());
 
-                st.targets[c].insert( AddSet(std::move(merged_targets)) );
+                st[c].insert( AddSet(std::move(merged_targets)) );
             }
         }
 
-        // Last: Fix up the node numbers, by removing the 0x40000000 bit
+        // Last: Fix up the node numbers, by removing the NFAOPT_NEWNODE_OFFSET
         // which was used to distinguish newnodes from the old nfa_nodes.
         nfa_nodes = std::move(newnodes);
         for(auto& n: nfa_nodes)
-            for(auto& c: n.targets)
+            for(auto& c: n)
             {
-                std::set<unsigned> conv_set;
-                for(auto e: c) conv_set.insert(e & ~0x40000000u);
-                c = std::move(conv_set);
+                // c should have 0 or 1 elements here.
+                auto s = std::move(c);
+                for(auto e: s) c.insert( (e >= NFA_TERMINAL_OFFSET) ? e : (e - NFAOPT_NEWNODE_OFFSET) );
             }
     } // scope for NFA-to-DFA
     // The NFA now follows DFA constraints.
@@ -574,10 +592,10 @@ void DFA_Matcher::Compile()
         for(auto& s = nfa_nodes[c=0, n]; c<256; ++c)
         {
             unsigned& v = statemachine[n][c];
-            if(s.targets[c].empty()) { v = statemachine.size(); continue; }
-            unsigned a = *s.targets[c].begin();
-            if(a & 0x80000000u)      { v = statemachine.size() + 1 + (a & 0x7FFFFFFFu); }
-            else                     { v = a; }
+            if(s[c].empty()) { v = statemachine.size(); continue; }
+            unsigned a = *s[c].begin();
+            if(a >= NFA_TERMINAL_OFFSET) { v = statemachine.size() + 1 + (a - NFA_TERMINAL_OFFSET); }
+            else                         { v = a; }
         }
     nfa_nodes.clear();
 
@@ -624,13 +642,13 @@ void DFA_Matcher::Compile()
         for(unsigned n=0; n<statemachine.size(); ++n)
             { groups[0].group.push_back(n); mapping.emplace(n, 0); }
 
-        // Don't create groups for terminal states, since they're
+        // Don't create groups for terminal states, since they are
         // not really states, but create a mapping for them, so that
         // we don't need special handling in the group-splitting code.
         for(unsigned n=0; n<statemachine.size(); ++n)
             for(auto v: statemachine[n])
                 if(v >= statemachine.size()) // Accepting or failing state
-                    mapping.emplace(v, 0x80000000u | v);
+                    mapping.emplace(v, (v - statemachine.size()) + DFAOPT_TERMINAL_OFFSET);
 
     rewritten:;
         for(unsigned groupno=0; groupno<groups.size(); ++groupno)
@@ -684,7 +702,7 @@ void DFA_Matcher::Compile()
         {
             // VERY IMPORTANT: Make sure that whichever group contains the
             // original state 0, emerges as group 0 in the new ordering.
-            groups[mapping.find(0)->second].uses = 0x80000000u;
+            groups[mapping.find(0)->second].uses = DFAOPT_IMPLAUSIBLE_HIGH_USE_COUNT;
             for(unsigned groupno=0; groupno<groups.size(); ++groupno)
             {
                 if(groups[groupno].unused) continue;
@@ -727,7 +745,7 @@ void DFA_Matcher::Compile()
             for(unsigned groupno=0; groupno<groups.size(); ++groupno)
                 rewritten_mappings.emplace(groups[groupno].originalnumber, groupno);
             for(auto& m: mapping)
-                if(!(m.second & 0x80000000u))
+                if(m.second < DFAOPT_TERMINAL_OFFSET)
                 {
                     auto i = rewritten_mappings.find(m.second);
                     if(i != rewritten_mappings.end())
