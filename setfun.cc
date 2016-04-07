@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
+#include <fstream>
 
 #include <stdlib.h> // For getenv("HOME")
 
@@ -283,30 +284,30 @@ private:
         }
 
         // Load/Compile/Save byext_sets for use by NameColor()
-        std::FILE* save_fp = nullptr;
-        bool loaded = false;
+        bool loaded = false, compiled = false;
         for(const std::string& path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
         {
             std::string hash_save_fn = path + "/.dirr_dfa";
-            std::FILE* fp = std::fopen(hash_save_fn.c_str(), "rb");
-            if(fp)
-            {
-                loaded = byext_sets.Load(fp);
-                std::fclose(fp);
+            try {
+                std::ifstream f(hash_save_fn, std::ios_base::in | std::ios_base::binary);
+                loaded = byext_sets.Load(f);
+                if(loaded) break;
             }
-            if(loaded) break;
+            catch(const std::exception&)
+            {
+            }
             // File format error. Regenerate file.
-            fp = std::fopen(hash_save_fn.c_str(), "wb");
-            if(fp) { save_fp = fp; break; }
+            try {
+                std::ofstream f(hash_save_fn, std::ios_base::out | std::ios_base::binary);
+                if(!compiled) { compiled = true; byext_sets.Compile(); }
+                byext_sets.Save(f);
+                break;
+            }
+            catch(const std::exception&)
+            {
+            }
         }
-
-        if(!loaded) byext_sets.Compile();
-
-        if(save_fp && !loaded)
-        {
-            byext_sets.Save(save_fp);
-            std::fclose(save_fp);
-        }
+        if(!loaded && !compiled) byext_sets.Compile();
     }
 } Settings;
 

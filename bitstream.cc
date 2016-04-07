@@ -3,8 +3,9 @@
 
 #include "bitstream.hh"
 
-void PutBits(unsigned char* buffer, unsigned& bitpos, unsigned long V, unsigned nbits)
+void PutBits(void* memory, unsigned& bitpos, unsigned long V, unsigned nbits)
 {
+    unsigned char* buffer = reinterpret_cast<unsigned char*>(memory);
     while(nbits > 0)
     {
         unsigned bytepos = bitpos/CHAR_BIT, bits_remain = CHAR_BIT-bitpos%CHAR_BIT, bits_taken = CHAR_BIT-bits_remain;
@@ -18,8 +19,9 @@ void PutBits(unsigned char* buffer, unsigned& bitpos, unsigned long V, unsigned 
     }
 }
 
-unsigned long GetBits(unsigned char* buffer, unsigned& bitpos, unsigned nbits)
+unsigned long GetBits(const void* memory, unsigned& bitpos, unsigned nbits)
 {
+    const unsigned char* buffer = reinterpret_cast<const unsigned char*>(memory);
     unsigned long result = 0, shift=0;
     while(nbits > 0)
     {
