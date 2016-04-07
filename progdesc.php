@@ -3,6 +3,7 @@
 
 $title = 'Directory lister';
 $progname = 'dirr';
+$git = 'git://bisqwit.iki.fi/dirr.git';
 
 $todo='';foreach(file('/home/bisqwit/src/dirr/TODO') as $s)$todo.=$s;
 

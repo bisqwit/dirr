@@ -33,8 +33,7 @@ INSTALL=install
 PROG=dirr
 OBJS=main.o pwfun.o cons.o setfun.o strfun.o colouring.o \
      getname.o getsize.o totals.o argh.o \
-     printf.o \
-     dfa_match.o
+     bitstream.o dfa_match.o printf.o
 
 ARCHDIR=archives/
 ARCHNAME=dirr-$(VERSION)
@@ -42,6 +41,7 @@ ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh config.h \
           configure config.sub1 config.sub2 config.sub3 \
           dfa_match.cc dfa_match.hh \
           colouring.cc colouring.hh \
+          bitstream.cc bitstream.hh \
           getname.cc getname.hh \
           getsize.cc getsize.hh \
           setfun.cc setfun.hh \

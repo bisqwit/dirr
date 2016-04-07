@@ -7,12 +7,16 @@
 #include <list>
 #include <set>
 
+#include "bitstream.hh"
 #include "dfa_match.hh"
 #include "likely.hh"
 #include "printf.hh"
-#include "config.h"
 
-#include <stdlib.h> // For getenv("HOME")
+static constexpr bool NFA_PRE_MINIMIZATION         = true;
+static constexpr bool DFA_DO_MINIMIZATION          = true;
+static constexpr bool DFA_PRE_CHECK_UNUSED_NODES   = false;
+static constexpr bool DFA_POST_DELETE_UNUSED_NODES = true;
+static constexpr bool DFA_POST_SORT_BY_USECOUNT    = true;
 
 struct NFAnode
 {
@@ -24,6 +28,35 @@ struct NFAnode
     // Use std::set rather than std::unordered_set, because we require
     // sorted access for efficient set_intersection (lower_bound).
 };
+
+
+/* Variable bit I/O */
+static constexpr unsigned VarBitCounts[] = {2,3,3,1,1,1,2,4,1,8,8,8,8,8,8,16,16,16,16};
+static unsigned long LoadVarBit(unsigned char* buffer, unsigned& bitpos)
+{
+    unsigned long result = 0;
+    unsigned shift = 0;
+    for(unsigned n: VarBitCounts)
+    {
+        result |= GetBits(buffer, bitpos, n) << shift;
+        if(!GetBits(buffer, bitpos, 1) || unlikely(shift >= sizeof(result)*CHAR_BIT)) break;
+        shift += n;
+    }
+    return result;
+}
+static void PutVarBit(unsigned char* buffer, unsigned& bitpos, unsigned long V)
+{
+    for(unsigned n: VarBitCounts)
+    {
+        PutBits(buffer, bitpos, V, n);
+        V >>= n;
+        PutBits(buffer, bitpos, V!=0, 1);
+        if(V==0) break;
+    }
+}
+
+
+/* Debugging facilities */
 
 static std::string str(char c)
 {
@@ -40,62 +73,6 @@ static std::string str(char c)
         default: if(c<32 || c==127) return Printf("\\%04o", (unsigned char)c);
     }
     return Printf("%c", c);
-}
-
-static void PutBits(unsigned char* buffer, unsigned& bitpos, unsigned long V, unsigned nbits)
-{
-    while(nbits > 0)
-    {
-        unsigned bytepos = bitpos/CHAR_BIT, bits_remain = CHAR_BIT-bitpos%CHAR_BIT, bits_taken = CHAR_BIT-bits_remain;
-        unsigned bits_to_write = std::min(nbits, bits_remain);
-        unsigned value_mask     = (1 << bits_to_write)-1;
-        unsigned value_to_write = V & value_mask;
-        buffer[bytepos] = (buffer[bytepos] & ~(value_mask << bits_taken)) | (value_to_write << bits_taken);
-        V >>= bits_to_write;
-        nbits  -= bits_to_write;
-        bitpos += bits_to_write;
-    }
-}
-static unsigned long GetBits(unsigned char* buffer, unsigned& bitpos, unsigned nbits)
-{
-    unsigned long result = 0, shift=0;
-    while(nbits > 0)
-    {
-        unsigned bytepos = bitpos/CHAR_BIT, bits_remain = CHAR_BIT-bitpos%CHAR_BIT, bits_taken = CHAR_BIT-bits_remain;
-        unsigned bits_to_take = std::min(nbits, bits_remain);
-        unsigned v = (buffer[bytepos] >> bits_taken) & ((1 << bits_to_take)-1);
-        result |= v << shift;
-        shift += bits_to_take;
-        nbits -= bits_to_take;
-        bitpos += bits_to_take;
-    }
-    return result;
-}
-
-static unsigned long LoadVarBit(unsigned char* buffer, unsigned& bitpos)
-{
-    unsigned long result = 0;
-    unsigned n = 2, shift = 0;
-    for(;;)
-    {
-        result |= GetBits(buffer, bitpos, n) << shift;
-        if(!GetBits(buffer, bitpos, 1)) break;
-        shift += n;
-        if(n==2) n+=4; else if(n<10) n+=8;
-    }
-    return result;
-}
-static void PutVarBit(unsigned char* buffer, unsigned& bitpos, unsigned long V)
-{
-    unsigned n = 2;
-    for(;;)
-    {
-        PutBits(buffer, bitpos, V, n);
-        V >>= n;
-        PutBits(buffer, bitpos, V!=0, 1);
-        if(V==0) break;
-        if(n==2) n+=4; else if(n<10) n+=8;
-    }
 }
 
 static void DumpDFA(const char* title, const std::vector<std::array<unsigned,256>>& states)
@@ -155,56 +132,131 @@ static void DumpNFA(const char* title, const std::vector<NFAnode>& states)
     }
 }
 
+/* The public API */
+
 void DFA_Matcher::AddMatch(const std::string& token, bool icase, int target)
 {
+    if(target < 0 || target >= 0x40000000)
+        throw std::invalid_argument(Printf("AddMatch: target must be in range 0..3FFFFFFF, %X given", target));
     matches.emplace_back(token, std::pair<int,bool>{target,icase});
+    hash.second = false;
+}
+
+void DFA_Matcher::AddMatch(std::string&& token, bool icase, int target)
+{
+    if(target < 0 || target >= 0x40000000)
+        throw std::invalid_argument(Printf("AddMatch: target must be in range 0..3FFFFFFF, %X given", target));
+    matches.emplace_back(std::move(token), std::pair<int,bool>{target,icase});
+    hash.second = false;
+}
+
+int DFA_Matcher::Test(const std::string& s, int default_value) const
+{
+    if(unlikely(statemachine.empty())) return default_value;
+    unsigned cur_state = 0;
+    for(std::size_t a=0, b=s.size(); a<=b; ++a) // Use <= to iterate '\0'.
+    {
+        // Note: C++98 guarantees that operator[] const with index==size()
+        //       returns a reference to '\0'.
+        //       C++11 added the same guarantee to non-const operator[].
+        //       Therefore, we do not need to do c_str() in this function.
+        cur_state = statemachine[cur_state][ (unsigned char)s[a] ];
+        if(cur_state >= statemachine.size())
+        {
+            cur_state -= statemachine.size();
+            return cur_state ? cur_state-1 : default_value;
+        }
+    }
+    return default_value;
+}
+
+bool DFA_Matcher::Load(std::FILE* fp)
+{
+    RecheckHash();
+
+    char StrBuf[128];
+    while(std::fgets(StrBuf, sizeof StrBuf, fp) && StrBuf[0]=='#') {}
+    if(std::stoull(StrBuf, nullptr, 16) != hash.first) return false;
+
+    try {
+        // Read the rest of the state machine
+        std::vector<unsigned char> Buf(32);
+        std::fread(&Buf[0], 1, Buf.size(), fp);
+        unsigned position   = 0;
+        unsigned num_states = LoadVarBit(&Buf[0], position);
+        unsigned num_bits   = LoadVarBit(&Buf[0], position);
+
+        if(num_states*sizeof(statemachine[0]) > 2000000)
+            throw std::invalid_argument("implausible num_states");
+
+        unsigned num_bytes = (num_bits+CHAR_BIT-1)/CHAR_BIT;
+        if(num_bytes > Buf.size())
+        {
+            unsigned already = Buf.size(), missing = num_bytes - already;
+            Buf.resize(num_bytes);
+            std::fread(&Buf[already], 1, missing, fp);
+        }
+
+        statemachine.resize(num_states);
+        for(unsigned state_no=0; state_no<statemachine.size(); ++state_no)
+        {
+            auto& data = statemachine[state_no];
+            //fprintf(stderr, "%u:", state_no);
+            for(unsigned last = 0; last < 256 && position < num_bits; )
+            {
+                unsigned end   = LoadVarBit(&Buf[0], position) + last;
+                unsigned value = LoadVarBit(&Buf[0], position);
+                if(end==last) end = last+256;
+                while(last < end && last < 256) data[last++] = value;
+            }
+        }
+        matches.clear(); // Don't need it anymore
+        return true;
+    }
+    catch(const std::invalid_argument&)
+    {
+        // Lands here if std::stoi fails to parse a number.
+    }
+    return false;
+}
+
+void DFA_Matcher::Save(std::FILE* save_fp) const
+{
+    RecheckHash();
+
+    std::fprintf(save_fp,
+        "# This file caches the DFA used by DIRR for parsing filenames.\n"
+        "# The first number is the hash of DIRR_COLORS in hexadecimal.\n"
+        "# The rest is a bitstream of a RLE-compressed state machine.\n"
+        "%llX\n",
+        hash.first);
+
+    std::vector<unsigned char> Buf;
+    unsigned numbits=0;
+    for(;;)
+    {
+        Buf.resize(256);
+        unsigned ptr=0;
+        PutVarBit(&Buf[0], ptr, statemachine.size());
+        PutVarBit(&Buf[0], ptr, numbits);
+        for(const auto& a: statemachine)
+            for(unsigned sum=0, n=0; n<=256; ++n, ++sum)
+                if(sum > 0 && (n == 256 || a[n] != a[n-1]))
+                {
+                    if(ptr/CHAR_BIT + 16 > Buf.size())
+                        Buf.resize(ptr/CHAR_BIT + 128);
+
+                    PutVarBit(&Buf[0], ptr, sum);
+                    PutVarBit(&Buf[0], ptr, a[n-1]);
+                    sum = 0;
+                }
+        if(ptr == numbits) break;
+        numbits = ptr;
+    }
+    std::fwrite(&Buf[0], 1, (numbits+CHAR_BIT-1)/CHAR_BIT, save_fp);
 }
 
 void DFA_Matcher::Compile()
-{
-    // Compose hash string
-    {std::string hash_str;
-    for(const auto& a: matches)
-    {
-        unsigned char Buf[16] {}; unsigned ptr = 0;
-        PutBits(Buf, ptr, a.second.second, 1);
-        PutVarBit(Buf, ptr, a.second.first);
-        hash_str.append(Buf, Buf+(ptr+CHAR_BIT-1)/CHAR_BIT);
-        hash_str += a.first;
-    }
-    hash = std::hash<std::string>{}(hash_str);}
-
-    std::string hash_save_fn;
-    std::FILE* save_fp = nullptr;
-    for(const std::string& path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
-    {
-        hash_save_fn = path + "/.dirr_dfa";
-        std::FILE* fp = std::fopen(hash_save_fn.c_str(), "rb");
-        if(fp)
-        {
-            bool loaded = Load(fp);
-            std::fclose(fp);
-            if(loaded)
-            {
-                matches.clear(); //Don't need it anymore
-                return;
-            }
-        }
-        // Incorrect hash. Regenerate file.
-        fp = std::fopen(hash_save_fn.c_str(), "wb");
-        if(fp) { save_fp = fp; break; }
-    }
-
-    Generate();
-
-    if(save_fp)
-    {
-        Save(save_fp);
-        std::fclose(save_fp);
-    }
-}
-
-void DFA_Matcher::Generate()
 {
     // STEP 1: Generate NFA
     std::vector<NFAnode> nfa_nodes(1); // node 0 = root
@@ -212,83 +264,86 @@ void DFA_Matcher::Generate()
     // Parse each wildmatch expression into the NFA.
     for(auto& m: matches)
     {
-        std::string&& token = std::move(m.first);
-        const int    target = m.second.first;
-        const bool    icase = m.second.second;
+        std::bitset<256> states;
 
-        auto makenode = [&]
+        auto addtransition = [&](unsigned root, unsigned newnewnode = ~0u) -> unsigned
         {
-            unsigned result = nfa_nodes.size();
-            nfa_nodes.resize(result+1);
-            return result;
-        };
-
-        std::vector<unsigned> rootnodes = { 0 };
-
-        auto addtransition = [&](unsigned root, const std::bitset<256>& states, unsigned newnewnode = ~0u) -> unsigned
-        {
-            // Check if there already is an node number that exists
-            // on this root in all given target states but in none others.
-            // This is quite optional, but it reduces the number of NFA nodes.
-            // It is a form of pre-minimization.
-            auto& cur = nfa_nodes[root];
-            std::set<unsigned> include, exclude;
-            bool first = true;
-            for(unsigned c=0; c<256; ++c)
+            if(NFA_PRE_MINIMIZATION)
             {
-                const auto& list = cur.targets[c];
-                if(states.test(c))
+                // Check if there already is an node number that exists
+                // on this root in all given target states but in none others.
+                // This is quite optional, but it dramatically reduces
+                // the number of NFA nodes, making NFA-DFA conversion faster
+                // and produce fewer nodes, which in turn makes DFA minimization faster.
+                // It is a form of pre-minimization.
+                auto& cur = nfa_nodes[root];
+                std::set<unsigned> include, exclude;
+                bool first = true;
+                for(unsigned c=0; c<256; ++c)
                 {
-                    if(first)
+                    const auto& list = cur.targets[c];
+                    if(states.test(c))
                     {
-                        first = false;
-                        include.insert( list.begin(), list.end() );
+                        if(first)
+                        {
+                            first = false;
+                            include.insert( list.begin(), list.end() );
+                        }
+                        else
+                        {
+                            if(include.empty()) break;
+                            // Delete those include-elements that are not in list[]
+                            // (Set intersection)
+                            auto j = list.begin();
+                            bool first = true;
+                            for(auto i = include.begin(); i != include.end(); )
+                            {
+                                if(first)
+                                    { j = list.lower_bound(*i); first = false; }
+                                else
+                                    while(j != list.end() && *j < *i) ++j;
+                                if(j == list.end() || *j != *i)
+                                    i = include.erase(i);
+                                else
+                                    ++i;
+                            }
+                        }
                     }
                     else
                     {
-                        if(include.empty()) break;
-                        // Delete those include-elements that are not in list[]
-                        // (Set intersection)
-                        auto j = list.begin();
-                        bool first = true;
-                        for(auto i = include.begin(); i != include.end(); )
-                        {
-                            if(first)
-                                { j = list.lower_bound(*i); first = false; }
-                            else
-                                while(j != list.end() && *j < *i) ++j;
-                            if(j == list.end() || *j != *i)
-                                i = include.erase(i);
-                            else
-                                ++i;
-                        }
+                        exclude.insert( list.begin(), list.end() );
                     }
                 }
-                else
-                {
-                    exclude.insert( list.begin(), list.end() );
-                }
+                for(auto e: exclude) include.erase(e);
+                if(!include.empty()) return *include.begin();
             }
-            for(auto e: exclude) include.erase(e);
-            if(!include.empty()) return *include.begin();
 
             unsigned next = newnewnode;
-            if(next == ~0u) next = makenode();
+            if(next == ~0u)
+            {
+                // Make new node
+                next = nfa_nodes.size();
+                nfa_nodes.resize(next+1);
+            }
 
-            auto& cur1 = nfa_nodes[root];
+            auto& cur = nfa_nodes[root];
             for(unsigned c=0; c<256; ++c)
                 if(states.test(c))
-                    cur1.targets[c].insert(next);
+                    cur.targets[c].insert(next);
             return next;
         };
 
         /* Translate a glob pattern (wildcard match) into a NFA */
-        std::bitset<256> states;
+        std::string&& token = std::move(m.first);
+        const int    target = m.second.first;
+        const bool    icase = m.second.second;
 
         unsigned pos=0;
         auto end  = [&] { return pos >= token.size(); };
         auto cget = [&] { return end() ? 0x00 : (unsigned char) token[pos++]; };
         auto unget = [&] { if(pos>0) --pos; };
+
+        std::vector<unsigned> rootnodes = { 0 };
 
         while(!end())
             switch(unsigned c = cget())
@@ -302,7 +357,7 @@ void DFA_Matcher::Generate()
                     unsigned newnewnode = ~0u;
                     for(auto root: rootnodes)
                     {
-                        unsigned nextnode = addtransition(root, states, newnewnode);
+                        unsigned nextnode = addtransition(root, newnewnode);
                         if(nextnode != root)
                         {
                             // Loop the next node into itself
@@ -385,7 +440,7 @@ void DFA_Matcher::Generate()
                     unsigned newnewnode = ~0u;
                     for(auto root: rootnodes)
                     {
-                        unsigned newnode = addtransition(root, states, newnewnode);
+                        unsigned newnode = addtransition(root, newnewnode);
                         // newnewnode records the newly created node, so that in case
                         // we need to create new child nodes in multiple roots, we can
                         // use the same child node for all of them.
@@ -428,7 +483,9 @@ void DFA_Matcher::Generate()
                 // If there are many, the grammar is ambiguous.
                 return *l;
             }
-            std::vector<unsigned char> Buf(targets.size()*8);
+
+            // Find a newnode that combines the given target nodes.
+            std::vector<unsigned char> Buf(targets.size()*6);
             unsigned ptr=0;
             for(auto k: targets) PutVarBit(&Buf[0], ptr, k);
             std::string target_key(&Buf[0], &Buf[(ptr+CHAR_BIT-1)/CHAR_BIT]);
@@ -510,25 +567,29 @@ void DFA_Matcher::Generate()
     nfa_nodes.clear();
 
     // STEP 4: Finally, minimalize the DFA (state machine).
-    if(true)
+    if(DFA_DO_MINIMIZATION)
     {
         //DumpDFA("DFA before minimization", statemachine);
 
         // Find out if there are any unreachable states in the DFA
-        /*std::set<unsigned> reached, unvisited{0};
-        while(!unvisited.empty())
+        if(DFA_PRE_CHECK_UNUSED_NODES)
         {
-            unsigned state = *unvisited.begin();
-            unvisited.erase(unvisited.begin());
-            reached.insert(state);
-            for(auto v: statemachine[state])
-                if(v < statemachine.size())
-                    if(reached.find(v) == reached.end())
-                        unvisited.insert(v);
+            std::set<unsigned> reached, unvisited{0};
+            while(!unvisited.empty())
+            {
+                unsigned state = *unvisited.begin();
+                unvisited.erase(unvisited.begin());
+                reached.insert(state);
+                for(auto v: statemachine[state])
+                    if(v < statemachine.size())
+                        if(reached.find(v) == reached.end())
+                            unvisited.insert(v);
+            }
+            // I have never seen this find unused states.
+            if(reached.size() != statemachine.size())
+                printf("%u states, but only %u reached\n",
+                    (int)statemachine.size(), (int)reached.size());
         }
-        if(reached.size() != statemachine.size())
-            printf("%u states, but only %u reached\n",
-                (int)statemachine.size(), (int)reached.size());*/
 
         // Groups of states
         typedef std::list<unsigned> group_t;
@@ -604,52 +665,62 @@ void DFA_Matcher::Generate()
         // referred, so that most referred groups get smallest numbers.
         // This helps shrink down the .dirr_dfa file size.
     recalculate_uses:
-        // VERY IMPORTANT: Make sure that whichever group contains the
-        // original state 0, emerges as group 0 in the new ordering.
-        groups[mapping.find(0)->second].uses = 0x80000000u;
-        for(unsigned groupno=0; groupno<groups.size(); ++groupno)
+        if(DFA_POST_DELETE_UNUSED_NODES || DFA_POST_SORT_BY_USECOUNT)
         {
-            if(groups[groupno].unused) continue;
-            groups[groupno].originalnumber = groupno;
-
-            for(unsigned v: statemachine[*groups[groupno].group.begin()])
-                if(v < statemachine.size())
-                    ++groups[mapping.find(v)->second].uses;
-        }
-        // Go over the groups and check if some of them were unused
-        bool found_unused = false;
-        for(auto& g: groups)
-            if(!g.unused && g.uses == 0)
-                g.unused = found_unused = true;
-        if(found_unused)
-            { for(auto& g: groups) g.uses = 0; goto recalculate_uses; }
-
-        // Sort groups according to their use.
-        // The group that contained state 0 will emerge as group 0.
-        std::sort(groups.begin(), groups.end(), [](const groupdata& a, const groupdata& b)
-        {
-            return a.uses > b.uses;
-        });
-
-        // Delete groups that are never used
-        groups.erase(std::remove_if(groups.begin(),groups.end(),[](const groupdata& g)
-        {
-            return g.unused;
-        }), groups.end());
-
-        // Rewrite the mappings to reflect the new sorted order
-        {std::unordered_map<unsigned,unsigned> rewritten_mappings;
-        for(unsigned groupno=0; groupno<groups.size(); ++groupno)
-            rewritten_mappings.emplace(groups[groupno].originalnumber, groupno);
-        for(auto& m: mapping)
-            if(!(m.second & 0x80000000u))
+            // VERY IMPORTANT: Make sure that whichever group contains the
+            // original state 0, emerges as group 0 in the new ordering.
+            groups[mapping.find(0)->second].uses = 0x80000000u;
+            for(unsigned groupno=0; groupno<groups.size(); ++groupno)
             {
-                auto i = rewritten_mappings.find(m.second);
-                if(i != rewritten_mappings.end())
-                    m.second = i->second;
-                else
-                    m.second = ~0u;
-        }   }
+                if(groups[groupno].unused) continue;
+                groups[groupno].originalnumber = groupno;
+
+                for(unsigned v: statemachine[*groups[groupno].group.begin()])
+                    if(v < statemachine.size())
+                        ++groups[mapping.find(v)->second].uses;
+            }
+        }
+        if(DFA_POST_DELETE_UNUSED_NODES)
+        {
+            // Go over the groups and check if some of them were unused
+            bool found_unused = false;
+            for(auto& g: groups)
+                if(!g.unused && g.uses == 0)
+                    g.unused = found_unused = true;
+            if(found_unused)
+                { for(auto& g: groups) g.uses = 0; goto recalculate_uses; }
+            // Didn't find new unused groups.
+            // Now delete groups that were previously found to be unused.
+            groups.erase(std::remove_if(groups.begin(),groups.end(),[](const groupdata& g)
+            {
+                return g.unused;
+            }), groups.end());
+        }
+        if(DFA_POST_SORT_BY_USECOUNT)
+        {
+            // Sort groups according to their use.
+            // The group that contained state 0 will emerge as group 0.
+            std::sort(groups.begin(), groups.end(), [](const groupdata& a, const groupdata& b)
+            {
+                return a.uses > b.uses;
+            });
+        }
+        if(DFA_POST_SORT_BY_USECOUNT || DFA_POST_DELETE_UNUSED_NODES)
+        {
+            // Rewrite the mappings to reflect the new sorted order
+            std::unordered_map<unsigned,unsigned> rewritten_mappings;
+            for(unsigned groupno=0; groupno<groups.size(); ++groupno)
+                rewritten_mappings.emplace(groups[groupno].originalnumber, groupno);
+            for(auto& m: mapping)
+                if(!(m.second & 0x80000000u))
+                {
+                    auto i = rewritten_mappings.find(m.second);
+                    if(i != rewritten_mappings.end())
+                        m.second = i->second;
+                    else
+                        m.second = ~0u;
+                }
+        }
 
         // Create a new state machine based on these groups
         std::vector<std::array<unsigned,256>> newstates(groups.size());
@@ -674,101 +745,21 @@ void DFA_Matcher::Generate()
     }
 }
 
-bool DFA_Matcher::Load(std::FILE* fp)
+/* The only private function */
+
+void DFA_Matcher::RecheckHash() const
 {
-    char StrBuf[128];
-    try {
-        while(std::fgets(StrBuf, sizeof StrBuf, fp) && StrBuf[0]=='#') {}
-        if(std::stoull(StrBuf, nullptr, 16) == hash)
-        {
-            // Read the rest of the state machine
-            std::vector<unsigned char> Buf(32);
-            std::fread(&Buf[0], 1, Buf.size(), fp);
-            unsigned position   = 0;
-            unsigned num_states = LoadVarBit(&Buf[0], position);
-            unsigned num_bits   = LoadVarBit(&Buf[0], position);
-
-            if(num_states*sizeof(statemachine[0]) > 2000000)
-                throw std::invalid_argument("implausible num_states");
-
-            unsigned num_bytes = (num_bits+CHAR_BIT-1)/CHAR_BIT;
-            if(num_bytes > Buf.size())
-            {
-                unsigned already = Buf.size(), missing = num_bytes - already;
-                Buf.resize(num_bytes);
-                std::fread(&Buf[already], 1, missing, fp);
-            }
-
-            statemachine.resize(num_states);
-            for(unsigned state_no=0; state_no<statemachine.size(); ++state_no)
-            {
-                auto& data = statemachine[state_no];
-                //fprintf(stderr, "%u:", state_no);
-                for(unsigned last = 0; last < 256 && position < num_bits; )
-                {
-                    unsigned end   = LoadVarBit(&Buf[0], position) + last;
-                    unsigned value = LoadVarBit(&Buf[0], position);
-                    if(end==last) end = last+256;
-                    while(last < end && last < 256) data[last++] = value;
-                }
-            }
-            return true;
-        }
-    }
-    catch(const std::invalid_argument&)
+    // Check whether the hash is already valid
+    if(likely(hash.second)) return;
+    // Compose hash string
+    std::string hash_str;
+    for(const auto& a: matches)
     {
-        // Lands here if std::stoi fails to parse a number.
+        hash_str += a.first;
+        unsigned char Buf[16] {}; unsigned ptr = 0;
+        PutVarBit(Buf, ptr, a.second.first);
+        PutBits(Buf, ptr, a.second.second+2, 2);
+        hash_str.append(Buf, Buf+(ptr+CHAR_BIT-1)/CHAR_BIT);
     }
-    return false;
-}
-
-void DFA_Matcher::Save(std::FILE* save_fp) const
-{
-    std::fprintf(save_fp,
-        "# This file caches the DFA used by DIRR for parsing filenames.\n"
-        "# The first number is the hash of DIRR_COLORS in hexadecimal.\n"
-        "# The rest is a bitstream of a RLE-compressed state machine.\n"
-        "%llX\n",
-        hash);
-
-    std::vector<unsigned char> Buf;
-    unsigned numbits=0;
-    for(;;)
-    {
-        Buf.resize(256);
-        unsigned ptr=0;
-        PutVarBit(&Buf[0], ptr, statemachine.size());
-        PutVarBit(&Buf[0], ptr, numbits);
-        for(const auto& a: statemachine)
-            for(unsigned sum=0, n=0; n<=256; ++n, ++sum)
-                if(sum > 0 && (n == 256 || a[n] != a[n-1]))
-                {
-                    if(ptr/CHAR_BIT + 16 > Buf.size())
-                        Buf.resize(ptr/CHAR_BIT + 128);
-
-                    PutVarBit(&Buf[0], ptr, sum);
-                    PutVarBit(&Buf[0], ptr, a[n-1]);
-                    sum = 0;
-                }
-        if(ptr == numbits) break;
-        numbits = ptr;
-    }
-    std::fwrite(&Buf[0], 1, (numbits+CHAR_BIT-1)/CHAR_BIT, save_fp);
-}
-
-int DFA_Matcher::Test(const std::string& s, int default_value) const
-{
-    if(unlikely(statemachine.empty())) return default_value;
-    unsigned cur_state = 0;
-    const char* str = s.c_str(); // Use c_str() because we also need '\0'.
-    for(std::size_t a=0, b=s.size(); a<=b; ++a) // Use <= to iterate '\0'.
-    {
-        cur_state = statemachine[cur_state][ (unsigned char) str[a] ];
-        if(cur_state >= statemachine.size())
-        {
-            cur_state -= statemachine.size();
-            return cur_state ? cur_state-1 : default_value;
-        }
-    }
-    return default_value;
+    hash = { std::hash<std::string>{}(hash_str), true };
 }

@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <algorithm>
 
+#include <stdlib.h> // For getenv("HOME")
+
 //#include <regex>
 //#include "wildmatch.hh"
 #include "dfa_match.hh"
@@ -248,7 +250,7 @@ private:
                         pos = spacepos;
                         continue;
                     }
-                    byext_sets.AddMatch(token, ignore_case, color);
+                    byext_sets.AddMatch(std::move(token), ignore_case, color);
                     pos = spacepos;
                 }
             }
@@ -279,7 +281,32 @@ private:
                 }
             }
         }
-        byext_sets.Compile();
+
+        // Load/Compile/Save byext_sets for use by NameColor()
+        std::FILE* save_fp = nullptr;
+        bool loaded = false;
+        for(const std::string& path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
+        {
+            std::string hash_save_fn = path + "/.dirr_dfa";
+            std::FILE* fp = std::fopen(hash_save_fn.c_str(), "rb");
+            if(fp)
+            {
+                loaded = byext_sets.Load(fp);
+                std::fclose(fp);
+            }
+            if(loaded) break;
+            // File format error. Regenerate file.
+            fp = std::fopen(hash_save_fn.c_str(), "wb");
+            if(fp) { save_fp = fp; break; }
+        }
+
+        if(!loaded) byext_sets.Compile();
+
+        if(save_fp && !loaded)
+        {
+            byext_sets.Save(save_fp);
+            std::fclose(save_fp);
+        }
     }
 } Settings;
 
