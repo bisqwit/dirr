@@ -137,7 +137,7 @@ static void DumpNFA(const char* title, const std::vector<NFAnode>& states)
 void DFA_Matcher::AddMatch(const std::string& token, bool icase, int target)
 {
     if(target < 0 || target >= 0x40000000)
-        throw std::invalid_argument(Printf("AddMatch: target must be in range 0..3FFFFFFF, %X given", target));
+        throw std::out_of_range(Printf("AddMatch: target must be in range 0..3FFFFFFF, %X given", target));
     matches.emplace_back(token, std::pair<int,bool>{target,icase});
     hash.second = false;
 }
@@ -145,7 +145,7 @@ void DFA_Matcher::AddMatch(const std::string& token, bool icase, int target)
 void DFA_Matcher::AddMatch(std::string&& token, bool icase, int target)
 {
     if(target < 0 || target >= 0x40000000)
-        throw std::invalid_argument(Printf("AddMatch: target must be in range 0..3FFFFFFF, %X given", target));
+        throw std::out_of_range(Printf("AddMatch: target must be in range 0..3FFFFFFF, %X given", target));
     matches.emplace_back(std::move(token), std::pair<int,bool>{target,icase});
     hash.second = false;
 }
@@ -176,48 +176,55 @@ bool DFA_Matcher::Load(std::FILE* fp)
 
     char StrBuf[128];
     while(std::fgets(StrBuf, sizeof StrBuf, fp) && StrBuf[0]=='#') {}
-    if(std::stoull(StrBuf, nullptr, 16) != hash.first) return false;
-
     try {
-        // Read the rest of the state machine
-        std::vector<unsigned char> Buf(32);
-        std::fread(&Buf[0], 1, Buf.size(), fp);
-        unsigned position   = 0;
-        unsigned num_states = LoadVarBit(&Buf[0], position);
-        unsigned num_bits   = LoadVarBit(&Buf[0], position);
-
-        if(num_states*sizeof(statemachine[0]) > 2000000)
-            throw std::invalid_argument("implausible num_states");
-
-        unsigned num_bytes = (num_bits+CHAR_BIT-1)/CHAR_BIT;
-        if(num_bytes > Buf.size())
-        {
-            unsigned already = Buf.size(), missing = num_bytes - already;
-            Buf.resize(num_bytes);
-            std::fread(&Buf[already], 1, missing, fp);
-        }
-
-        statemachine.resize(num_states);
-        for(unsigned state_no=0; state_no<statemachine.size(); ++state_no)
-        {
-            auto& data = statemachine[state_no];
-            //fprintf(stderr, "%u:", state_no);
-            for(unsigned last = 0; last < 256 && position < num_bits; )
-            {
-                unsigned end   = LoadVarBit(&Buf[0], position) + last;
-                unsigned value = LoadVarBit(&Buf[0], position);
-                if(end==last) end = last+256;
-                while(last < end && last < 256) data[last++] = value;
-            }
-        }
-        matches.clear(); // Don't need it anymore
-        return true;
+        if(std::stoull(StrBuf, nullptr, 16) != hash.first) return false;
     }
     catch(const std::invalid_argument&)
     {
         // Lands here if std::stoi fails to parse a number.
+        return false;
     }
-    return false;
+
+    // Read the rest of the state machine
+    std::vector<unsigned char> Buf(32);
+    std::fread(&Buf[0], 1, Buf.size(), fp);
+    unsigned position   = 0;
+    unsigned num_states = LoadVarBit(&Buf[0], position);
+    unsigned num_bits   = LoadVarBit(&Buf[0], position);
+
+    if(num_states*sizeof(statemachine[0]) > 8000000
+    || num_bits > num_states*256*42)
+    {
+        // implausible num_states
+        return false;
+    }
+
+    unsigned num_bytes = (num_bits+CHAR_BIT-1)/CHAR_BIT;
+    if(num_bytes > Buf.size())
+    {
+        unsigned already = Buf.size(), missing = num_bytes - already;
+        Buf.resize(num_bytes);
+        std::fread(&Buf[already], 1, missing, fp);
+    }
+
+    statemachine.resize(num_states);
+    for(unsigned state_no=0; state_no<statemachine.size(); ++state_no)
+    {
+        auto& data = statemachine[state_no];
+        //fprintf(stderr, "%u:", state_no);
+        for(unsigned last = 0; last < 256; )
+        {
+            if(position >= num_bits) return false;
+            unsigned end   = LoadVarBit(&Buf[0], position) + last;
+            unsigned value = LoadVarBit(&Buf[0], position);
+            if(end==last) end = last+256;
+            while(last < end && last < 256) data[last++] = value;
+        }
+    }
+    if(position != num_bits) return false;
+
+    matches.clear(); // Don't need it anymore
+    return true;
 }
 
 void DFA_Matcher::Save(std::FILE* save_fp) const
@@ -231,11 +238,10 @@ void DFA_Matcher::Save(std::FILE* save_fp) const
         "%llX\n",
         hash.first);
 
-    std::vector<unsigned char> Buf;
+    std::vector<unsigned char> Buf(32);
     unsigned numbits=0;
-    for(;;)
+    for(unsigned round=0; ; )
     {
-        Buf.resize(256);
         unsigned ptr=0;
         PutVarBit(&Buf[0], ptr, statemachine.size());
         PutVarBit(&Buf[0], ptr, numbits);
@@ -250,14 +256,23 @@ void DFA_Matcher::Save(std::FILE* save_fp) const
                     PutVarBit(&Buf[0], ptr, a[n-1]);
                     sum = 0;
                 }
+        // TODO: Figure out whether this loop is guaranteed
+        //       to terminate eventually
         if(ptr == numbits) break;
         numbits = ptr;
+
+        if(++round >= 256)
+        {
+            throw std::runtime_error("Potentially infinite loop in DFA_Matcher::Save()");
+        }
     }
     std::fwrite(&Buf[0], 1, (numbits+CHAR_BIT-1)/CHAR_BIT, save_fp);
 }
 
 void DFA_Matcher::Compile()
 {
+    RecheckHash(); // Calculate the hash before deleting matches[]
+
     // STEP 1: Generate NFA
     std::vector<NFAnode> nfa_nodes(1); // node 0 = root
 
