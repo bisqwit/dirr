@@ -176,6 +176,20 @@ else
   fi
 fi
 
+do_echo -n "Checking for std::shared_timed_mutex without -pthread... "
+if cc_check '<shared_mutex>' "$CPPFLAGS" 'std::shared_timed_mutex test; test.lock(); test.unlock();'; then
+  do_echo Yes
+else
+  do_echo No
+  do_echo -n "Checking for std::shared_timed_mutex with -pthread... "
+  if cc_check '<shared_mutex>' "$CPPFLAGS -pthread" 'std::shared_timed_mutex test; test.lock(); test.unlock();'; then
+    do_echo Yes
+    LDFLAGS="$LDFLAGS -pthread"
+  else
+    do_echo No
+  fi
+fi
+
 do_echo -n "Checking for -Ofast... "
 if cc_check '<stdio.h>' '-Ofast' ''; then
   do_echo Yes

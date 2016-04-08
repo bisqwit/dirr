@@ -870,7 +870,7 @@ static void DirChangeCheck(std::string Source)
     std::size_t ss = Source.size();
     // Remove trailing /./ and /
     while(ss >= 1 && Source[ss-1] == '/')
-        { --ss; if(ss>=2 || (Source[ss-2]=='/' && Source[ss-1] == '.')) --ss; }
+        { --ss; if(ss>=2 && Source[ss-2]=='/' && Source[ss-1] == '.') ss -= 2; }
     Source.erase(ss);
 
     if(LastDir != Source)

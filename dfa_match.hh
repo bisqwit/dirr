@@ -1,7 +1,12 @@
 #include <string>  // std::string
 #include <istream> // std::istream
 #include <ostream> // std::ostream
-#include <mutex>   // std::mutex for thread-safety
+
+#if __cplusplus >= 201402L
+# include <shared_mutex>
+#else
+# include <mutex>   // std::mutex for thread-safety
+#endif
 
 class DFA_Matcher
 {
@@ -68,9 +73,12 @@ public:
      *         or if the file has invalid format.
      *         If the load succeeds, Valid() will be true.
      *
+     * If ignore_hash=true, Load() can be used to load any
+     * previously saved state machine, without calling AddMatch().
+     *
      * Return value:
      *   true if the load succeeds.
-     *   false if the load fails. Statemachine will be in undefined state.
+     *   false if the load fails. Statemachine will not be modified.
      *
      * Exceptions:
      *   Any exception that can be thrown by std::vector::resize()
@@ -82,7 +90,8 @@ public:
      * need to do the AddMatch() calls; the load will fail if the file
      * contains a different state machine.
      */
-    bool Load(std::istream& f);
+    bool Load(std::istream& f, bool ignore_hash=false);
+    bool Load(std::istream&& f, bool ignore_hash=false);
 
     /* Save(): Saves the compiled statemachine into a file.
      *         Can only be called when a statemachine is Valid().
@@ -95,6 +104,7 @@ public:
      *   or false whether this can happen).
      */
     void Save(std::ostream& f) const;
+    void Save(std::ostream&& f) const;
 
     /* Valid(): Returns true if the statemachine has been successfully
      *          loaded with Load() or compiled with Compile().
@@ -106,9 +116,10 @@ public:
     // Ones not marked noexcept can throw allocator-related exceptions.
     DFA_Matcher();
     DFA_Matcher(const DFA_Matcher&);
-    DFA_Matcher(DFA_Matcher&&) noexcept;
-    virtual ~DFA_Matcher();
     DFA_Matcher& operator=(const DFA_Matcher&);
+    virtual ~DFA_Matcher();
+
+    DFA_Matcher(DFA_Matcher&&) noexcept;
     DFA_Matcher& operator=(DFA_Matcher&&) noexcept;
 
     // A convenience constructor that allows doing
@@ -123,5 +134,12 @@ public:
 private:
     struct Data;
     Data* data;
+#if __cplusplus >= 201402L
+    // Would use std::shared_mutex (C++17), but libstdc++
+    // as of GCC 5.3.1 only supports std::shared_timed_mutex.
+    // Same goes for libc++ as of Clang++ version 3.6.2.
+    mutable std::shared_timed_mutex lock{};
+#else
     mutable std::mutex lock{};
+#endif
 };

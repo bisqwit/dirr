@@ -1,49 +1,119 @@
+//#define DEBUG
+
 #include <memory>
 #include <utility>   // for std::hash
 #include <array>
 #include <vector>
 #include <bitset>
 #include <unordered_map>
-#include <algorithm> // For sort & unique
+#include <algorithm> // For sort, unique, min
 #include <climits>   // For CHAR_BIT
 #include <list>
 #include <set>
 
 #ifdef DEBUG
  #include <iostream> // For std::cout, used in DumpNFA and DumpDFA
+ #include <iomanip>
 #endif
 
-#include "bitstream.hh"
 #include "dfa_match.hh"
-#include "likely.hh"
-#include "printf.hh"
+
+#ifdef __GNUC__
+# define likely(x)       __builtin_expect(!!(x), 1)
+# define unlikely(x)     __builtin_expect(!!(x), 0)
+#else
+# define likely(x)   (x)
+# define unlikely(x) (x)
+#endif
+
+/* CONFIGURATION OPTIONS */
 
 // Whether to minimize the NFA as it is being generated.
+// Recommended, as it makes pretty every step of Compile() faster,
+// at the expense of slightly more work during the first phase.
 static constexpr bool NFA_PRE_MINIMIZATION         = true;
-// Whether to minimize the DFA
+
+// Whether to minimize the DFA (recommended, as it brings down
+// the size of the state machine, and helps it stay better in cache)
 static constexpr bool DFA_DO_MINIMIZATION          = true;
+
 // Whether to check for unused nodes before minimizing the DFA
+// (currently does not seem to be helpful)
 static constexpr bool DFA_PRE_CHECK_UNUSED_NODES   = false;
+
 // Whether to delete unused nodes after minimizing the DFA
+// (currently seems to help a bit)
 static constexpr bool DFA_POST_DELETE_UNUSED_NODES = true;
+
 // Whether to sort the DFA so most used nodes are first
+// (it may help with cache efficiency, and it will make
+// the Save() data smaller)
 static constexpr bool DFA_POST_SORT_BY_USECOUNT    = true;
 
 
-/* In NFA, 00000000-7FFFFFFF = nodes, 80000000-FFFFFFFF = terminals */
+/* INTERNAL OPTIONS */
+
+// NFA number space:
+//  0<=n<NFAOPT_NEWNODE_OFFSET                  : Space for NFA node numbers after parsing (non-accepting states)
+//  NFAOPT_NEWNODE_OFFSET<=n<NFA_TERMINAL_OFFSET: Space for NFA node numbers after determinization (non-accepting states)
+//  NFA_TERMINAL_OFFSET<=n                      : Space for "target" values (accept states)
 static constexpr unsigned NFA_TERMINAL_OFFSET               = 0x80000000u;
-/* In NFA determinization, 00000000-0FFFFFFF = old nodes, 10000000-7FFFFFFF = new nodes */
 static constexpr unsigned NFAOPT_NEWNODE_OFFSET             = 0x10000000u;
-/* In DFA minimization, 80000000-FFFFFFFF = terminals, 00000000-7FFFFFFF = nodes */
+
+// DFA numbers space during minimization:
+//  0<=n<DFAOPT_TERMINAL_OFFSET : Space for DFA node numbers (non-accepting states)
+//  DFAOPT_TERMINAL_OFFSET<=n   : Space for "target" values (accept states)
 static constexpr unsigned DFAOPT_TERMINAL_OFFSET            = 0x80000000u;
-/* A high enough value that it's guaranteed to put this group on top of the sorting list,
- * but not too high that it will cause arithmetic overflow when incrementing the usecount:
- */
+
+// A high enough value that it's guaranteed to put this group
+// on top of the sorting list, but not too high that it will
+// cause arithmetic overflow when incrementing the usecount:
 static constexpr unsigned DFAOPT_IMPLAUSIBLE_HIGH_USE_COUNT = 0x80000000u;
 
 
+/* Bit I/O */
+static void PutBits(void* memory, unsigned& bitpos, unsigned long long V, unsigned nbits)
+{
+    unsigned char* buffer = reinterpret_cast<unsigned char*>(memory);
+    while(nbits > 0)
+    {
+        unsigned bytepos = bitpos/CHAR_BIT, bits_remain = CHAR_BIT-bitpos%CHAR_BIT, bits_taken = CHAR_BIT-bits_remain;
+        unsigned bits_to_write = std::min(nbits, bits_remain);
+        unsigned value_mask     = (1 << bits_to_write)-1;
+        unsigned value_to_write = V & value_mask;
+        buffer[bytepos] = (buffer[bytepos] & ~(value_mask << bits_taken)) | (value_to_write << bits_taken);
+        V >>= bits_to_write;
+        nbits  -= bits_to_write;
+        bitpos += bits_to_write;
+    }
+}
+
+static unsigned long long GetBits(const void* memory, unsigned& bitpos, unsigned nbits)
+{
+    const unsigned char* buffer = reinterpret_cast<const unsigned char*>(memory);
+    unsigned long long result = 0;
+    for(unsigned shift=0; nbits > 0; )
+    {
+        unsigned bytepos = bitpos/CHAR_BIT, bits_remain = CHAR_BIT-bitpos%CHAR_BIT, bits_taken = CHAR_BIT-bits_remain;
+        unsigned bits_to_take = std::min(nbits, bits_remain);
+        unsigned v = (buffer[bytepos] >> bits_taken) & ((1 << bits_to_take)-1);
+        result |= v << shift;
+        shift += bits_to_take;
+        nbits -= bits_to_take;
+        bitpos += bits_to_take;
+    }
+    return result;
+}
+
 /* Variable bit I/O */
-static constexpr unsigned VarBitCounts[] = {2,3,3,1,1,1,2,4,1,8,8,8,8,8,8,16,16,16,16};
+#ifndef PUTBIT_OPTIMIZER
+static constexpr std::initializer_list<unsigned> VarBitCounts = {2,3,3,1,1,8,6,8,8,8,8,8,8};
+static constexpr char hash_offset = '*';
+#else
+static std::vector<unsigned> VarBitCounts = {2,3,3,1,1,8,6,8,8,8,8,8,8};
+static char hash_offset = '*';
+#endif
+
 // VarBitCounts[] is hand-optimized to produce the smallest save file for DIRR.
 static unsigned long long LoadVarBit(const void* buffer, unsigned& bitpos)
 {
@@ -68,12 +138,20 @@ static void PutVarBit(void* buffer, unsigned& bitpos, unsigned long long V)
     }
 }
 
+static void PutVarBit(std::vector<char>& buffer, unsigned& bitpos, unsigned long long V)
+{
+    // Make sure there's room to work
+    if(buffer.size() < (bitpos/CHAR_BIT) + 32)
+    {
+        buffer.resize(buffer.size() + (bitpos/CHAR_BIT) + 128);
+    }
+    PutVarBit(&buffer[0], bitpos, V);
+}
 
 /* Private data */
 struct DFA_Matcher::Data
 {
-    mutable unsigned long long hash{};
-    mutable bool               hash_valid{false};
+    mutable std::vector<char> hash_buf{};
 
     /* Collect data from AddMatch() */
     struct Match { std::string token; int target; bool icase; };
@@ -90,19 +168,36 @@ public:
     void RecheckHash() const
     {
         // Check whether the hash is already valid
-        if(likely(hash_valid)) return;
+        if(likely(!hash_buf.empty())) return;
         // Compose hash string
-        std::string hash_str;
+        unsigned ptr = 0;
+        PutVarBit(hash_buf, ptr, matches.size());
         for(const auto& a: matches)
         {
-            char Buf[16] {}; unsigned ptr = 0;
-            PutVarBit(Buf, ptr, a.target);
-            PutBits(Buf, ptr, a.icase, 2);
-            hash_str.append(Buf, Buf+(ptr+CHAR_BIT-1)/CHAR_BIT);
-            hash_str += a.target;
+            for(char c: a.token) PutVarBit(hash_buf, ptr, (c-hash_offset) & 0xFF);
+            PutVarBit(hash_buf, ptr, (0x00-hash_offset)&0xFF);
+            PutVarBit(hash_buf, ptr, a.target);
+            PutBits(&hash_buf[0], ptr, a.icase, 1);
         }
-        hash       = std::hash<std::string>{}(hash_str);
-        hash_valid = true;
+        hash_buf.resize((ptr+CHAR_BIT-1)/CHAR_BIT);
+    }
+    void LoadFromHash()
+    {
+        // Recompose matches[] from hash_buf
+        if(hash_buf.empty()) return;
+        unsigned ptr = 0, nmatches = LoadVarBit(&hash_buf[0], ptr);
+        matches.assign(nmatches, Match{});
+        for(auto& m: matches)
+        {
+            while(ptr/CHAR_BIT < hash_buf.size())
+            {
+                char c = (LoadVarBit(&hash_buf[0], ptr) + hash_offset) & 0xFF;
+                if(!c) break;
+                m.token += c;
+            }
+            m.target = LoadVarBit(&hash_buf[0], ptr);
+            m.icase  = GetBits(&hash_buf[0], ptr, 1);
+        }
     }
 };
 
@@ -114,33 +209,44 @@ typedef std::array<std::set<unsigned/*target node number*/>, 256> NFAnode;
 // sorted access for efficient set_intersection (lower_bound).
 
 
+/* Facilities for read/write locks */
+
+#if __cplusplus >= 201402L
+# define lock_reading(lk,l) std::shared_lock<std::shared_timed_mutex> lk(l)
+# define lock_writing(lk,l) std::lock_guard<std::shared_timed_mutex> lk(l)
+#else
+# define lock_reading(lk,l) std::lock_guard<std::mutex> lk(l)
+# define lock_writing(lk,l) std::lock_guard<std::mutex> lk(l)
+#endif
+
 
 /* Debugging facilities */
 
 #ifdef DEBUG
-static std::string str(char c)
+static std::ostream& str(std::ostream& o, char c)
 {
     switch(c)
     {
-        case '\n': return "\\n";
-        case '\r': return "\\r";
-        case '\t': return "\\t";
-        case '\b': return "\\b";
-        case '\0': return "\\0";
-        case '\\': return "\\\\";
-        case '\"': return "\\\"";
-        case '\'': return "\\'";
-        default: if(c<32 || c==127) return Printf("\\x%02X", (unsigned char)c);
+        case '\n': return o << R"(\n)";
+        case '\r': return o << R"(\r)";
+        case '\t': return o << R"(\t)";
+        case '\b': return o << R"(\b)";
+        case '\0': return o << R"(\0)";
+        case '\\': return o << R"(\\)";
+        case '\"': return o << R"(\")";
+        case '\'': return o << R"(\')";
+        default: if(c<32 || c==127) return
+                    o << std::showbase << std::hex << (c & 0xFFu);
     }
-    return Printf("%c", c);
+    return o << char(c);
 }
 
 static void DumpDFA(std::ostream& o, const char* title, const std::vector<std::array<unsigned,256>>& states)
 {
-    std::string result = Printf("%s\n", title);
+    o << title << '\n';
     for(unsigned n=0; n<states.size(); ++n)
     {
-        result += Printf("State %u:\n", n);
+        o << "State " << std::dec << n << ":\n";
         const auto& s = states[n];
         std::string prev; unsigned first=0;
         for(unsigned c=0; c<=256; ++c)
@@ -150,27 +256,26 @@ static void DumpDFA(std::ostream& o, const char* title, const std::vector<std::a
             if(c < 256)
             {
                 if(s[c] < states.size())
-                    t += Printf(" %u", s[c]);
+                    { t += ' '; t += std::to_string(s[c]); }
                 else if(s[c] > states.size())
-                    t += Printf(" accept %d", s[c] - states.size()-1);
+                    { t += " accept "; t += std::to_string(s[c] - states.size()-1); }
             }
             if(c==256 || t != prev) flush = true;
             if(flush && c > 0 && !prev.empty())
             {
-                result += Printf("  in %5s .. %5s: %s\n", str(first).c_str(), str(c-1).c_str(), prev.c_str());
+                str(str(o << "  in " << std::setw(4), first) << " .. " << std::setw(4), c-1) << ": " << prev << '\n';
             }
             if(c == 0 || flush) { first = c; prev = t; }
         }
     }
-    o << result;
 }
 
 static void DumpNFA(std::ostream& o, const char* title, const std::vector<NFAnode>& states)
 {
-    std::string result = Printf("%s\n", title);
+    o << title << '\n';
     for(unsigned n=0; n<states.size(); ++n)
     {
-        result += Printf("State %u:\n", n);
+        o << "State " << std::dec << n << ":\n";
         const auto& s = states[n];
         std::string prev; unsigned first=0;
         for(unsigned c=0; c<=256; ++c)
@@ -178,79 +283,78 @@ static void DumpNFA(std::ostream& o, const char* title, const std::vector<NFAnod
             bool flush = false;
             std::string t;
             if(c < 256)
+            {
                 for(auto d: s[c])
                     if(d >= NFA_TERMINAL_OFFSET)
-                        t += Printf(" accept %d", d - NFA_TERMINAL_OFFSET);
+                        { t += " accept "; t += std::to_string(d - NFA_TERMINAL_OFFSET); }
                     else
-                        t += Printf(" %u", d);
+                        { t += ' '; t += std::to_string(d); }
+            }
             if(c==256 || t != prev) flush = true;
             if(flush && c > 0 && !prev.empty())
             {
-                result += Printf("  in %5s .. %5s: %s\n", str(first).c_str(), str(c-1).c_str(), prev.c_str());
+                str(str(o << "  in " << std::setw(4), first) << " .. " << std::setw(4), c-1) << ": " << prev << '\n';
             }
             if(c == 0 || flush) { first = c; prev = t; }
         }
     }
-    o << result;
 }
 #endif
 
 /* The public API */
 
 DFA_Matcher::DFA_Matcher() : data(new Data) {}
-DFA_Matcher::DFA_Matcher(DFA_Matcher&& b) noexcept : data(nullptr) { operator=( std::move(b) ); }
 DFA_Matcher::DFA_Matcher(const DFA_Matcher& b) : data(nullptr) { operator=( b ); }
-DFA_Matcher& DFA_Matcher::operator=(DFA_Matcher&& b) noexcept
-{
-    std::lock_guard<std::mutex> lk(lock);
-    std::lock_guard<std::mutex> lk2(b.lock);
-    delete data;
-    data = b.data;
-    b.data = nullptr;
-    return *this;
-}
 DFA_Matcher& DFA_Matcher::operator=(const DFA_Matcher& b)
 {
-    std::lock_guard<std::mutex> lk(lock);
+    lock_writing(lk, lock);
     delete data;
     data = b.data ? new Data(*b.data) : nullptr;
     return *this;
 }
 DFA_Matcher::~DFA_Matcher()
 {
-    std::lock_guard<std::mutex> lk(lock);
+    lock_writing(lk, lock);
     delete data;
 }
-
+DFA_Matcher::DFA_Matcher(DFA_Matcher&& b) noexcept : data(nullptr) { operator=( std::move(b) ); }
+DFA_Matcher& DFA_Matcher::operator=(DFA_Matcher&& b) noexcept
+{
+    lock_writing(lk,  lock);
+    lock_writing(lk2, b.lock);
+    delete data;
+    data = b.data;
+    b.data = nullptr;
+    return *this;
+}
 
 void DFA_Matcher::AddMatch(const std::string& token, bool icase, int target)
 {
-    std::lock_guard<std::mutex> lk(lock);
+    lock_writing(lk, lock);
     if(unlikely(!data)) throw std::runtime_error("AddMatch called on deleted DFA_Matcher");
 
     if(target < 0 || target >= 0x80000000l)
-        throw std::out_of_range(Printf("AddMatch: target must be in range 0..7FFFFFFF, %X given", target));
+        throw std::out_of_range("AddMatch: target must be in range 0..7FFFFFFF, " + std::to_string(target) + " given");
 
     data->matches.emplace_back(Data::Match{token,target,icase});
-    data->hash_valid = false;
+    data->hash_buf.clear();
 }
 
 void DFA_Matcher::AddMatch(std::string&& token, bool icase, int target)
 {
-    std::lock_guard<std::mutex> lk(lock);
+    lock_writing(lk, lock);
     if(unlikely(!data)) throw std::runtime_error("AddMatch called on deleted DFA_Matcher");
 
     if(target < 0 || target >= 0x80000000l)
-        throw std::out_of_range(Printf("AddMatch: target must be in range 0..7FFFFFFF, %X given", target));
+        throw std::out_of_range("AddMatch: target must be in range 0..7FFFFFFF, " + std::to_string(target) + " given");
 
     data->matches.emplace_back(Data::Match{std::move(token),target,icase});
-    data->hash_valid = false;
+    data->hash_buf.clear();
 }
-
 
 int DFA_Matcher::Test(const std::string& s, int default_value) const noexcept
 {
-    std::lock_guard<std::mutex> lk(lock);
+    lock_reading(lk, lock);
     if(unlikely(!Valid())) return default_value;
 
     const auto& statemachine = data->statemachine;
@@ -271,28 +375,38 @@ int DFA_Matcher::Test(const std::string& s, int default_value) const noexcept
     return default_value;
 }
 
-bool DFA_Matcher::Load(std::istream& f)
+bool DFA_Matcher::Load(std::istream&& f, bool ignore_hash)
 {
-    std::lock_guard<std::mutex> lk(lock);
+    return Load(f, ignore_hash); // Calls lvalue reference version
+}
 
-    if(unlikely(!data)) return false;
+bool DFA_Matcher::Load(std::istream& f, bool ignore_hash)
+{
+    lock_writing(lk, lock);
+
+    if(unlikely(!data))
+    {
+        if(!ignore_hash) return false;
+        data = new Data;
+    }
     data->RecheckHash();
 
     std::vector<char> Buf(32);
     f.read(&Buf[0], Buf.size());
-    unsigned position   = 0;
-    if(data->hash != LoadVarBit(&Buf[0], position)) return false;
+    unsigned position    = 0;
+    unsigned num_bits    = LoadVarBit(&Buf[0], position);
+    unsigned num_states  = LoadVarBit(&Buf[0], position);
+    unsigned hash_length = LoadVarBit(&Buf[0], position);
 
-    unsigned num_states = LoadVarBit(&Buf[0], position);
-    unsigned num_bits   = LoadVarBit(&Buf[0], position);
+    if(!ignore_hash && hash_length != data->hash_buf.size()) return false;
 
+    if(hash_length > 0x200000) return false; // Implausible length
     if(num_states*sizeof(data->statemachine[0]) > 8000000
     || num_bits > num_states*256*42)
     {
         // implausible num_states
         return false;
     }
-
     unsigned num_bytes = (num_bits+CHAR_BIT-1)/CHAR_BIT;
     if(num_bytes > Buf.size())
     {
@@ -301,10 +415,18 @@ bool DFA_Matcher::Load(std::istream& f)
         f.read(&Buf[already], missing);
     }
 
-    data->statemachine.resize(num_states);
+    std::vector<char> loaded_hash;
+    for(unsigned l=0; l<hash_length; ++l)
+    {
+        if(position >= num_bits) return false;
+        loaded_hash.push_back( LoadVarBit(&Buf[0], position) );
+    }
+    if(!ignore_hash && loaded_hash != data->hash_buf) return false;
+
+    std::vector<std::array<unsigned,256>> newstatemachine(num_states);
     for(unsigned state_no = 0; state_no < num_states; ++state_no)
     {
-        auto& target = data->statemachine[state_no];
+        auto& target = newstatemachine[state_no];
         for(unsigned last = 0; last < 256; )
         {
             if(position >= num_bits) return false;
@@ -315,35 +437,49 @@ bool DFA_Matcher::Load(std::istream& f)
         }
     }
     if(position != num_bits) return false;
-
+    data->statemachine = std::move(newstatemachine);
+#ifndef PUTBIT_OPTIMIZER
     data->matches.clear(); // Don't need it anymore
+#endif
+    if(!ignore_hash)
+    {
+        data->hash_buf = std::move(loaded_hash);
+        data->LoadFromHash();
+    }
     return true;
+}
+
+void DFA_Matcher::Save(std::ostream&& f) const
+{
+    Save(f); // Calls lvalue reference version
 }
 
 void DFA_Matcher::Save(std::ostream& f) const
 {
-    std::lock_guard<std::mutex> lk(lock);
+    lock_writing(lk, lock);
 
     if(unlikely(!data)) return;
+#ifdef PUTBIT_OPTIMIZER
+    data->hash_buf.claer();
+#endif
     data->RecheckHash();
 
-    std::vector<char> Buf(64);
+    std::vector<char> Buf;
     unsigned numbits=0;
     for(unsigned round=0; ; )
     {
         unsigned ptr=0;
-        PutVarBit(&Buf[0], ptr, data->hash);
-        PutVarBit(&Buf[0], ptr, data->statemachine.size());
-        PutVarBit(&Buf[0], ptr, numbits);
+        PutVarBit(Buf, ptr, numbits);
+        PutVarBit(Buf, ptr, data->statemachine.size());
+        PutVarBit(Buf, ptr, data->hash_buf.size());
+        for(char c: data->hash_buf) PutVarBit(Buf, ptr, c&0xFF);
+
         for(const auto& a: data->statemachine)
             for(unsigned sum=0, n=0; n<=256; ++n, ++sum)
                 if(sum > 0 && (n == 256 || a[n] != a[n-1]))
                 {
-                    if(ptr/CHAR_BIT + 16 > Buf.size())
-                        Buf.resize(ptr/CHAR_BIT + 128);
-
-                    PutVarBit(&Buf[0], ptr, sum);
-                    PutVarBit(&Buf[0], ptr, a[n-1]);
+                    PutVarBit(Buf, ptr, sum);
+                    PutVarBit(Buf, ptr, a[n-1]);
                     sum = 0;
                 }
         // TODO: Figure out whether this loop is guaranteed
@@ -361,16 +497,22 @@ void DFA_Matcher::Save(std::ostream& f) const
 
 void DFA_Matcher::Compile()
 {
-    std::lock_guard<std::mutex> lk(lock);
+    lock_writing(lk, lock);
     if(unlikely(!data)) return;
-
-    data->RecheckHash(); // Calculate the hash before deleting matches[]
-    // Otherwise Save() will fail
 
     // STEP 1: Generate NFA
     std::vector<NFAnode> nfa_nodes(1); // node 0 = root
 
     // Parse each wildmatch expression into the NFA.
+    // First, sort the matches so that we get a deterministic hash.
+    /*std::sort(data->matches.begin(), data->matches.end(),
+              [](const auto& a, const auto& b)
+              { return (a.target!=b.target) ? a.target<b.target
+                     : (a.token!=b.token) ? a.token<b.token
+                     : a.icase<b.icase; });*/
+    data->RecheckHash(); // Calculate the hash before deleting matches[]
+    // Otherwise Save() will fail
+
     for(auto& m: data->matches)
     {
         std::bitset<256> states;
@@ -565,7 +707,9 @@ void DFA_Matcher::Compile()
             nfa_nodes[root][0x00].insert(target + NFA_TERMINAL_OFFSET);
     }
     // Don't need the matches[] anymore, since it's all assembled in nfa_nodes[]
+#ifndef PUTBIT_OPTIMIZER
     data->matches.clear();
+#endif
 
 #ifdef DEBUG
     DumpNFA(std::cout, "Original NFA", nfa_nodes);
@@ -597,10 +741,9 @@ void DFA_Matcher::Compile()
             }
 
             // Find a newnode that combines the given target nodes.
-            std::vector<char> Buf(targets.size()*6);
-            unsigned ptr=0;
-            for(auto k: targets) PutVarBit(&Buf[0], ptr, k);
-            std::string target_key(&Buf[0], &Buf[(ptr+CHAR_BIT-1)/CHAR_BIT]);
+            std::string target_key;
+            for(auto k: targets)
+                target_key.append(reinterpret_cast<const char*>(&k), sizeof(k));
 
             // Find a node for the given list of targets
             auto i = combination_map.find(target_key);
@@ -721,9 +864,14 @@ void DFA_Matcher::Compile()
         // Collect all states. Assume there are no unvisited states.
         struct groupdata
         {
-            group_t group{};
-            bool    unused=false;
-            unsigned uses=0, originalnumber=0;
+            group_t group;
+            bool    unused{};
+            unsigned uses{}, originalnumber{};
+            groupdata() : group{} {}
+            groupdata(const group_t& g): group(g) {}
+            groupdata(group_t&& g): group(std::move(g)) {}
+            groupdata(groupdata&&) = default;
+            groupdata& operator=(groupdata&&) = default;
         };
         std::vector<groupdata> groups(1);
         for(unsigned n=0; n<data->statemachine.size(); ++n)
@@ -776,7 +924,7 @@ void DFA_Matcher::Compile()
                 unsigned othergroup_id = groups.size();
                 // Change the mappings (we need overwriting, so don't use emplace here)
                 for(auto n: othergroup) mapping[n] = othergroup_id;
-                groups.emplace_back(groupdata{std::move(othergroup)});
+                groups.emplace_back(std::move(othergroup));
                 goto rewritten;
             }
         }
@@ -869,6 +1017,6 @@ void DFA_Matcher::Compile()
 
 bool DFA_Matcher::Valid() const noexcept
 {
-    std::lock_guard<std::mutex> lk(lock);
+    lock_reading(lk, lock);
     return data && !data->statemachine.empty();
 }
