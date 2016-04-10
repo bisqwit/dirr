@@ -25,7 +25,7 @@ include Makefile.sets
 #OPTIM=-Og -fno-inline
 #CXXFLAGS += -fsanitize=address
 
-VERSION = 3.36.3
+VERSION = 3.36.4
 
 BINDIR=/usr/local/bin
 INSTALL=install
@@ -33,8 +33,7 @@ INSTALL=install
 PROG=dirr
 OBJS=main.o pwfun.o cons.o setfun.o strfun.o colouring.o \
      getname.o getsize.o totals.o argh.o \
-     printf.o \
-     dfa_match.o
+     dfa_match.o printf.o
 
 ARCHDIR=archives/
 ARCHNAME=dirr-$(VERSION)

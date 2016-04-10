@@ -5,6 +5,9 @@
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
+#include <fstream>
+
+#include <stdlib.h> // For getenv("HOME")
 
 //#include <regex>
 //#include "wildmatch.hh"
@@ -13,6 +16,14 @@
 #include "config.h"
 #include "setfun.hh"
 #include "cons.hh"
+
+#ifdef HAVE_FLOCK_SYS_FILE_H
+# include <sys/file.h>
+#endif
+#ifdef HAVE_STDIO_FILEBUF
+# include <ext/stdio_filebuf.h>
+# include <unistd.h>
+#endif
 
 using std::vector;
 using std::map;
@@ -248,7 +259,7 @@ private:
                         pos = spacepos;
                         continue;
                     }
-                    byext_sets.AddMatch(token, ignore_case, color);
+                    byext_sets.AddMatch(std::move(token), ignore_case, color);
                     pos = spacepos;
                 }
             }
@@ -279,7 +290,76 @@ private:
                 }
             }
         }
-        byext_sets.Compile();
+
+        // Load/Compile/Save byext_sets for use by NameColor()
+        bool loaded = false, compiled = false;
+        for(const std::string& path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
+        {
+            std::string hash_save_fn = path + "/.dirr_dfa";
+            #if defined(HAVE_FLOCK) && defined(HAVE_STDIO_FILEBUF)
+            unsigned num_write_tries=0;
+            retry_reading:;
+            #endif
+            try {
+                std::ifstream f(hash_save_fn, std::ios_base::in | std::ios_base::binary);
+                loaded = byext_sets.Load(f);
+                if(loaded) break;
+            }
+            catch(const std::exception&)
+            {
+            }
+            // File format error. Regenerate file.
+            try {
+            #if defined(HAVE_FLOCK) && defined(HAVE_STDIO_FILEBUF)
+                // If flock() and stdio_filebuf are available, try to lock the file
+                // for exclusive access. If this fails, it means that another instance
+                // of DIRR is currently in the process of generating the file.
+                // We will first wait for that process to complete, and then retry
+                // reading the file.
+                int fd = open(hash_save_fn.c_str(), O_WRONLY | O_CREAT, 0644);
+                if(fd >= 0)
+                {
+                try_relock:;
+                    if(flock(fd, LOCK_EX | (num_write_tries==0 ? LOCK_NB : 0)) >= 0)
+                    {
+                        if(num_write_tries > 0)
+                        {
+                            write(2, "\33[K\r", 5);
+                            close(fd);
+                            goto retry_reading;
+                        }
+                        // libstdc++-only feature: Create an std::ostream using a unix file descriptor.
+                        __gnu_cxx::stdio_filebuf<char> buf{fd, std::ios_base::out | std::ios_base::binary};
+                        std::ostream f{&buf};
+                        if(!compiled) { compiled = true; byext_sets.Compile(); }
+                        ftruncate(fd, 0);
+                        byext_sets.Save(f);
+                        close(fd);
+                        break;
+                    }
+                    else if(errno == EINTR) goto try_relock;
+                    else if(errno == EWOULDBLOCK)
+                    {
+                        std::string msg = "File " + hash_save_fn + " is locked, waiting...\r";
+                        write(2, msg.c_str(), msg.size());
+
+                        close(fd);
+                        ++num_write_tries;
+                        goto retry_reading;
+                    }
+                    close(fd);
+                }
+            #endif
+                std::ofstream f(hash_save_fn, std::ios_base::out | std::ios_base::binary);
+                if(!compiled) { compiled = true; byext_sets.Compile(); }
+                byext_sets.Save(f);
+                break;
+            }
+            catch(const std::exception&)
+            {
+            }
+        }
+        if(!loaded && !compiled) byext_sets.Compile();
     }
 } Settings;
 

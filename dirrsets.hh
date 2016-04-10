@@ -136,7 +136,7 @@ For xterm-256color formats:
      **************************************************************/
 
     // green: object files
-    R"(byext(2i *.so *.o *.vxd *.dll *.drv *.obj *.dll *.a *.lo *.la *.so.*))"
+    R"(byext(2i *.so *.o *.vxd *.dll *.drv *.obj *.a *.lo *.la *.so.*))"
     // cyan: text files
     R"(byext(3i *.txt *.htm *.html *.xml *.xhtml *.1st *.wri *.ps *.doc *.docx *.odt))"
     R"(byext(3i readme quickstart install))"

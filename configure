@@ -35,8 +35,9 @@ EOF
     cat conftest.cpp >> $DEVNULL
     echo "	$CXX conftest.cpp $CXXFLAGS $LDFLAGS $2 -o conftest" >> $DEVNULL
     $CXX conftest.cpp $CXXFLAGS $LDFLAGS $2 -o conftest 2>>conftest.log2
-
     TMP="$?"
+
+    cat conftest.log2 >> $DEVNULL
 
     if [ $TMP = 0 ]; then
       if grep -q "argument unused during compilation" conftest.log2; then TMP=1; fi
@@ -95,7 +96,7 @@ if cc_check '<stdio.h>' '' 'for(int a=0; a<10;++a) { for(int a=0; a<5;++a) { } }
 else
   do_echo No
   do_echo "Error: Configure cannot figure out how to use your compiler."
-  do_echo "Please try installing some recent version of gcc."
+  do_echo "Please try installing some recent version of GCC or Clang."
   exit 1
 fi
 
@@ -115,6 +116,7 @@ AC_FUNC="$AC_FUNC getgrent grp.h"
 AC_FUNC="$AC_FUNC getpwent pwd.h"
 AC_FUNC="$AC_FUNC getgrgid grp.h"
 AC_FUNC="$AC_FUNC getpwuid pwd.h"
+AC_FUNC="$AC_FUNC flock sys/file.h"
 function test_func()
 {
 	while [ ! "$1" = "" ]; do
@@ -158,23 +160,74 @@ if cc_check '<stdio.h>' '-std=c++17' ''; then
   CPPFLAGS="$CPPFLAGS -std=c++17"
 else
   do_echo No
-  do_echo -n "Checking for -std=c++14... "
-  if cc_check '<stdio.h>' '-std=c++14' ''; then
+  do_echo -n "Checking for -std=c++1z... "
+  if cc_check '<stdio.h>' '-std=c++1z' ''; then
     do_echo Yes
-    CPPFLAGS="$CPPFLAGS -std=c++14"
+    CPPFLAGS="$CPPFLAGS -std=c++1z"
   else
     do_echo No
-    do_echo "Error: You need a compiler that supports C++ version C++14 or newer."
-    exit 1
-    #do_echo -n "Checking for -std=c++11... "
-    #if cc_check '<stdio.h>' '-std=c++11' ''; then
-    #  do_echo Yes
-    #  CPPFLAGS="$CPPFLAGS -std=c++11"
-    #else
-    #  do_echo No
-    #fi
+    do_echo -n "Checking for -std=c++14... "
+    if cc_check '<stdio.h>' '-std=c++14' ''; then
+      do_echo Yes
+      CPPFLAGS="$CPPFLAGS -std=c++14"
+    else
+      do_echo No
+      do_echo -n "Checking for -std=c++1y... "
+      if cc_check '<stdio.h>' '-std=c++1y' ''; then
+        do_echo Yes
+        CPPFLAGS="$CPPFLAGS -std=c++1y"
+      else
+        do_echo No
+        do_echo "Error: You need a compiler that supports C++ version C++14 or newer."
+        exit 1
+        #do_echo -n "Checking for -std=c++11... "
+        #if cc_check '<stdio.h>' '-std=c++11' ''; then
+        #  do_echo Yes
+        #  CPPFLAGS="$CPPFLAGS -std=c++11"
+        #else
+        #  do_echo No
+        #fi
+      fi
+    fi
   fi
 fi
+
+do_echo -n "Checking for std::shared_timed_mutex without -pthread... "
+if cc_check '<shared_mutex>' "$CPPFLAGS" 'std::shared_timed_mutex test; test.lock(); test.unlock();'; then
+  do_echo Yes
+else
+  do_echo No
+  do_echo -n "Checking for std::shared_timed_mutex with -pthread... "
+  if cc_check '<shared_mutex>' "$CPPFLAGS -pthread" 'std::shared_timed_mutex test; test.lock(); test.unlock();'; then
+    do_echo Yes
+    LDFLAGS="$LDFLAGS -pthread"
+  else
+    do_echo No
+    do_echo -n "Checking for std::_mutex without -pthread... "
+    if cc_check '<mutex>' "$CPPFLAGS" 'std::mutex test; test.lock(); test.unlock();'; then
+      do_echo Yes
+    else
+      do_echo No
+      do_echo -n "Checking for std::mutex with -pthread... "
+      if cc_check '<mutex>' "$CPPFLAGS -pthread" 'std::mutex test; test.lock(); test.unlock();'; then
+        do_echo Yes
+        LDFLAGS="$LDFLAGS -pthread"
+      else
+        do_echo No
+      fi
+    fi
+  fi
+fi
+
+do_echo -n "Checking for __gnu_cxx::stdio_filebuf... "
+if cc_check '<ext/stdio_filebuf.h>' "$CPPFLAGS" '__gnu_cxx::stdio_filebuf<char> f{1,std::ios_base::out|std::ios_base::binary};std::ostream o{&f};'; then
+  do_echo Yes
+  echo "#define HAVE_STDIO_FILEBUF" >> config.h
+else
+  do_echo No
+  echo "#undef HAVE_STDIO_FILEBUF" >> config.h
+fi
+
 
 do_echo -n "Checking for -Ofast... "
 if cc_check '<stdio.h>' '-Ofast' ''; then

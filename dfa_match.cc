@@ -1,49 +1,85 @@
-#include <memory>
-#include <utility>   // for std::hash
+//#define DEBUG
+
+#include <list>
+#include <array>
+#include <vector>
 #include <bitset>
 #include <unordered_map>
-#include <algorithm> // For sort & unique
+#include <map>
+
 #include <climits>   // For CHAR_BIT
-#include <list>
-#include <set>
+#include <utility>   // for std::hash
+#include <algorithm> // For sort, unique, min
+
+#ifdef DEBUG
+ #include <iostream> // For std::cout, used in DumpNFA and DumpDFA
+ #include <iomanip>
+#endif
 
 #include "dfa_match.hh"
-#include "likely.hh"
-#include "printf.hh"
-#include "config.h"
 
-#include <stdlib.h> // For getenv("HOME")
+#include <assert.h>
 
-struct NFAnode
+#ifdef __GNUC__
+# define likely(x)       __builtin_expect(!!(x), 1)
+# define unlikely(x)     __builtin_expect(!!(x), 0)
+#else
+# define likely(x)   (x)
+# define unlikely(x) (x)
+#endif
+
+/* CONFIGURATION OPTIONS */
+
+// Whether to try and avoid redundancy in NFA as it is being generated.
+// Slows down NFA generation a bit, but greatly rewarded in later phases.
+// Benefits of >= 1: Makes determinization and minimization a lot faster.
+// Benefits of >= 2: Makes determinization and minimization even faster.
+// Valid values: 0, 1, 2.   2 = hardest minimization
+static constexpr unsigned NFA_PRE_MINIMIZATION_LEVEL = 2;
+
+// Whether to simplify rules that end in *, to not test whether '\0' is found
+// Benefits: Huge improvements in statemachine size and minimization speed.
+// Note: May change results in ambiguous grammars.
+static constexpr bool NFA_SIMPLIFY_ACCEPTS         = true;
+
+// Whether to minimize the DFA
+// Benefits: Cache efficiency; Save-data will be a lot smaller.
+static constexpr bool DFA_DO_MINIMIZATION          = true;
+
+// Whether to delete unused nodes before minimizing the DFA
+// Benefits: TBD
+static constexpr bool DFA_PRE_DELETE_UNUSED_NODES  = true;
+
+// Whether to delete unused nodes after minimizing the DFA
+// Benefits: TBD
+static constexpr bool DFA_POST_DELETE_UNUSED_NODES = true;
+
+// Whether to sort the DFA so most used nodes are first.
+// Benefits: Cache efficiency; Save-data will be smaller.
+static constexpr bool DFA_POST_SORT_BY_USECOUNT    = true;
+
+
+/* INTERNAL OPTIONS */
+
+// NFA number space:
+//  0<=n<NFAOPT_ACCEPT_OFFSET : Space for NFA node numbers (non-accepting states)
+//  NFA_ACCEPT_OFFSET<=n      : Space for "target" values (accept states)
+static constexpr unsigned NFA_ACCEPT_OFFSET               = 0x80000000u;
+
+// DFA numbers space during minimization:
+//  0<=n<DFAOPT_ACCEPT_OFFSET : Space for DFA node numbers (non-accepting states)
+//  DFAOPT_ACCEPT_OFFSET<=n   : Space for "target" values (accept+fail states)
+static constexpr unsigned DFAOPT_ACCEPT_OFFSET            = 0x80000000u;
+
+// Character set size.
+static constexpr unsigned CHARSET_SIZE = (1 << CHAR_BIT);
+
+
+
+/* Bit I/O */
+static void PutBits(void* memory, unsigned& bitpos, unsigned long long V, unsigned nbits)
 {
-    // List the target states for each different input symbol.
-    // Target state & 0x80000000u means terminal state (accept with state & 0x7FFFFFFFu).
-    // Since this is a NFA, each input character may match to a number of different targets.
-    std::array<std::set<unsigned/*target node number*/>, 256> targets{};
-
-    // Use std::set rather than std::unordered_set, because we require
-    // sorted access for efficient set_intersection (lower_bound).
-};
-
-static std::string str(char c)
-{
-    switch(c)
-    {
-        case '\n': return "\\n";
-        case '\r': return "\\r";
-        case '\t': return "\\t";
-        case '\b': return "\\b";
-        case '\0': return "\\0";
-        case '\\': return "\\\\";
-        case '\"': return "\\\"";
-        case '\'': return "\\'";
-        default: if(c<32 || c==127) return Printf("\\%04o", (unsigned char)c);
-    }
-    return Printf("%c", c);
-}
-
-static void PutBits(unsigned char* buffer, unsigned& bitpos, unsigned long V, unsigned nbits)
-{
+    unsigned char* buffer = reinterpret_cast<unsigned char*>(memory);
     while(nbits > 0)
     {
         unsigned bytepos = bitpos/CHAR_BIT, bits_remain = CHAR_BIT-bitpos%CHAR_BIT, bits_taken = CHAR_BIT-bits_remain;
@@ -56,15 +92,17 @@ static void PutBits(unsigned char* buffer, unsigned& bitpos, unsigned long V, un
         bitpos += bits_to_write;
     }
 }
-static unsigned long GetBits(unsigned char* buffer, unsigned& bitpos, unsigned nbits)
+
+static unsigned long long GetBits(const void* memory, unsigned& bitpos, unsigned nbits)
 {
-    unsigned long result = 0, shift=0;
-    while(nbits > 0)
+    const unsigned char* buffer = reinterpret_cast<const unsigned char*>(memory);
+    unsigned long long result = 0;
+    for(unsigned shift=0; nbits > 0; )
     {
         unsigned bytepos = bitpos/CHAR_BIT, bits_remain = CHAR_BIT-bitpos%CHAR_BIT, bits_taken = CHAR_BIT-bits_remain;
         unsigned bits_to_take = std::min(nbits, bits_remain);
         unsigned v = (buffer[bytepos] >> bits_taken) & ((1 << bits_to_take)-1);
-        result |= v << shift;
+        result |= (unsigned long long)v << shift;
         shift += bits_to_take;
         nbits -= bits_to_take;
         bitpos += bits_to_take;
@@ -72,189 +110,611 @@ static unsigned long GetBits(unsigned char* buffer, unsigned& bitpos, unsigned n
     return result;
 }
 
-static unsigned long LoadVarBit(unsigned char* buffer, unsigned& bitpos)
+/* Variable bit I/O */
+#ifndef PUTBIT_OPTIMIZER
+static constexpr std::initializer_list<unsigned> VarBitCounts = {1,4,3,1,1,7,1,6,8,8,8,8,8,8,8};
+static constexpr char hash_offset = '*';
+#else
+static std::vector<unsigned> VarBitCounts = {1,4,3,1,1,7,1,6,8,8,8,8,8,8,8};
+static char hash_offset = '*';
+#endif
+
+
+// VarBitCounts[] is hand-optimized to produce the smallest save file for DIRR.
+static unsigned long long LoadVarBit(const void* buffer, unsigned& bitpos)
 {
-    unsigned long result = 0;
-    unsigned n = 2, shift = 0;
-    for(;;)
+    unsigned long long result = 0;
+    unsigned shift = 0;
+    for(unsigned n: VarBitCounts)
     {
-        result |= GetBits(buffer, bitpos, n) << shift;
-        if(!GetBits(buffer, bitpos, 1)) break;
+        unsigned long long unit = GetBits(buffer, bitpos, n);
+        result |= unit << shift;
+        //if(unit==0)
+        {
+            if(!GetBits(buffer, bitpos, 1) || unlikely(shift >= sizeof(result)*CHAR_BIT)) break;
+        }
         shift += n;
-        if(n==2) n+=4; else if(n<10) n+=8;
     }
     return result;
 }
-static void PutVarBit(unsigned char* buffer, unsigned& bitpos, unsigned long V)
+static void PutVarBit(void* buffer, unsigned& bitpos, unsigned long long V)
 {
-    unsigned n = 2;
-    for(;;)
+/*
+Optimization idea: If first unit is zero, we stop reading
+without reading the 1-bit marker.
+This requires putting bits in the units most-significant first.
+
+Saving a six bit value "100000" using 1 unit, 2 unit or 3 units:
+
+               (1000)     (1)
+    2 bits:       00      00    00
+    3 bits:              000  0100
+    4 bits:                   0000
+
+ 1 unit did not work, because 4 bits were unsaved.
+ 2 units did not work, because 4 bits were unsaved.
+ 3 units did not work, because first unit was zero.
+
+This idea does not seem to work...
+*/
+    for(unsigned n: VarBitCounts)
     {
-        PutBits(buffer, bitpos, V, n);
+        unsigned long long unit = V % (1ull << n);
+        PutBits(buffer, bitpos, unit, n);
         V >>= n;
-        PutBits(buffer, bitpos, V!=0, 1);
-        if(V==0) break;
-        if(n==2) n+=4; else if(n<10) n+=8;
-    }
-}
-
-static void DumpDFA(const char* title, const std::vector<std::array<unsigned,256>>& states)
-{
-    printf("%s\n", title);
-    for(unsigned n=0; n<states.size(); ++n)
-    {
-        printf("State %u:\n", n);
-        const auto& s = states[n];
-        std::string prev; unsigned first=0;
-        for(unsigned c=0; c<=256; ++c)
+        //if(unit==0)
         {
-            bool flush = false;
-            std::string t;
-            if(c < 256)
-            {
-                if(s[c] < states.size())
-                    t += Printf(" %u", s[c]);
-                else if(s[c] > states.size())
-                    t += Printf(" accept %d", s[c] - states.size()-1);
-            }
-            if(c==256 || t != prev) flush = true;
-            if(flush && c > 0 && !prev.empty())
-            {
-                printf("  in %5s .. %5s: %s\n", str(first).c_str(), str(c-1).c_str(), prev.c_str());
-            }
-            if(c == 0 || flush) { first = c; prev = t; }
+            PutBits(buffer, bitpos, V!=0, 1);
+            if(V==0) break;
         }
     }
 }
 
-static void DumpNFA(const char* title, const std::vector<NFAnode>& states)
+static void PutVarBit(std::vector<char>& buffer, unsigned& bitpos, unsigned long long V)
 {
-    printf("%s\n", title);
-    for(unsigned n=0; n<states.size(); ++n)
+    // Make sure there's room to work
+    if(buffer.size() < (bitpos/CHAR_BIT) + 32)
     {
-        printf("State %u:\n", n);
-        const auto& s = states[n];
-        std::string prev; unsigned first=0;
-        for(unsigned c=0; c<=256; ++c)
+        buffer.resize(buffer.size() + (bitpos/CHAR_BIT) + 128);
+    }
+    PutVarBit(&buffer[0], bitpos, V);
+}
+
+
+
+/* Private data */
+struct DFA_Matcher::Data
+{
+    mutable std::vector<char> hash_buf{};
+
+    /* Collect data from AddMatch() */
+    struct Match
+    {
+        std::string token;
+        int target;
+        bool icase;
+        #ifdef __SUNPRO_CC
+        // This set of methods is only needed because Solaris Studio
+        // isn't smart enough to figure them out on its own.
+        Match() : token{},target{},icase{} {}
+        template<typename T>
+        Match(T&& s, int i, bool c) : token(std::forward<T>(s)),target(i),icase(c) {}
+        Match(const Match&)=default;
+        Match(Match&&)=default;
+        Match& operator=(const Match&)=default;
+        Match& operator=(Match&&)=default;
+        #endif
+    };
+    std::vector<Match> matches{};
+
+    /* state number -> { char number -> code }
+     *              code: =numstates = fail
+     *                    >numstates = target color +numstates+1
+     *                    <numstates = new state number
+     */
+    std::vector<std::array<unsigned,CHARSET_SIZE>> statemachine{};
+
+public:
+    void RecheckHash() const
+    {
+        // Check whether the hash is already valid
+        if(likely(!hash_buf.empty())) return;
+        // Compose hash string
+        unsigned ptr = 0;
+        PutVarBit(hash_buf, ptr, matches.size());
+        for(const auto& a: matches)
+        {
+            for(char c: a.token) PutVarBit(hash_buf, ptr, (c-hash_offset) & 0xFF);
+            PutVarBit(hash_buf, ptr, (0x00-hash_offset)&0xFF);
+            PutBits(&hash_buf[0], ptr, a.icase, 1);
+            PutVarBit(hash_buf, ptr, a.target);
+        }
+        hash_buf.resize((ptr+CHAR_BIT-1)/CHAR_BIT);
+    }
+    void LoadFromHash()
+    {
+        // Recompose matches[] from hash_buf
+        if(hash_buf.empty()) return;
+        unsigned ptr = 0, nmatches = LoadVarBit(&hash_buf[0], ptr);
+        matches.assign(nmatches, Match{});
+        for(auto& m: matches)
+        {
+            while(ptr/CHAR_BIT < hash_buf.size())
+            {
+                char c = (LoadVarBit(&hash_buf[0], ptr) + hash_offset) & 0xFF;
+                if(!c) break;
+                m.token += c;
+            }
+            m.icase  = GetBits(&hash_buf[0], ptr, 1);
+            m.target = LoadVarBit(&hash_buf[0], ptr);
+        }
+    }
+};
+
+/* SometimesSortedVector is a wrapper for std::vector<T> that seeks a middle
+ * ground between std::set and std::vector.
+ * Upon request, it holds the sorted-unique property (elements are in ascending
+ * order, and same element is stored only twice), but an option is also to save
+ * without ordering, using a simple push_back.
+ */
+template<typename T>
+class SometimesSortedVector
+{
+private:
+    std::vector<T> data{};
+    bool sorted{true};
+public:
+    using size_type = typename std::vector<T>::size_type;
+    using reference = typename std::vector<T>::reference;
+    using const_reference = typename std::vector<T>::const_reference;
+    using iterator = typename std::vector<T>::iterator;
+    using const_iterator = typename std::vector<T>::const_iterator;
+    using reverse_iterator = typename std::vector<T>::reverse_iterator;
+    using const_reverse_iterator = typename std::vector<T>::const_reverse_iterator;
+public:
+    SometimesSortedVector(const SometimesSortedVector<T>& b) = default;
+    SometimesSortedVector(SometimesSortedVector<T>&& b) = default;
+    SometimesSortedVector& operator=(const SometimesSortedVector<T>&) = default;
+    SometimesSortedVector& operator=(SometimesSortedVector<T>&&) = default;
+    #define fwd(name) \
+        template<typename...A> auto name(A&&... a)       { return data.name(std::forward<A>(a)...); } \
+        template<typename...A> auto name(A&&... a) const { return data.name(std::forward<A>(a)...); }
+    template<typename...A>
+    SometimesSortedVector(A&&...args) : data{std::forward<A>(args)...}, sorted(autodetect()) {}
+    template<typename...A>
+    void assign(A&&...args) { data.assign(std::forward<A>(args)...); sorted=autodetect(); }
+    void clear() { data.clear(); sorted=true; }
+    void resize(size_type s) { if(s > size()) sorted = false; data.resize(s); }
+    template<typename...A>
+    iterator erase(A&&...args) { auto i = data.erase(std::forward<A>(args)...); if(!sorted) sorted=autodetect(); return i; }
+    fwd(size) fwd(max_size) fwd(capacity) fwd(empty) fwd(reserve) fwd(front) fwd(back)
+    fwd(begin) fwd(end) fwd(cbegin) fwd(cend) fwd(rbegin) fwd(rend) fwd(crbegin) fwd(crend)
+    #undef fwd
+    const_reference operator[](size_type s) const { return data[s]; }
+    reference       operator[](size_type s)       { sorted=false; return data[s]; }
+public:
+    void MakeSureIsSortedAndUnique()
+    {
+        if(likely(sorted)) return;
+        std::sort(data.begin(), data.end());
+        data.erase(std::unique(data.begin(),data.end()), data.end());
+        sorted = true;
+    }
+    /* SortedUniqueInsert: Insert an element into the vector,
+     * making sure it retains the sorted-unique property.
+     */
+    template<typename... A>
+    void SortedUniqueInsert(A&&... args)
+    {
+        MakeSureIsSortedAndUnique();
+        T value(std::forward<A>(args)...);
+        auto i = std::lower_bound(data.begin(), data.end(), value);
+        if(i == data.end() || *i != value)
+            data.insert(i, std::move(value));
+    }
+    /* FastInsert: Insert an element into the vector using SortedUniqueInsert
+     * if it already has the sorted-unique property; FastestInsert otherwise. */
+    void FastInsert(const T& value)
+    {
+        if(sorted) SortedUniqueInsert(value);
+        else       FastestInsert(value);
+    }
+    /* FastestInsert: Insert an element into the vector fastest way possible. */
+    void FastestInsert(const T& value)
+    {
+        if(data.size()==1 && value==data.back()) return;
+        if(sorted && !data.empty() && value > data.back()) { data.push_back(value); return; }
+        data.push_back(value);
+        sorted = autodetect();
+    }
+    void FastestInsert(const SometimesSortedVector<T>& other)
+    {
+        data.insert(data.end(), other.begin(), other.end());
+        if(!other.empty())
+            sorted = data.size() == other.size() && other.sorted;
+    }
+    void FastestInsert(SometimesSortedVector<T>&& other)
+    {
+        data.insert(data.end(), other.begin(), other.end());
+        if(!other.empty())
+            sorted = data.size() == other.size() && other.sorted;
+        other.clear();
+    }
+    std::vector<T>&& StealSortedVector() { MakeSureIsSortedAndUnique(); return std::move(data); }
+private:
+    bool autodetect() const { return data.size() <= 1; }
+};
+
+// List the target states for each different input symbol.
+// Target state >= NFA_ACCEPT_OFFSET means accepting state (accept with state - NFA_ACCEPT_OFFSET).
+// Since this is a NFA, each input character may match to a number of different targets.
+typedef std::array<SometimesSortedVector<unsigned>, CHARSET_SIZE> NFAnode;
+// Use std::set rather than std::unordered_set, because we require
+// sorted access for efficient set_intersection (lower_bound).
+
+
+/* Facilities for read/write locks */
+
+#if __cplusplus >= 201402L
+# define lock_reading(lk,l) std::shared_lock<std::shared_timed_mutex> lk(l)
+# define lock_writing(lk,l) std::lock_guard<std::shared_timed_mutex> lk(l)
+#else
+# define lock_reading(lk,l) std::lock_guard<std::mutex> lk(l)
+# define lock_writing(lk,l) std::lock_guard<std::mutex> lk(l)
+#endif
+
+
+/* Debugging facilities */
+
+#ifdef DEBUG
+static std::ostream& str(std::ostream& o, char c)
+{
+    switch(c)
+    {
+        case '\n': return o << R"(\n)";
+        case '\r': return o << R"(\r)";
+        case '\t': return o << R"(\t)";
+        case '\b': return o << R"(\b)";
+        case '\0': return o << R"(\0)";
+        case '\\': return o << R"(\\)";
+        case '\"': return o << R"(\")";
+        case '\'': return o << R"(\')";
+        default: if(c<32 || c==127) return
+                    o << std::showbase << std::hex << (c & 0xFFu);
+    }
+    return o << char(c);
+}
+
+template<typename F>
+static void DumpStateMachine(std::ostream& o, const char* title, unsigned begin, unsigned end, F&& GetInfo)
+{
+    if(title && *title) o << title << '\n';
+    for(unsigned n = begin; n < end; ++n)
+    {
+        std::array<std::string,CHARSET_SIZE> info;
+        for(unsigned c=0; c<CHARSET_SIZE; ++c)
+        {
+            std::string res = GetInfo(n,c);
+            if(res.empty()) res = " reject";
+            info[c] = std::move(res);
+        }
+
+        std::string largest = [&info]
+        {
+            std::unordered_map<std::string,unsigned> counts;
+            for(const auto& s: info) ++counts[s];
+            return std::max_element(counts.begin(), counts.end(),
+                [](const auto& a, const auto& b) { return a.second < b.second; })->first;
+        }();
+
+        o << "  State " << std::dec << n << " ->" << largest << ":\n";
+
+        std::string prev;
+        unsigned first=0;
+        for(unsigned c=0; c<=CHARSET_SIZE; ++c)
         {
             bool flush = false;
             std::string t;
-            if(c < 256)
-                for(auto d: s.targets[c])
-                    if(d & 0x80000000u)
-                        t += Printf(" accept %d", d & 0x7FFFFFFFu);
-                    else
-                        t += Printf(" %u", d);
-            if(c==256 || t != prev) flush = true;
-            if(flush && c > 0 && !prev.empty())
+            if(c < CHARSET_SIZE) t = std::move(info[c]);
+            if(c==CHARSET_SIZE || t != prev) flush = true;
+            if(flush && c > 0)
             {
-                printf("  in %5s .. %5s: %s\n", str(first).c_str(), str(c-1).c_str(), prev.c_str());
+                if(prev != largest)
+                    str(str(o << "    in " << std::setw(4), first) << " to " << std::setw(4), c-1) << ": " << prev << '\n';
             }
             if(c == 0 || flush) { first = c; prev = t; }
         }
     }
+    o << std::dec;
 }
+
+static void DumpNFA(std::ostream& o, const char* title, const std::vector<NFAnode>& states,
+                    std::size_t begin=0,std::size_t end=~0u)
+{
+    DumpStateMachine(o, title, begin, std::min(end,states.size()), [&states](unsigned n, unsigned c) -> std::string
+    {
+        std::string t;
+        // If states[n][c] is empty, blank string will be returned.
+        for(auto d: states[n][c])
+            if(d >= NFA_ACCEPT_OFFSET)
+                { t += " accept "; t += std::to_string(d - NFA_ACCEPT_OFFSET); }
+            else
+                { t += ' '; t += std::to_string(d); }
+        return t;
+    });
+}
+
+static void DumpDFA(std::ostream& o, const char* title, const std::vector<std::array<unsigned,CHARSET_SIZE>>& states,
+                    std::size_t begin=0,std::size_t end=~0u)
+{
+    DumpStateMachine(o, title, begin,std::min(end,states.size()), [&states](unsigned n, unsigned c) -> std::string
+    {
+        std::string t;
+        auto& d = states[n][c];
+        if(d > states.size())
+            { t += " accept "; t += std::to_string(d - states.size()-1); }
+        else if(d < states.size())
+            { t += ' '; t += std::to_string(d); }
+        return t;
+    });
+}
+#endif
+
+/* The public API */
+
+DFA_Matcher::DFA_Matcher() : data(new Data) {}
+DFA_Matcher::DFA_Matcher(const DFA_Matcher& b) : data(nullptr) { operator=( b ); }
+DFA_Matcher& DFA_Matcher::operator=(const DFA_Matcher& b)
+{
+    lock_writing(lk, lock);
+    delete data;
+    data = b.data ? new Data(*b.data) : nullptr;
+    return *this;
+}
+DFA_Matcher::~DFA_Matcher()
+{
+    lock_writing(lk, lock);
+    delete data;
+}
+DFA_Matcher::DFA_Matcher(DFA_Matcher&& b) noexcept : data(nullptr) { operator=( std::move(b) ); }
+DFA_Matcher& DFA_Matcher::operator=(DFA_Matcher&& b) noexcept
+{
+    lock_writing(lk,  lock);
+    lock_writing(lk2, b.lock);
+    delete data;
+    data = b.data;
+    b.data = nullptr;
+    return *this;
+}
+
+
 
 void DFA_Matcher::AddMatch(const std::string& token, bool icase, int target)
 {
-    matches.emplace_back(token, std::pair<int,bool>{target,icase});
+    lock_writing(lk, lock);
+    if(unlikely(!data)) throw std::runtime_error("AddMatch called on deleted DFA_Matcher");
+
+    if(target < 0)
+        throw std::out_of_range("AddMatch: target must be in range 0..7FFFFFFF, " + std::to_string(target) + " given");
+
+    data->matches.emplace_back(Data::Match{token,target,icase});
+    data->hash_buf.clear();
 }
 
-void DFA_Matcher::Compile()
+void DFA_Matcher::AddMatch(std::string&& token, bool icase, int target)
 {
-    // Compose hash string
-    {std::string hash_str;
-    for(const auto& a: matches)
-    {
-        unsigned char Buf[16] {}; unsigned ptr = 0;
-        PutBits(Buf, ptr, a.second.second, 1);
-        PutVarBit(Buf, ptr, a.second.first);
-        hash_str.append(Buf, Buf+(ptr+CHAR_BIT-1)/CHAR_BIT);
-        hash_str += a.first;
-    }
-    hash = std::hash<std::string>{}(hash_str);}
+    lock_writing(lk, lock);
+    if(unlikely(!data)) throw std::runtime_error("AddMatch called on deleted DFA_Matcher");
 
-    std::string hash_save_fn;
-    std::FILE* save_fp = nullptr;
-    for(const std::string& path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
+    if(target < 0)
+        throw std::out_of_range("AddMatch: target must be in range 0..7FFFFFFF, " + std::to_string(target) + " given");
+
+    data->matches.emplace_back(Data::Match{std::move(token),target,icase});
+    data->hash_buf.clear();
+}
+
+int DFA_Matcher::Test(const std::string& s, int default_value) const noexcept
+{
+    lock_reading(lk, lock);
+    if(unlikely(!Valid())) return default_value;
+
+    const auto& statemachine = data->statemachine;
+    unsigned cur_state = 0;
+    for(std::size_t a=0, b=s.size(); a<=b; ++a) // Use <= to iterate '\0'.
     {
-        hash_save_fn = path + "/.dirr_dfa";
-        std::FILE* fp = std::fopen(hash_save_fn.c_str(), "rb");
-        if(fp)
+        // Note: C++98 guarantees that operator[] const with index==size()
+        //       returns a reference to '\0'.
+        //       C++11 added the same guarantee to non-const operator[].
+        //       Therefore, we do not need to do c_str() in this function.
+        cur_state = statemachine[cur_state][ (unsigned char)s[a] ];
+        if(cur_state >= statemachine.size())
         {
-            bool loaded = Load(fp);
-            std::fclose(fp);
-            if(loaded)
-            {
-                matches.clear(); //Don't need it anymore
-                return;
-            }
+            cur_state -= statemachine.size();
+            return cur_state ? cur_state-1 : default_value;
         }
-        // Incorrect hash. Regenerate file.
-        fp = std::fopen(hash_save_fn.c_str(), "wb");
-        if(fp) { save_fp = fp; break; }
     }
-
-    Generate();
-
-    if(save_fp)
-    {
-        Save(save_fp);
-        std::fclose(save_fp);
-    }
+    return default_value;
 }
 
-void DFA_Matcher::Generate()
+bool DFA_Matcher::Load(std::istream&& f, bool ignore_hash)
 {
-    // STEP 1: Generate NFA
-    std::vector<NFAnode> nfa_nodes(1); // node 0 = root
+    return Load(f, ignore_hash); // Calls lvalue reference version
+}
 
-    // Parse each wildmatch expression into the NFA.
-    for(auto& m: matches)
+bool DFA_Matcher::Load(std::istream& f, bool ignore_hash)
+{
+    lock_writing(lk, lock);
+
+    if(unlikely(!data))
     {
-        std::string&& token = std::move(m.first);
-        const int    target = m.second.first;
-        const bool    icase = m.second.second;
+        if(!ignore_hash) return false;
+        data = new Data;
+    }
+    data->RecheckHash();
 
-        auto makenode = [&]
+    std::vector<char> Buf(32);
+    f.read(&Buf[0], Buf.size());
+    if(!f.good()) return false;
+    unsigned position    = 0;
+    unsigned num_bits    = LoadVarBit(&Buf[0], position);
+    unsigned num_states  = LoadVarBit(&Buf[0], position);
+    unsigned hash_length = LoadVarBit(&Buf[0], position);
+
+    if(!ignore_hash && hash_length != data->hash_buf.size()) return false;
+
+    if(hash_length > 0x200000) return false; // Implausible length
+    if(num_states*sizeof(data->statemachine[0]) > 8000000
+    || num_bits > num_states*CHARSET_SIZE*42)
+    {
+        // implausible num_states
+        return false;
+    }
+    unsigned num_bytes = (num_bits+CHAR_BIT-1)/CHAR_BIT;
+    if(num_bytes > Buf.size())
+    {
+        unsigned already = Buf.size(), missing = num_bytes - already;
+        Buf.resize(num_bytes);
+        f.read(&Buf[already], missing);
+    }
+
+    std::vector<char> loaded_hash;
+    for(unsigned l=0; l<hash_length; ++l)
+    {
+        if(position >= num_bits) return false;
+        loaded_hash.push_back( LoadVarBit(&Buf[0], position) );
+    }
+    if(!ignore_hash && loaded_hash != data->hash_buf) return false;
+
+    std::vector<std::array<unsigned,CHARSET_SIZE>> newstatemachine(num_states);
+    for(unsigned state_no = 0; state_no < num_states; ++state_no)
+    {
+        auto& target = newstatemachine[state_no];
+        for(unsigned last = 0; last < CHARSET_SIZE; )
         {
-            unsigned result = nfa_nodes.size();
-            nfa_nodes.resize(result+1);
-            return result;
-        };
+            if(position >= num_bits) return false;
+            unsigned end   = LoadVarBit(&Buf[0], position) + last;
+            unsigned value = LoadVarBit(&Buf[0], position);
+            if(end==last) end = last+CHARSET_SIZE;
+            while(last < end && last < CHARSET_SIZE) target[last++] = value;
+        }
+    }
+    // Allow maximum of 16 bits of blank in the end
+    if(long(position) > long(num_bits) || long(position)+16 < long(num_bits)) return false;
 
-        std::vector<unsigned> rootnodes = { 0 };
+    data->statemachine = std::move(newstatemachine);
+#ifndef PUTBIT_OPTIMIZER
+    data->matches.clear(); // Don't need it anymore
+#endif
+    if(!ignore_hash)
+    {
+        data->hash_buf = std::move(loaded_hash);
+        data->LoadFromHash();
+    }
+    return true;
+}
 
-        auto addtransition = [&](unsigned root, const std::bitset<256>& states, unsigned newnewnode = ~0u) -> unsigned
+void DFA_Matcher::Save(std::ostream&& f) const
+{
+    Save(f); // Calls lvalue reference version
+}
+
+void DFA_Matcher::Save(std::ostream& f) const
+{
+    lock_writing(lk, lock);
+
+    if(unlikely(!data)) return;
+#ifdef PUTBIT_OPTIMIZER
+    data->hash_buf.clear();
+#endif
+    data->RecheckHash();
+
+    std::vector<char> Buf;
+    unsigned numbits=0;
+    for(unsigned round=0; ; )
+    {
+        unsigned ptr=0;
+        PutVarBit(Buf, ptr, numbits);
+        PutVarBit(Buf, ptr, data->statemachine.size());
+        PutVarBit(Buf, ptr, data->hash_buf.size());
+        for(char c: data->hash_buf) PutVarBit(Buf, ptr, c&0xFF);
+
+        for(const auto& a: data->statemachine)
+            for(unsigned sum=0, n=0; n<=CHARSET_SIZE; ++n, ++sum)
+                if(sum > 0 && (n == CHARSET_SIZE || a[n] != a[n-1]))
+                {
+                    PutVarBit(Buf, ptr, sum);
+                    PutVarBit(Buf, ptr, a[n-1]);
+                    sum = 0;
+                }
+        if(ptr == numbits) break;
+        numbits = ptr;
+
+        // This loop does not necessarily terminate eventually.
+        if(++round >= 8)
+        {
+            PutBits(&Buf[0], ptr, 0, std::max(numbits,ptr) - std::min(numbits,ptr));
+            numbits = ptr;
+            break;
+        }
+    }
+    f.write(&Buf[0], (numbits+CHAR_BIT-1)/CHAR_BIT);
+}
+
+class NFAcompiler
+{
+    std::vector<NFAnode> nfa_nodes{};
+
+private:
+    // PHASE 1 FUNCTIONS:
+    std::vector<SometimesSortedVector<unsigned>> parents{};
+    std::vector<bool> deadnodes{};
+    std::bitset<CHARSET_SIZE> states{};
+
+    unsigned AddTransition(unsigned root, unsigned newnewnode)
+    {
+        if(NFA_PRE_MINIMIZATION_LEVEL >= 1)
         {
             // Check if there already is an node number that exists
             // on this root in all given target states but in none others.
-            // This is quite optional, but it reduces the number of NFA nodes.
+            // This is quite optional, but it dramatically reduces
+            // the number of NFA nodes, making NFA-DFA conversion faster and
+            // produce fewer nodes, which in turn makes DFA minimization faster.
             // It is a form of pre-minimization.
             auto& cur = nfa_nodes[root];
-            std::set<unsigned> include, exclude;
-            bool first = true;
-            for(unsigned c=0; c<256; ++c)
+            SometimesSortedVector<unsigned> exclude, include;
+            //printf("Considering root %d\n", root);
+            for(unsigned c=0; c<CHARSET_SIZE; ++c)
             {
-                const auto& list = cur.targets[c];
-                if(states.test(c))
+                auto& list = cur[c];
+                if(!states.test(c))
                 {
-                    if(first)
+                    exclude.FastestInsert(list);
+                }
+                else
+                {
+                    list.MakeSureIsSortedAndUnique();
+                    if(include.empty())
                     {
-                        first = false;
-                        include.insert( list.begin(), list.end() );
+                        include = list; // Here's our list of candidates now.
+                        // Erase accepting state numbers, as these are not really states
+                        include.erase(std::remove_if(include.begin(),include.end(),[](unsigned n)
+                        {
+                            return n >= NFA_ACCEPT_OFFSET;
+                        }), include.end());
                     }
                     else
                     {
-                        if(include.empty()) break;
-                        // Delete those include-elements that are not in list[]
-                        // (Set intersection)
+                        // For each include-element that is not in list[], delete it
+                        // In other words, keep only those that are in both.
                         auto j = list.begin();
                         bool first = true;
                         for(auto i = include.begin(); i != include.end(); )
                         {
                             if(first)
-                                { j = list.lower_bound(*i); first = false; }
+                            {
+                                j = std::lower_bound(list.begin(),list.end(), *i);
+                                first = false;
+                            }
                             else
                                 while(j != list.end() && *j < *i) ++j;
                             if(j == list.end() || *j != *i)
@@ -263,56 +723,94 @@ void DFA_Matcher::Generate()
                                 ++i;
                         }
                     }
-                }
-                else
-                {
-                    exclude.insert( list.begin(), list.end() );
+                    // If, as a consequence, the include list became empty,
+                    // we are done; nothing to do here.
+                    if(include.empty()) goto could_not_minimize;
                 }
             }
-            for(auto e: exclude) include.erase(e);
-            if(!include.empty()) return *include.begin();
+            // include[] now has got a list of elements that exists in all
+            // of those states that we want. Any of those is a valid candidate,
+            // as long as it is _not_ found in exclude[].
+            // If include[] has even a single element that is not found in exclude[],
+            // return that element.
+            exclude.MakeSureIsSortedAndUnique();
+            auto i = exclude.cend();
+            for(auto elem: include)
+            {
+                if(i == exclude.cend())
+                    i = std::lower_bound(exclude.cbegin(), exclude.cend(), elem);
+                else
+                    while(i != exclude.cend() && *i < elem) ++i;
+                if(i == exclude.cend() || *i != elem)
+                {
+                    // Reuse the arcs, and return the existing target node.
+                    return elem;
+                }
+            }
+        }
+    could_not_minimize:;
 
-            unsigned next = newnewnode;
-            if(next == ~0u) next = makenode();
+        unsigned next = newnewnode;
+        if(next == ~0u)
+        {
+            // Make new node
+            next = nfa_nodes.size();
+            nfa_nodes.resize(next+1);
+            if(NFA_PRE_MINIMIZATION_LEVEL >= 2 || NFA_SIMPLIFY_ACCEPTS)
+                parents.resize(next+1);
+        }
 
-            auto& cur1 = nfa_nodes[root];
-            for(unsigned c=0; c<256; ++c)
-                if(states.test(c))
-                    cur1.targets[c].insert(next);
-            return next;
-        };
+        auto& cur = nfa_nodes[root];
+        for(unsigned c=0; c<CHARSET_SIZE; ++c)
+            if(states.test(c))
+                cur[c].FastestInsert(next);
 
-        /* Translate a glob pattern (wildcard match) into a NFA */
-        std::bitset<256> states;
+        if(next < parents.size() && (NFA_PRE_MINIMIZATION_LEVEL >= 2 || NFA_SIMPLIFY_ACCEPTS))
+            parents[next].FastestInsert(root);
+        return next;
+    }
 
+public:
+    /* Translate a glob pattern (wildcard match) into a NFA */
+    void AddMatch(std::string&& token, bool icase, int target)
+    {
         unsigned pos=0;
-        auto end  = [&] { return pos >= token.size(); };
-        auto cget = [&] { return end() ? 0x00 : (unsigned char) token[pos++]; };
-        auto unget = [&] { if(pos>0) --pos; };
+        // Solaris Studio has problems with these lambdas, so using #defines instead.
+        #ifdef __SUNPRO_CC
+        # define t_end()   (pos >= token.size())
+        # define t_cget()  (t_end() ? 0x00 : (unsigned char)token[pos++])
+        # define t_unget() (pos>0 && --pos)
+        #else
+        auto t_end   = [&] { return pos >= token.size(); };
+        auto t_cget  = [&] { return pos >= token.size() ? 0x00 : (token[pos++] & 0xFF); };
+        auto t_unget = [&] { if(pos>0) --pos; };
+        #endif
 
-        while(!end())
-            switch(unsigned c = cget())
+        SometimesSortedVector<unsigned> rootnodes{0u}; // Add 0 as root.
+        if(nfa_nodes.empty()) nfa_nodes.emplace_back(); // Create node 0
+
+        while(!t_end())
+            switch(unsigned c = t_cget())
             {
                 case '*':
                 {
                     states.set(); states.reset(0x00); // 01..FF, i.e. all but 00
                     // Repeat count of zero is allowed, so we begin with the same roots
-                    std::set<unsigned> newroots(rootnodes.begin(), rootnodes.end());
                     // In each root, add an instance of these states
                     unsigned newnewnode = ~0u;
-                    for(auto root: rootnodes)
+                    for(unsigned a=0, b=rootnodes.size(); a<b; ++a) // b caches the size before we started adding
                     {
-                        unsigned nextnode = addtransition(root, states, newnewnode);
+                        unsigned root = rootnodes[a], nextnode = AddTransition(root, newnewnode);
                         if(nextnode != root)
                         {
                             // Loop the next node into itself
-                            for(unsigned c=0x01; c<0x100; ++c)
-                                nfa_nodes[nextnode].targets[c].insert(nextnode);
+                            AddTransition(nextnode, nextnode);
+
                             newnewnode = nextnode;
+                            rootnodes.FastestInsert(nextnode);
                         }
-                        newroots.insert(nextnode);
                     }
-                    rootnodes.assign(newroots.begin(), newroots.end());
+                    rootnodes.MakeSureIsSortedAndUnique();
                     break;
                 }
                 case '?':
@@ -322,7 +820,7 @@ void DFA_Matcher::Generate()
                 }
                 case '\\': // ESCAPE
                 {
-                    switch(c = cget())
+                    switch(c = t_cget())
                     {
                         case 'd':
                         {
@@ -342,9 +840,9 @@ void DFA_Matcher::Generate()
                         {
                             #define x(c) (((c)>='0'&&(c)<='9') ? ((c)-'0') : ((c)>='A'&&(c)<='F') ? ((c)-'A'+10) : ((c)-'a'+10))
                             states.reset();
-                            c = cget(); if(!std::isxdigit(c)) { unget(); states.set('x'); goto do_newnode; }
+                            c = t_cget(); if(!std::isxdigit(c)) { t_unget(); states.set('x'); goto do_newnode; }
                             unsigned hexcode = x(c);
-                            c = cget(); if(std::isxdigit(c)) { hexcode = hexcode*16 + x(c); } else unget();
+                            c = t_cget(); if(std::isxdigit(c)) { hexcode = hexcode*16 + x(c); } else t_unget();
                             states.set(hexcode);
                             #undef x
                             goto do_newnode;
@@ -362,14 +860,14 @@ void DFA_Matcher::Generate()
                 {
                     bool inverse = false;
                     states.reset();
-                    if(cget() == '^') inverse = true; else unget();
-                    while(!end())
+                    if(t_cget() == '^') inverse = true; else t_unget();
+                    while(!t_end())
                     {
-                        c = cget();
+                        c = t_cget();
                         if(c == ']') break;
-                        unsigned begin = c; if(c == '\\') begin = cget();
-                        if(cget() != '-') { unget(); states.set(c); continue; }
-                        unsigned end   = cget();
+                        unsigned begin = c; if(c == '\\') begin = t_cget();
+                        if(t_cget() != '-') { t_unget(); states.set(c); continue; }
+                        unsigned end   = t_cget();
                         while(begin <= end) states.set(begin++);
                     }
                     if(inverse) states.flip();
@@ -381,394 +879,519 @@ void DFA_Matcher::Generate()
                     if(icase && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')))
                         states.set(c ^ 0x20);
                 do_newnode:;
-                    std::set<unsigned> newroots;
+                    SometimesSortedVector<unsigned> newroots;
                     unsigned newnewnode = ~0u;
                     for(auto root: rootnodes)
                     {
-                        unsigned newnode = addtransition(root, states, newnewnode);
+                        unsigned newnode = AddTransition(root, newnewnode);
                         // newnewnode records the newly created node, so that in case
                         // we need to create new child nodes in multiple roots, we can
                         // use the same child node for all of them.
                         // This helps keep down the NFA size.
                         if(newnode != root) newnewnode = newnode;
-                        newroots.insert(newnode);
+                        newroots.FastestInsert(newnode);
                     }
-                    rootnodes.assign(newroots.begin(), newroots.end());
+                    rootnodes = std::move(newroots);
+                    rootnodes.MakeSureIsSortedAndUnique();
                 }
             }
         // Add the end-of-stream tag
+        states.reset(); states.set(0x00);
         for(auto root: rootnodes)
-            nfa_nodes[root].targets[0x00].insert(target | 0x80000000u);
+            AddTransition(root, target + NFA_ACCEPT_OFFSET);
     }
-    // Don't need the matches[] anymore, since it's all assembled in nfa_nodes[]
-    matches.clear();
 
-    //DumpNFA("Original NFA", nfa_nodes);
-
-    // STEP 2: Convert NFA into DFA
-    if(true) // scope
+    void RemapDuplicate(unsigned duplicate, unsigned better)
     {
-        std::vector<NFAnode> newnodes;
-        std::list<unsigned> pending;
+        // Change all references to duplicate in parentnode into references to n
+        parents[duplicate].MakeSureIsSortedAndUnique();
+        for(auto parent: parents[duplicate])
+            for(auto& c: nfa_nodes[parent])
+                for(auto& b: c)
+                    if(b == duplicate) b = better;
+        // And dummy out the unused node
+        if(duplicate >= deadnodes.size()) deadnodes.resize(duplicate+1);
+        deadnodes[duplicate] = true;
+        for(auto& c: nfa_nodes[duplicate]) c.clear();
+    }
 
-        // List of original state numbers -> new state number
-        std::unordered_map<std::string, unsigned> combination_map;
-        std::vector<std::vector<unsigned>> sources;
-        unsigned nodecounter=0;
-
-        // AddSet: Generate a new node from the combination of given nodes
-        //         Node numbers may refer to the original map, or to
-        //         the new map. New nodes are indicated by 0x40000000u bit.
-        auto AddSet = [&](std::vector<unsigned>&& targets)
-        {
-            auto l = targets.rbegin();
-            if(l != targets.rend() && *l & 0x80000000u)
+    void CheckDuplicate(unsigned root)
+    {
+        // Check if there is another node that has identical states as root;
+        // if there is, replace all references to "root" to point to that another node.
+        if(root < deadnodes.size() && deadnodes[root]) return;
+        auto& rootnode = nfa_nodes[root];
+        for(auto& c: rootnode) c.MakeSureIsSortedAndUnique();
+        for(unsigned n=0; n<nfa_nodes.size(); ++n)
+            if(n != root)
             {
-                // If one of these targets is an accept, keep one.
-                // If there are many, the grammar is ambiguous.
-                return *l;
+                if(n < deadnodes.size() && deadnodes[n])
+                {
+                    notequal: continue;
+                }
+                auto& node = nfa_nodes[n];
+                for(auto& c: node) c.MakeSureIsSortedAndUnique();
+                for(unsigned c=0; c<CHARSET_SIZE; ++c)
+                    if(!std::equal(node[c].begin(), node[c].end(),
+                                   rootnode[c].begin(), rootnode[c].end()))
+                        goto notequal;
+                // Found equal!
+                #ifdef DEBUG
+                DumpNFA(std::cout, "Found identical state", nfa_nodes, root,root+1);
+                DumpNFA(std::cout, "Merging to",            nfa_nodes, n, n+1);
+                #endif
+                RemapDuplicate(root, n);
+                // Recursively apply remdup to all parents
+                for(auto r: parents[root])
+                    CheckDuplicate(r);
             }
-            std::vector<unsigned char> Buf(targets.size()*8);
-            unsigned ptr=0;
-            for(auto k: targets) PutVarBit(&Buf[0], ptr, k);
-            std::string target_key(&Buf[0], &Buf[(ptr+CHAR_BIT-1)/CHAR_BIT]);
-            //fprintf(stderr, "Buf %u bytes -> ptr=%u (%u)\n", unsigned(Buf.size()), ptr, (ptr+CHAR_BIT-1)/CHAR_BIT);
+    }
 
-            // Find a node for the given list of targets
-            auto i = combination_map.find(target_key);
-            if(i != combination_map.end())
-                return i->second;
+    void SimplifyAcceptingStates()
+    {
+        // If there is a node where all states lead into
+        // either itself, or into the same accepting state,
+        // change all its parent pointers into acception
+        for(unsigned root=nfa_nodes.size(); root-- > 0; )
+        {
+            unsigned accept=0;
+            for(auto& t: nfa_nodes[root])
+            {
+                if(t.empty()) goto non_candidate1; // neither accepting nor self-pointing
+                for(auto v: t)
+                    if(v >= NFA_ACCEPT_OFFSET)
+                    {
+                        if(accept == 0) accept = v;
+                        else if(v != accept) goto non_candidate1;
+                    }
+                    else if(v != root) goto non_candidate1;
+            }
+            if(accept == 0) continue;
+            RemapDuplicate(root, accept);
+            //DumpNFA(std::cout, "Outcome", nfa_nodes);
+        non_candidate1:;
+        }
+    }
 
-            // Create if necessary.
-            unsigned target_id = nodecounter++;
-            if(target_id <= sources.size()) sources.resize(target_id+1);
-            sources[target_id] = std::move(targets);
-            // Don't resize newnodes[] here, as there are still references to it.
-            pending.push_back(target_id |= 0x40000000u);
-            combination_map.emplace(target_key, target_id);
-            return target_id;
-        };
+    void Minimize()
+    {
+#ifdef DEBUG
+        std::cout << "=====================================================\n";
+        DumpNFA(std::cout, "Before NFA minimization", nfa_nodes);
+        std::cout << "-----------------------------------------------------\n";
+#endif
+        // Find all nodes that contain only accepting states
+        for(unsigned n=nfa_nodes.size(); n-- > 0; )
+        {
+            /*for(auto& t: nfa_nodes[n])
+                for(auto v: t)
+                    if(v < NFA_ACCEPT_OFFSET)
+                        goto non_candidate2;*/
+            CheckDuplicate(n);
+        //non_candidate2:;
+        }
+
+        unsigned n_nodes_to_keep = nfa_nodes.size();
+        while(n_nodes_to_keep > 0 && (n_nodes_to_keep-1) < deadnodes.size() && deadnodes[n_nodes_to_keep-1])
+            --n_nodes_to_keep;
+        if(n_nodes_to_keep < nfa_nodes.size())
+        {
+            nfa_nodes.resize(n_nodes_to_keep);
+            deadnodes.resize(n_nodes_to_keep);
+            parents.resize(n_nodes_to_keep);
+        }
+    }
+
+private:
+    // PHASE 2 functions
+    std::list<std::pair<unsigned/*node id*/,std::vector<unsigned>/*sources*/>> pending{};
+    // List of original state numbers -> new state number
+    std::unordered_map<std::string, unsigned> combination_map{};
+    unsigned nodecounter{};
+
+    // AddSet: Generate a new node from the combination of given nodes
+    //         Node numbers may refer to the original map, or to
+    //         the new map. New nodes are indicated being offset by new_node_offset.
+    unsigned AddSet(std::vector<unsigned>&& targets)
+    {
+        auto l = targets.rbegin();
+        if(l != targets.rend() && (*l >= NFA_ACCEPT_OFFSET))
+        {
+            // If one of these targets is an accept, keep one.
+            // If there are many, the grammar is ambiguous, but
+            // we will only keep one (the highest-numbered).
+            return *l;
+        }
+
+        // Find a newnode that combines the given target nodes.
+        std::string target_key;
+        target_key.reserve(targets.size()*sizeof(unsigned));
+        for(auto k: targets)
+            target_key.append(reinterpret_cast<const char*>(&k), sizeof(k));
+
+        // Find a node for the given list of targets
+        auto i = combination_map.find(target_key);
+        if(i != combination_map.end())
+            return i->second;
+
+        // Create if necessary.
+        unsigned target_id = nodecounter++;
+        pending.emplace_back(target_id, std::move(targets));
+        // Don't resize nfa_nodes[] here, as there are still references to it.
+        combination_map.emplace(target_key, target_id);
+        return target_id;
+    }
+
+public:
+    void Determinize()
+    {
+#ifdef DEBUG
+        DumpNFA(std::cout, "Original NFA", nfa_nodes);
+#endif
+        unsigned number_of_old_nodes = nfa_nodes.size();
+        nodecounter = number_of_old_nodes;
+
+        // Create the first new node from the combination of original node 0.
         AddSet({0});
 
         while(!pending.empty())
         {
             // Choose one of the pending states, and generate a new node for it.
-            unsigned chosen = *pending.begin() & 0x3FFFFFFFu;
-            unsigned cap = *pending.rbegin() & 0x3FFFFFFFu;
+            // Numbers in pending[] always refer to new nodes even without new_node_offset.
+            // Note: If you have DFA_POST_SORT_BY_USECOUNT, it does not matter which
+            // order you pick them. If you don't, you must ALWAYS pick 0 first.
+            unsigned chosen = pending.begin()->first;
+            auto sources    = std::move(pending.begin()->second);
             pending.erase(pending.begin());
-            if(cap >= newnodes.size()) newnodes.resize(cap+1);
-            NFAnode& st = newnodes[chosen];
+
+            if(nodecounter >= nfa_nodes.size()) nfa_nodes.resize(nodecounter+4);
+            NFAnode& st = nfa_nodes[chosen];
 
             // Merge the transitions from all sources states of that new node.
-            for(unsigned c=0; c<256; ++c)
+            for(unsigned c=0; c<CHARSET_SIZE; ++c)
             {
-                std::vector<unsigned> merged_targets;
-                for(auto src: sources[chosen])
-                    if(src & 0x80000000u)
-                        merged_targets.push_back(src);
+                SometimesSortedVector<unsigned> merged_targets;
+                for(auto src: sources) // Always a sorted list
+                    if(src >= NFA_ACCEPT_OFFSET)
+                        merged_targets.FastestInsert(src);
                     else
-                    {
-                        const auto& source = (src & 0x40000000u) ? newnodes[src & 0x3FFFFFFFu]
-                                                                 : nfa_nodes[src];
-                        merged_targets.insert(merged_targets.end(),
-                                              source.targets[c].begin(),
-                                              source.targets[c].end());
-                    }
+                        merged_targets.FastestInsert(nfa_nodes[src][c]);
                 if(merged_targets.empty()) continue;
-                std::sort(merged_targets.begin(), merged_targets.end());
-                merged_targets.erase(std::unique(merged_targets.begin(), merged_targets.end()), merged_targets.end());
-
-                st.targets[c].insert( AddSet(std::move(merged_targets)) );
+                // Sort and keep only unique values in the merged_targets.
+                st[c].FastestInsert(AddSet(std::move(merged_targets.StealSortedVector())));
             }
         }
 
-        // Last: Fix up the node numbers, by removing the 0x40000000 bit
-        // which was used to distinguish newnodes from the old nfa_nodes.
-        nfa_nodes = std::move(newnodes);
+        // Last: Delete all old nodes, and update the node numbers
+        // by subtracting number_of_old_nodes.
+        nfa_nodes.erase(nfa_nodes.begin() + nodecounter, nfa_nodes.end());
+        nfa_nodes.erase(nfa_nodes.begin(), nfa_nodes.begin() + number_of_old_nodes);
+
         for(auto& n: nfa_nodes)
-            for(auto& c: n.targets)
+            for(auto& c: n)
             {
-                std::set<unsigned> conv_set;
-                for(auto e: c) conv_set.insert(e & ~0x40000000u);
-                c = std::move(conv_set);
-            }
-    } // scope for NFA-to-DFA
-    // The NFA now follows DFA constraints.
-    //DumpNFA("MERGED NODES", nfa_nodes);
-
-    // STEP 3: Convert the DFA into the statemachine structure.
-    statemachine.resize(nfa_nodes.size());
-    for(unsigned c, n=0; n<nfa_nodes.size(); ++n)
-        for(auto& s = nfa_nodes[c=0, n]; c<256; ++c)
-        {
-            unsigned& v = statemachine[n][c];
-            if(s.targets[c].empty()) { v = statemachine.size(); continue; }
-            unsigned a = *s.targets[c].begin();
-            if(a & 0x80000000u)      { v = statemachine.size() + 1 + (a & 0x7FFFFFFFu); }
-            else                     { v = a; }
-        }
-    nfa_nodes.clear();
-
-    // STEP 4: Finally, minimalize the DFA (state machine).
-    if(true)
-    {
-        //DumpDFA("DFA before minimization", statemachine);
-
-        // Find out if there are any unreachable states in the DFA
-        /*std::set<unsigned> reached, unvisited{0};
-        while(!unvisited.empty())
-        {
-            unsigned state = *unvisited.begin();
-            unvisited.erase(unvisited.begin());
-            reached.insert(state);
-            for(auto v: statemachine[state])
-                if(v < statemachine.size())
-                    if(reached.find(v) == reached.end())
-                        unvisited.insert(v);
-        }
-        if(reached.size() != statemachine.size())
-            printf("%u states, but only %u reached\n",
-                (int)statemachine.size(), (int)reached.size());*/
-
-        // Groups of states
-        typedef std::list<unsigned> group_t;
-
-        // State number to group number mapping
-        std::unordered_map<unsigned,unsigned> mapping;
-
-        // Create a single group for all non-accepting states.
-        // Collect all states. Assume there are no unvisited states.
-        struct groupdata
-        {
-            group_t group{};
-            bool    unused=false;
-            unsigned uses=0, originalnumber=0;
-        };
-        std::vector<groupdata> groups(1);
-        for(unsigned n=0; n<statemachine.size(); ++n)
-            { groups[0].group.push_back(n); mapping.emplace(n, 0); }
-
-        // Don't create groups for terminal states, since they're
-        // not really states, but create a mapping for them, so that
-        // we don't need special handling in the group-splitting code.
-        for(unsigned n=0; n<statemachine.size(); ++n)
-            for(auto v: statemachine[n])
-                if(v >= statemachine.size()) // Accepting or failing state
-                    mapping.emplace(v, 0x80000000u | v);
-
-    rewritten:;
-        for(unsigned groupno=0; groupno<groups.size(); ++groupno)
-        {
-            group_t& group = groups[groupno].group;
-            auto j = group.begin();
-            unsigned first_state = *j++;
-            if(j == group.end()) continue; // only 1 item
-
-            // For each state in this group that differs
-            // from first group, move them into the other group.
-            group_t othergroup;
-            while(j != group.end())
-            {
-                unsigned other_state = *j;
-                bool differs = false;
-                for(unsigned c=0; c<256; ++c)
-                {
-                    if(mapping.find(statemachine[first_state][c])->second
-                    != mapping.find(statemachine[other_state][c])->second)
+                c.MakeSureIsSortedAndUnique();
+                // c.targets should have 0 or 1 elements here.
+                for(unsigned& e: c)
+                    if(e < NFA_ACCEPT_OFFSET)
                     {
-                        differs = true;
-                        break;
+                        assert(e >= number_of_old_nodes);
+                        e -= number_of_old_nodes;
                     }
-                }
-                if(differs)
-                {
-                    // Move this element into other group.
-                    auto old = j++;
-                    othergroup.splice(othergroup.end(), group, old, j);
-                }
-                else
-                    ++j;
             }
-            if(!othergroup.empty())
-            {
-                // Split the differing states into a new group
-                unsigned othergroup_id = groups.size();
-                // Change the mappings (we need overwriting, so don't use emplace here)
-                for(auto n: othergroup) mapping[n] = othergroup_id;
-                groups.emplace_back(groupdata{std::move(othergroup)});
-                goto rewritten;
-            }
-        }
 
-        // Sort the groups according to how many times they are
-        // referred, so that most referred groups get smallest numbers.
-        // This helps shrink down the .dirr_dfa file size.
-    recalculate_uses:
-        // VERY IMPORTANT: Make sure that whichever group contains the
-        // original state 0, emerges as group 0 in the new ordering.
-        groups[mapping.find(0)->second].uses = 0x80000000u;
-        for(unsigned groupno=0; groupno<groups.size(); ++groupno)
+        // The NFA now follows DFA constraints.
+    #ifdef DEBUG
+        DumpNFA(std::cout, "Determinized NFA", nfa_nodes);
+    #endif
+    }
+
+    // PHASE 3: Convert into DFA format (assumed to already follow the constraints)
+    std::vector<std::array<unsigned,CHARSET_SIZE>> LoadDFA()
+    {
+        std::vector<std::array<unsigned,CHARSET_SIZE>> result(nfa_nodes.size());
+        for(unsigned n=0; n<nfa_nodes.size(); ++n)
         {
-            if(groups[groupno].unused) continue;
-            groups[groupno].originalnumber = groupno;
-
-            for(unsigned v: statemachine[*groups[groupno].group.begin()])
-                if(v < statemachine.size())
-                    ++groups[mapping.find(v)->second].uses;
+            auto& s = nfa_nodes[n];
+            auto& t = result[n];
+            for(unsigned c=0; c<CHARSET_SIZE; ++c)
+            {
+                s[c].MakeSureIsSortedAndUnique();
+                assert(s[c].size() <= 1);
+                if(s[c].empty())           { t[c] = result.size(); continue; }
+                unsigned a = s[c].front();
+                if(a >= NFA_ACCEPT_OFFSET) { t[c] = result.size() + 1 + (a - NFA_ACCEPT_OFFSET); }
+                else                       { t[c] = a; }
+            }
         }
-        // Go over the groups and check if some of them were unused
-        bool found_unused = false;
-        for(auto& g: groups)
-            if(!g.unused && g.uses == 0)
-                g.unused = found_unused = true;
-        if(found_unused)
-            { for(auto& g: groups) g.uses = 0; goto recalculate_uses; }
+        return result;
+    }
+};
 
-        // Sort groups according to their use.
-        // The group that contained state 0 will emerge as group 0.
-        std::sort(groups.begin(), groups.end(), [](const groupdata& a, const groupdata& b)
+static void DFA_Transform(std::vector<std::array<unsigned,CHARSET_SIZE>>& statemachine, bool sort, bool prune)
+{
+    if(!sort && !prune) return;
+    if(statemachine.empty()) return;
+
+    struct Info
+    {
+        unsigned originalnumber;
+        unsigned uses;
+        bool     unused;
+    };
+    std::vector<Info> info;
+    info.reserve(statemachine.size());
+    for(unsigned stateno=0; stateno<statemachine.size(); ++stateno)
+        info.push_back({stateno,0,false});
+
+    // Sort the states according to how many times they are
+    // referred, so that most referred states get smallest numbers.
+    // This helps shrink down the .dirr_dfa file size.
+recalculate_uses:
+    info[0].uses = ~0u; // Make sure state 0 stays at 0
+    for(unsigned stateno=0; stateno<statemachine.size(); ++stateno)
+        if(!info[stateno].unused)
+            for(unsigned c=0; c<CHARSET_SIZE; ++c)
+            {
+                unsigned t = statemachine[stateno][c];
+                if(t < statemachine.size()
+                && (c == 0 || t != statemachine[stateno][c-1])
+                  )
+                    if(likely(info[t].uses < ~0u))
+                        ++info[t].uses;
+            }
+
+    // Go over the states and check if some of them were unused
+    bool found_unused = false;
+    for(auto& m: info)
+        if(m.uses == 0)
+            if(!m.unused) { m.unused = true; found_unused = true; }
+    if(found_unused)
+        { for(auto& m: info) m.uses = 0; goto recalculate_uses; }
+
+    // Didn't find new unused states.
+    if(prune)
+    {
+        // Now delete states that were previously found to be unused.
+        // State 0 will not be deleted, as it implicitly has an use count of ~0u.
+        info.erase(std::remove_if(info.begin(),info.end(),[](const Info& m)
+        {
+            return m.unused==true;
+        }), info.end());
+    }
+
+#ifdef DEBUG
+    std::cout << (statemachine.size()-info.size()) << " DFA states deleted\n";
+#endif
+
+    if(sort)
+    {
+        // Sort states according to their use.
+        // State 0 will remain as state 0 because it has the highest uses count.
+        std::sort(info.begin(), info.end(), [](const Info& a, const Info& b)
         {
             return a.uses > b.uses;
         });
-
-        // Delete groups that are never used
-        groups.erase(std::remove_if(groups.begin(),groups.end(),[](const groupdata& g)
-        {
-            return g.unused;
-        }), groups.end());
-
-        // Rewrite the mappings to reflect the new sorted order
-        {std::unordered_map<unsigned,unsigned> rewritten_mappings;
-        for(unsigned groupno=0; groupno<groups.size(); ++groupno)
-            rewritten_mappings.emplace(groups[groupno].originalnumber, groupno);
-        for(auto& m: mapping)
-            if(!(m.second & 0x80000000u))
-            {
-                auto i = rewritten_mappings.find(m.second);
-                if(i != rewritten_mappings.end())
-                    m.second = i->second;
-                else
-                    m.second = ~0u;
-        }   }
-
-        // Create a new state machine based on these groups
-        std::vector<std::array<unsigned,256>> newstates(groups.size());
-        for(unsigned newstateno=0; newstateno<groups.size(); ++newstateno)
-        {
-            auto& group          = groups[newstateno];
-            auto& newstate       = newstates[newstateno];
-            // All states in this group are identical. Just take any of them.
-            const auto& oldstate = statemachine[*group.group.begin()];
-            // Convert the state using the mapping.
-            for(unsigned c=0; c<256; ++c)
-            {
-                unsigned v = oldstate[c];
-                if(v >= statemachine.size()) // Accepting or failing state?
-                    newstate[c] = v - statemachine.size() + newstates.size();
-                else
-                    newstate[c] = mapping.find(v)->second; // group number
-            }
-        }
-        statemachine = std::move(newstates);
-        //DumpDFA("DFA after minimization", statemachine);
     }
+    else
+    {
+        // Nothing was deleted?
+        if(info.size() == statemachine.size())
+            return;
+    }
+
+    // Create mappings to reflect the new sorted order
+    std::unordered_map<unsigned,unsigned> rewritten_mappings;
+    for(unsigned stateno=0; stateno<info.size(); ++stateno)
+        rewritten_mappings.emplace(info[stateno].originalnumber, stateno);
+
+    // Rewrite the state machine
+    std::vector<std::array<unsigned,CHARSET_SIZE>> newstatemachine(info.size());
+    for(unsigned stateno=0; stateno<info.size(); ++stateno)
+    {
+        auto& targets = statemachine[ info[stateno].originalnumber ];
+        for(unsigned c=0; c<CHARSET_SIZE; ++c)
+        {
+            newstatemachine[stateno][c] = (targets[c] >= statemachine.size())
+                ? (targets[c] - statemachine.size() + newstatemachine.size())
+                : (rewritten_mappings.find(targets[c])->second);
+        }
+    }
+    statemachine = std::move(newstatemachine);
 }
 
-bool DFA_Matcher::Load(std::FILE* fp)
+static void DFA_Minimize(std::vector<std::array<unsigned,CHARSET_SIZE>>& statemachine)
 {
-    char StrBuf[128];
-    try {
-        while(std::fgets(StrBuf, sizeof StrBuf, fp) && StrBuf[0]=='#') {}
-        if(std::stoull(StrBuf, nullptr, 16) == hash)
+#ifdef DEBUG
+    DumpDFA(std::cout, "DFA before minimization", statemachine);
+#endif
+    // Groups of states
+    typedef std::list<unsigned> group_t;
+
+    // State number to group number mapping
+    class mappings
+    {
+        std::vector<unsigned> lomap{}; // non-accepting states
+        std::vector<unsigned> himap{}; // accepting states
+    public:
+        void set(unsigned value, unsigned target)
         {
-            // Read the rest of the state machine
-            std::vector<unsigned char> Buf(32);
-            std::fread(&Buf[0], 1, Buf.size(), fp);
-            unsigned position   = 0;
-            unsigned num_states = LoadVarBit(&Buf[0], position);
-            unsigned num_bits   = LoadVarBit(&Buf[0], position);
+            if(value < DFAOPT_ACCEPT_OFFSET)
+                set_in(lomap, value, target);
+            else
+                set_in(himap, value-DFAOPT_ACCEPT_OFFSET, target);
+        }
+        unsigned get(unsigned value) const
+        {
+            return (value < DFAOPT_ACCEPT_OFFSET)
+                ? lomap[value]
+                : himap[value-DFAOPT_ACCEPT_OFFSET];
+        }
+    private:
+        void set_in(std::vector<unsigned>& which, unsigned index, unsigned target)
+        {
+            if(which.size() <= index) which.resize(index+8);
+            which[index] = target;
+        }
+    } mapping;
 
-            if(num_states*sizeof(statemachine[0]) > 2000000)
-                throw std::invalid_argument("implausible num_states");
+    // Create a single group for all non-accepting states.
+    // Collect all states. Assume there are no unvisited states.
+    std::vector<group_t> groups(1);
+    for(unsigned n=0; n<statemachine.size(); ++n)
+        { groups[0].push_back(n); mapping.set(n, 0); }
 
-            unsigned num_bytes = (num_bits+CHAR_BIT-1)/CHAR_BIT;
-            if(num_bytes > Buf.size())
+    // Don't create groups for accepting states, since they are
+    // not really states, but create a mapping for them, so that
+    // we don't need special handling in the group-splitting code.
+    for(unsigned n=0; n<statemachine.size(); ++n)
+        for(auto v: statemachine[n])
+            if(v >= statemachine.size()) // Accepting or failing state
+                mapping.set( v, (v - statemachine.size()) + DFAOPT_ACCEPT_OFFSET );
+
+rewritten:;
+    for(unsigned groupno=0; groupno<groups.size(); ++groupno)
+    {
+        group_t& group = groups[groupno];
+        auto j = group.begin();
+        unsigned first_state = *j++;
+        if(j == group.end()) continue; // only 1 item
+
+        // For each state in this group that differs
+        // from first group, move them into the other group.
+        group_t othergroup;
+        while(j != group.end())
+        {
+            unsigned other_state = *j;
+            auto old = j++;
+            for(unsigned c=0; c<CHARSET_SIZE; ++c)
             {
-                unsigned already = Buf.size(), missing = num_bytes - already;
-                Buf.resize(num_bytes);
-                std::fread(&Buf[already], 1, missing, fp);
-            }
-
-            statemachine.resize(num_states);
-            for(unsigned state_no=0; state_no<statemachine.size(); ++state_no)
-            {
-                auto& data = statemachine[state_no];
-                //fprintf(stderr, "%u:", state_no);
-                for(unsigned last = 0; last < 256 && position < num_bits; )
+                if(mapping.get(statemachine[first_state][c])
+                != mapping.get(statemachine[other_state][c]))
                 {
-                    unsigned end   = LoadVarBit(&Buf[0], position) + last;
-                    unsigned value = LoadVarBit(&Buf[0], position);
-                    if(end==last) end = last+256;
-                    while(last < end && last < 256) data[last++] = value;
+                    // Difference found.
+                    // Move this element into other group.
+                    othergroup.splice(othergroup.end(), group, old, j);
+                    break;
                 }
             }
-            return true;
         }
-    }
-    catch(const std::invalid_argument&)
-    {
-        // Lands here if std::stoi fails to parse a number.
-    }
-    return false;
-}
-
-void DFA_Matcher::Save(std::FILE* save_fp) const
-{
-    std::fprintf(save_fp,
-        "# This file caches the DFA used by DIRR for parsing filenames.\n"
-        "# The first number is the hash of DIRR_COLORS in hexadecimal.\n"
-        "# The rest is a bitstream of a RLE-compressed state machine.\n"
-        "%llX\n",
-        hash);
-
-    std::vector<unsigned char> Buf;
-    unsigned numbits=0;
-    for(;;)
-    {
-        Buf.resize(256);
-        unsigned ptr=0;
-        PutVarBit(&Buf[0], ptr, statemachine.size());
-        PutVarBit(&Buf[0], ptr, numbits);
-        for(const auto& a: statemachine)
-            for(unsigned sum=0, n=0; n<=256; ++n, ++sum)
-                if(sum > 0 && (n == 256 || a[n] != a[n-1]))
-                {
-                    if(ptr/CHAR_BIT + 16 > Buf.size())
-                        Buf.resize(ptr/CHAR_BIT + 128);
-
-                    PutVarBit(&Buf[0], ptr, sum);
-                    PutVarBit(&Buf[0], ptr, a[n-1]);
-                    sum = 0;
-                }
-        if(ptr == numbits) break;
-        numbits = ptr;
-    }
-    std::fwrite(&Buf[0], 1, (numbits+CHAR_BIT-1)/CHAR_BIT, save_fp);
-}
-
-int DFA_Matcher::Test(const std::string& s, int default_value) const
-{
-    if(unlikely(statemachine.empty())) return default_value;
-    unsigned cur_state = 0;
-    const char* str = s.c_str(); // Use c_str() because we also need '\0'.
-    for(std::size_t a=0, b=s.size(); a<=b; ++a) // Use <= to iterate '\0'.
-    {
-        cur_state = statemachine[cur_state][ (unsigned char) str[a] ];
-        if(cur_state >= statemachine.size())
+        if(!othergroup.empty())
         {
-            cur_state -= statemachine.size();
-            return cur_state ? cur_state-1 : default_value;
+            // Split the differing states into a new group
+            unsigned othergroup_id = groups.size();
+            // Change the mappings (we need overwriting, so don't use emplace here)
+            for(auto n: othergroup) mapping.set(n, othergroup_id);
+            groups.emplace_back(std::move(othergroup));
+            goto rewritten;
         }
     }
-    return default_value;
+
+    // VERY IMPORTANT: Make sure that whichever group contains the
+    // original state 0, emerges as group 0 in the new ordering.
+
+    // Create a new state machine based on these groups
+    std::vector<std::array<unsigned,CHARSET_SIZE>> newstates(groups.size());
+    for(unsigned newstateno=0; newstateno<groups.size(); ++newstateno)
+    {
+        auto& group          = groups[newstateno];
+        auto& newstate       = newstates[newstateno];
+        // All states in this group are identical. Just take any of them.
+        const auto& oldstate = statemachine[*group.begin()];
+        // Convert the state using the mapping.
+        for(unsigned c=0; c<CHARSET_SIZE; ++c)
+        {
+            unsigned v = oldstate[c];
+            if(v >= statemachine.size()) // Accepting or failing state?
+                newstate[c] = v - statemachine.size() + newstates.size();
+            else
+                newstate[c] = mapping.get(v); // group number
+        }
+    }
+    statemachine = std::move(newstates);
+
+    DFA_Transform(statemachine, DFA_POST_SORT_BY_USECOUNT, DFA_POST_DELETE_UNUSED_NODES);
+
+#ifdef DEBUG
+    DumpDFA(std::cout, "DFA after minimization", statemachine);
+#endif
+}
+
+void DFA_Matcher::Compile()
+{
+    lock_writing(lk, lock);
+    if(unlikely(!data)) return;
+
+    // First, sort the matches so that we get a deterministic hash.
+    // This is optional.
+    std::sort(data->matches.begin(), data->matches.end(),
+              [](const auto& a, const auto& b)
+              { return (a.target!=b.target) ? a.target<b.target
+                     : (a.token!=b.token) ? a.token<b.token
+                     : a.icase<b.icase; });
+
+    data->RecheckHash(); // Calculate the hash before deleting matches[]
+    // Otherwise Save() will fail
+
+    data->statemachine = [this]
+    {
+        NFAcompiler nfa_compiler;
+
+        // Parse each wildmatch expression into the NFA.
+        for(auto& m: data->matches)
+            nfa_compiler.AddMatch(std::move(m.token), m.icase, m.target);
+
+        // Don't need the matches[] anymore, since it's all assembled in nfa_nodes[]
+    #ifndef PUTBIT_OPTIMIZER
+        data->matches.clear();
+    #endif
+
+        if(NFA_SIMPLIFY_ACCEPTS)
+        {
+            nfa_compiler.SimplifyAcceptingStates();
+        }
+
+        if(NFA_PRE_MINIMIZATION_LEVEL >= 2)
+        {
+            nfa_compiler.Minimize();
+        }
+
+        nfa_compiler.Determinize();
+
+        return nfa_compiler.LoadDFA();
+    }();
+
+    DFA_Transform(data->statemachine, false, DFA_PRE_DELETE_UNUSED_NODES);
+
+    // STEP 4: Finally, minimalize the DFA (state machine).
+    if(DFA_DO_MINIMIZATION)
+    {
+        DFA_Minimize(data->statemachine);
+    }
+}
+
+bool DFA_Matcher::Valid() const noexcept
+{
+    lock_reading(lk, lock);
+    return data && !data->statemachine.empty();
 }
