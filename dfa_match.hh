@@ -99,9 +99,6 @@ public:
      * Exceptions:
      *   Any exception that can be thrown by std::vector::resize()
      *   or f.write().
-     *   Additionally, std::runtime_error may be thrown if Save()
-     *   is thrown into an infinite loop (it is not yet proven true
-     *   or false whether this can happen).
      */
     void Save(std::ostream& f) const;
     void Save(std::ostream&& f) const;

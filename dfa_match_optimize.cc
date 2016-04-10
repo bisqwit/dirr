@@ -5,17 +5,70 @@
 #include <random>
 #include <fstream>
 #include <iostream>
+
+constexpr unsigned longbits = sizeof(unsigned long long)*CHAR_BIT;
+
+static std::mt19937 rnd;
+
+static bool TestLoadBit()
+{
+    std::vector<unsigned long long> testvalues;
+    for(unsigned bitness=1; bitness<=longbits; ++bitness)
+    {
+        unsigned n_random_values = std::min(100ull, 1ull << bitness);
+        for(unsigned n=0; n<n_random_values; ++n)
+        {
+            unsigned long long value = std::max(1ull, (1ull << bitness) / n_random_values) * n;
+            testvalues.push_back(value);
+        }
+    }
+    std::sort(testvalues.begin(), testvalues.end());
+    testvalues.erase(std::unique(testvalues.begin(),testvalues.end()),testvalues.end());
+    bool errors = false;
+    for(auto value: testvalues)
+    {
+        unsigned long long loaded;
+
+        unsigned char Buffer[32] = {0};
+
+        unsigned save_bitpos=0, load_bitpos=0;
+        PutVarBit(Buffer, save_bitpos, value);
+        loaded = LoadVarBit(Buffer, load_bitpos);
+
+        std::fflush(stdout); std::fflush(stderr);
+        if(save_bitpos != load_bitpos || value != loaded)
+        {
+            errors = true;
+            fprintf(stderr, "Error: Saving %llX produced %u bits. After loading %u bits we got %llX\n",
+                value, save_bitpos,
+                load_bitpos, loaded);
+
+            for(unsigned a=0; a<(save_bitpos+CHAR_BIT-1)/CHAR_BIT; ++a)
+                fprintf(stderr, "%02X ", Buffer[a]);
+            fprintf(stderr, "\n");
+        }
+        /*else
+        {
+            fprintf(stderr, "Ok: Saving %llX produced %u bits. After loading %u bits we got %llX\n",
+                value, save_bitpos,
+                load_bitpos, loaded);
+        }*/
+        std::fflush(stdout); std::fflush(stderr);
+    }
+    return !errors;
+}
+
 int main()
 {
+    TestLoadBit();
     DFA_Matcher mac;
-    std::mt19937 rnd;
     #define rand(size) std::uniform_int_distribution<>(0, (size)-1)(rnd)
 
     auto run = [&mac](int color,bool icase, const std::initializer_list<const char*>& data)
         { for(auto d: data) mac.AddMatch(d, icase, color); };
     std::cout << "Parsing...\n";
 
-    run(0x2,true, {R"(*.so)", R"(*.o)", R"(*.vxd)", R"(*.dll)", R"(*.drv)", R"(*.obj)", R"(*.dll)", R"(*.a)", R"(*.lo)", R"(*.la)", R"(*.so.*)"});
+    run(0x2,true, {R"(*.so)", R"(*.o)", R"(*.vxd)", R"(*.dll)", R"(*.drv)", R"(*.obj)", R"(*.a)", R"(*.lo)", R"(*.la)", R"(*.so.*)"});
     run(0x3,true, {R"(*.txt)", R"(*.htm)", R"(*.html)", R"(*.xml)", R"(*.xhtml)", R"(*.1st)", R"(*.wri)", R"(*.ps)", R"(*.doc)", R"(*.docx)", R"(*.odt)"});
     run(0x3,true, {R"(readme)", R"(quickstart)", R"(install)"});
     run(0x4,true, {R"(core)", R"(DEADJOE)"});
@@ -36,17 +89,29 @@ int main()
     else
         mac.Compile();
 
-
     std::cout << "Brooding...\n" << std::flush;
-    {std::stringstream out; mac.Save(out);
-    std::cout << "Test save: " << out.str().size() << " bytes\n" << std::flush; }
-//return 0;
+
+    if(1) // Sanity check and profiling scope
+    {
+        std::stringstream out, out2;
+        mac.Save(out);
+        std::cout << "Test save: " << out.str().size() << " bytes\n" << std::flush;
+        mac.Load(out, true);
+        mac.Save(out2);
+        if(out.str() != out2.str())
+        {
+            std::cerr << "ERROR: Second save produced " << out2.str().size() << "; Load did not result in same save!\n";
+            return 1;
+        }
+        else
+            std::cerr << "Load ok\n";
+    }
+return 0;
 
     static const unsigned selection[] = {1,1,1,1,1, 2,2,2,2, 3,3,3, 4,4, 5, 6, 7, 8, 9, 10, 11, 12};
 
     std::vector<unsigned> best_sel = VarBitCounts;
     std::size_t best = ~0u, best_deviation = 0, best_deviation2 = 0;
-    constexpr unsigned longbits = sizeof(unsigned long long)*CHAR_BIT;
     for(;;)
     {
 rerand:;
@@ -117,6 +182,7 @@ rerand:;
         }
 
         for(auto& r: VarBitCounts) r = std::min(r, longbits-1u);
+        VarBitCounts.erase(std::remove_if(VarBitCounts.begin(),VarBitCounts.end(),[](auto v) { return v==0; }), VarBitCounts.end());
 
         sum = 0;
         for(auto r: VarBitCounts) sum += r;
@@ -146,7 +212,17 @@ rerand:;
                 std::cout << "Load failed\n";
                 continue;
             }
-            std::cout << std::dec << size << " bytes with: ";
+            if(!TestLoadBit())
+            {
+                std::cerr << "ERROR HAPPENED WITH ";
+                std::cerr << std::hex << std::showbase << unsigned(hash_offset) << std::dec;
+                std::cerr << ", and: ";
+                char sep=' ';
+                for(unsigned r: VarBitCounts) { std::cerr << sep << r; sep = ','; }
+                std::cerr << "\n";
+                continue;
+            }
+            std::cout << size << " bytes with: ";
 
             std::cout << std::hex << std::showbase << unsigned(hash_offset) << std::dec;
             std::cout << ", and: ";
