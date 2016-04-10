@@ -49,8 +49,8 @@ public:
      *
      *   If s did not match any pattern, default_value is returned.
      *   If s matched one of the patterns, the target value for that pattern is returned.
-     *   If s matched multiple patterns, an undefined singular choice is
-     *   made between the target values (currently returns the largest value).
+     *   If s matched multiple patterns, an undefined singular choice
+     *   is made between the target values.
      *
      * When Valid() = false, the behavior of this function is undefined.
      */

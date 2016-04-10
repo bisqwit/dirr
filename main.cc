@@ -523,10 +523,10 @@ public:
             SizeType Result=0;
             switch(c)
             {
-                case 'c': Result = GetNameAttr(me.Stat, me.Name.c_str()) - GetNameAttr(other.Stat, other.Name.c_str()); break;
-                case 'C': Result = GetNameAttr(other.Stat, other.Name.c_str()) - GetNameAttr(me.Stat, me.Name.c_str()); break;
+                case 'c': Result = GetNameAttr(me.Stat, NameOnly(me.Name)) - GetNameAttr(other.Stat, NameOnly(other.Name)); break;
+                case 'C': Result = GetNameAttr(other.Stat, NameOnly(other.Name)) - GetNameAttr(me.Stat, NameOnly(me.Name)); break;
                 case 'e': Result = me.Name.size() - other.Name.size(); break;
-                case 'E': Result = other.Name.size() - me.Name.size(); break;                
+                case 'E': Result = other.Name.size() - me.Name.size(); break;
                 case 'n': Result = strcmp(me.Name.c_str(), other.Name.c_str()); break;
                 case 'N': Result = strcmp(other.Name.c_str(), me.Name.c_str()); break;
                 case 'm': Result = strcasecmp(me.Name.c_str(), other.Name.c_str()); break;

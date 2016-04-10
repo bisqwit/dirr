@@ -32,10 +32,15 @@ int main()
 
     std::cout << "Compiling...\n";
     if(mac.Load(std::ifstream("/home/bisqwit/.dirr_dfa"), true))
-        std::cout << "Nope, loaded instead\n";
+        std::cout << "Nope, loaded instead\n" << std::flush;
     else
         mac.Compile();
-    std::cout << "Brooding...\n";
+
+
+    std::cout << "Brooding...\n" << std::flush;
+    {std::stringstream out; mac.Save(out);
+    std::cout << "Test save: " << out.str().size() << " bytes\n" << std::flush; }
+//return 0;
 
     static const unsigned selection[] = {1,1,1,1,1, 2,2,2,2, 3,3,3, 4,4, 5, 6, 7, 8, 9, 10, 11, 12};
 
