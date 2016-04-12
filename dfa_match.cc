@@ -5,7 +5,6 @@
 #include <vector>
 #include <bitset>
 #include <unordered_map>
-#include <map>
 
 #include <climits>   // For CHAR_BIT
 #include <utility>   // for std::hash
@@ -251,6 +250,7 @@ public:
     }
 };
 
+
 /* SometimesSortedVector is a wrapper for std::vector<T> that seeks a middle
  * ground between std::set and std::vector.
  * Upon request, it holds the sorted-unique property (elements are in ascending
@@ -276,9 +276,6 @@ public:
     SometimesSortedVector(SometimesSortedVector<T>&& b) = default;
     SometimesSortedVector& operator=(const SometimesSortedVector<T>&) = default;
     SometimesSortedVector& operator=(SometimesSortedVector<T>&&) = default;
-    #define fwd(name) \
-        template<typename...A> auto name(A&&... a)       { return data.name(std::forward<A>(a)...); } \
-        template<typename...A> auto name(A&&... a) const { return data.name(std::forward<A>(a)...); }
     template<typename...A>
     SometimesSortedVector(A&&...args) : data{std::forward<A>(args)...}, sorted(autodetect()) {}
     template<typename...A>
@@ -287,9 +284,19 @@ public:
     void resize(size_type s) { if(s > size()) sorted = false; data.resize(s); }
     template<typename...A>
     iterator erase(A&&...args) { auto i = data.erase(std::forward<A>(args)...); if(!sorted) sorted=autodetect(); return i; }
-    fwd(size) fwd(max_size) fwd(capacity) fwd(empty) fwd(reserve) fwd(front) fwd(back)
-    fwd(begin) fwd(end) fwd(cbegin) fwd(cend) fwd(rbegin) fwd(rend) fwd(crbegin) fwd(crend)
-    #undef fwd
+    bool empty() const { return data.empty(); }
+    size_type size() const { return data.size(); }
+    size_type max_size() const { return data.max_size(); }
+    size_type max_capacity() const { return data.max_capacity(); }
+    void reserve(size_type s) { data.reserve(s); }
+    reference front() { return data.front(); } const_reference front() const { return data.front(); }
+    reference back() { return data.back(); } const_reference back() const { return data.back(); }
+    iterator begin() { return data.begin(); } iterator end() { return data.end(); }
+    const_iterator begin() const { return data.begin(); } const_iterator end() const { return data.end(); }
+    const_iterator cbegin() const { return data.cbegin(); } const_iterator cend() const { return data.cend(); }
+    reverse_iterator rbegin() { return data.rbegin(); } reverse_iterator rend() { return data.rend(); }
+    const_reverse_iterator rbegin() const { return data.rbegin(); } const_reverse_iterator rend() const { return data.rend(); }
+    const_reverse_iterator crbegin() const { return data.crbegin(); } const_reverse_iterator crend() const { return data.crend(); }
     const_reference operator[](size_type s) const { return data[s]; }
     reference       operator[](size_type s)       { sorted=false; return data[s]; }
 public:
@@ -345,6 +352,22 @@ private:
     bool autodetect() const { return data.size() <= 1; }
 };
 
+
+/* Range set. To be implemented wiser */
+class RangeSet: private std::bitset<CHARSET_SIZE>
+{
+public:
+    using std::bitset<CHARSET_SIZE>::reset;
+    using std::bitset<CHARSET_SIZE>::set;
+    using std::bitset<CHARSET_SIZE>::test;
+    using std::bitset<CHARSET_SIZE>::flip;
+    void set_range(unsigned begin, unsigned end)
+    {
+        while(begin <= end) set(begin++);
+    }
+};
+
+
 // List the target states for each different input symbol.
 // Target state >= NFA_ACCEPT_OFFSET means accepting state (accept with state - NFA_ACCEPT_OFFSET).
 // Since this is a NFA, each input character may match to a number of different targets.
@@ -355,12 +378,17 @@ typedef std::array<SometimesSortedVector<unsigned>, CHARSET_SIZE> NFAnode;
 
 /* Facilities for read/write locks */
 
-#if __cplusplus >= 201402L
+#ifndef DFA_DISABLE_MUTEX
+#if __cplusplus >= 201402L && !defined(NO_SHARED_TIMED_MUTEX)
 # define lock_reading(lk,l) std::shared_lock<std::shared_timed_mutex> lk(l)
 # define lock_writing(lk,l) std::lock_guard<std::shared_timed_mutex> lk(l)
 #else
 # define lock_reading(lk,l) std::lock_guard<std::mutex> lk(l)
 # define lock_writing(lk,l) std::lock_guard<std::mutex> lk(l)
+#endif
+#else
+# define lock_reading(lk,l)
+# define lock_writing(lk,l)
 #endif
 
 
@@ -516,7 +544,7 @@ void DFA_Matcher::AddMatch(std::string&& token, bool icase, int target)
 int DFA_Matcher::Test(const std::string& s, int default_value) const noexcept
 {
     lock_reading(lk, lock);
-    if(unlikely(!Valid())) return default_value;
+    if(unlikely(!data || data->statemachine.empty())) return default_value;
 
     const auto& statemachine = data->statemachine;
     unsigned cur_state = 0;
@@ -647,15 +675,16 @@ void DFA_Matcher::Save(std::ostream& f) const
                     sum = 0;
                 }
         if(ptr == numbits) break;
-        numbits = ptr;
 
         // This loop does not necessarily terminate eventually.
-        if(++round >= 8)
+        if(++round >= 8 && ptr < numbits)
         {
             PutBits(&Buf[0], ptr, 0, std::max(numbits,ptr) - std::min(numbits,ptr));
             numbits = ptr;
             break;
         }
+
+        numbits = ptr;
     }
     f.write(&Buf[0], (numbits+CHAR_BIT-1)/CHAR_BIT);
 }
@@ -668,7 +697,7 @@ private:
     // PHASE 1 FUNCTIONS:
     std::vector<SometimesSortedVector<unsigned>> parents{};
     std::vector<bool> deadnodes{};
-    std::bitset<CHARSET_SIZE> states{};
+    RangeSet states{};
 
     unsigned AddTransition(unsigned root, unsigned newnewnode)
     {
@@ -688,7 +717,10 @@ private:
                 auto& list = cur[c];
                 if(!states.test(c))
                 {
-                    exclude.FastestInsert(list);
+                    if(list.size()==1)
+                        exclude.FastInsert(list.front());
+                    else
+                        exclude.FastestInsert(list);
                 }
                 else
                 {
@@ -761,6 +793,7 @@ private:
         }
 
         auto& cur = nfa_nodes[root];
+        // TODO: Use _Find_next() or equivalent
         for(unsigned c=0; c<CHARSET_SIZE; ++c)
             if(states.test(c))
                 cur[c].FastestInsert(next);
@@ -794,7 +827,7 @@ public:
             {
                 case '*':
                 {
-                    states.set(); states.reset(0x00); // 01..FF, i.e. all but 00
+                    states.reset(); states.set_range(0x01,0xFF);
                     // Repeat count of zero is allowed, so we begin with the same roots
                     // In each root, add an instance of these states
                     unsigned newnewnode = ~0u;
@@ -815,7 +848,7 @@ public:
                 }
                 case '?':
                 {
-                    states.set(); states.reset(0x00); // 01..FF, i.e. all but 00
+                    states.reset(); states.set_range(0x01,0xFF);
                     goto do_newnode;
                 }
                 case '\\': // ESCAPE
@@ -825,15 +858,15 @@ public:
                         case 'd':
                         {
                             states.reset();
-                            for(unsigned a='0'; a<='9'; ++a) states.set(a);
+                            states.set_range('0', '9');
                             goto do_newnode;
                         }
                         case 'w':
                         {
                             states.reset();
-                            for(unsigned a='0'; a<='9'; ++a) states.set(a);
-                            for(unsigned a='A'; a<='Z'; ++a) states.set(a);
-                            for(unsigned a='a'; a<='z'; ++a) states.set(a);
+                            states.set_range('0', '9');
+                            states.set_range('A', 'Z');
+                            states.set_range('a', 'z');
                             goto do_newnode;
                         }
                         case 'x':
@@ -868,7 +901,7 @@ public:
                         unsigned begin = c; if(c == '\\') begin = t_cget();
                         if(t_cget() != '-') { t_unget(); states.set(c); continue; }
                         unsigned end   = t_cget();
-                        while(begin <= end) states.set(begin++);
+                        states.set_range(begin, end);
                     }
                     if(inverse) states.flip();
                     goto do_newnode;
@@ -932,8 +965,8 @@ public:
                 auto& node = nfa_nodes[n];
                 for(auto& c: node) c.MakeSureIsSortedAndUnique();
                 for(unsigned c=0; c<CHARSET_SIZE; ++c)
-                    if(!std::equal(node[c].begin(), node[c].end(),
-                                   rootnode[c].begin(), rootnode[c].end()))
+                    if(node[c].size() != rootnode[c].size()
+                    || !std::equal(node[c].begin(), node[c].end(), rootnode[c].begin()))
                         goto notequal;
                 // Found equal!
                 #ifdef DEBUG
@@ -1345,7 +1378,7 @@ void DFA_Matcher::Compile()
     // First, sort the matches so that we get a deterministic hash.
     // This is optional.
     std::sort(data->matches.begin(), data->matches.end(),
-              [](const auto& a, const auto& b)
+              [](const Data::Match& a, const Data::Match& b)
               { return (a.target!=b.target) ? a.target<b.target
                      : (a.token!=b.token) ? a.token<b.token
                      : a.icase<b.icase; });
@@ -1353,7 +1386,7 @@ void DFA_Matcher::Compile()
     data->RecheckHash(); // Calculate the hash before deleting matches[]
     // Otherwise Save() will fail
 
-    data->statemachine = [this]
+    data->statemachine = [this]() -> std::vector<std::array<unsigned,CHARSET_SIZE>>
     {
         NFAcompiler nfa_compiler;
 

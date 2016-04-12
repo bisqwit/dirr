@@ -82,12 +82,12 @@ LDFLAGS=""
 OPTIM=""
 
 do_echo -n "Determining compiler version to use... "
-select_tool CXX g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
-select_tool CPP g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
-select_tool CC  gcc cc `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;done|grep -v libc) 2>/dev/null` clang
-#select_tool CXX clang++
-#select_tool CPP clang++
-#select_tool CC clang
+#select_tool CXX g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
+#select_tool CPP g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
+#select_tool CC  gcc cc `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;done|grep -v libc) 2>/dev/null` clang
+select_tool CXX clang++
+select_tool CPP clang++
+select_tool CC clang
 do_echo ""
 
 do_echo -n "Checking if the determined compiler works... "
@@ -151,58 +151,39 @@ function test_func()
 test_func $AC_FUNC
 
 
-
-
-
-do_echo -n "Checking for -std=c++17... "
-if cc_check '<stdio.h>' '-std=c++17' ''; then
-  do_echo Yes
-  CPPFLAGS="$CPPFLAGS -std=c++17"
-else
-  do_echo No
-  do_echo -n "Checking for -std=c++1z... "
-  if cc_check '<stdio.h>' '-std=c++1z' ''; then
-    do_echo Yes
-    CPPFLAGS="$CPPFLAGS -std=c++1z"
-  else
-    do_echo No
-    do_echo -n "Checking for -std=c++14... "
-    if cc_check '<stdio.h>' '-std=c++14' ''; then
+found_ext=""
+for ext in gnu++17 gnu++1z c++17 c++1z gnu++14 gnu++1y c++14 c++1y; do
+#gnu++11 gnu++0x c++11 c++0x
+  if [ "$found_ext" = "" ]; then
+    do_echo -n "Checking for -std=$ext... "
+    if cc_check '<stdio.h>' "-std=$ext" ''; then
       do_echo Yes
-      CPPFLAGS="$CPPFLAGS -std=c++14"
+      found_ext=$ext
     else
       do_echo No
-      do_echo -n "Checking for -std=c++1y... "
-      if cc_check '<stdio.h>' '-std=c++1y' ''; then
-        do_echo Yes
-        CPPFLAGS="$CPPFLAGS -std=c++1y"
-      else
-        do_echo No
-        do_echo "Error: You need a compiler that supports C++ version C++14 or newer."
-        exit 1
-        #do_echo -n "Checking for -std=c++11... "
-        #if cc_check '<stdio.h>' '-std=c++11' ''; then
-        #  do_echo Yes
-        #  CPPFLAGS="$CPPFLAGS -std=c++11"
-        #else
-        #  do_echo No
-        #fi
-      fi
     fi
   fi
+done
+if [ "$found_ext" = "" ]; then
+  do_echo "Error: You need a compiler that supports C++ version C++14 or newer."
+else
+  CPPFLAGS="$CPPFLAGS -std=$found_ext"
 fi
 
 do_echo -n "Checking for std::shared_timed_mutex without -pthread... "
-if cc_check '<shared_mutex>' "$CPPFLAGS" 'std::shared_timed_mutex test; test.lock(); test.unlock();'; then
+if cc_check '<shared_mutex>' "$CPPFLAGS" 'std::shared_timed_mutex test; test.lock_shared(); test.unlock_shared(); test.lock(); test.unlock();'; then
   do_echo Yes
 else
   do_echo No
   do_echo -n "Checking for std::shared_timed_mutex with -pthread... "
-  if cc_check '<shared_mutex>' "$CPPFLAGS -pthread" 'std::shared_timed_mutex test; test.lock(); test.unlock();'; then
+  if cc_check '<shared_mutex>' "$CPPFLAGS -pthread" 'std::shared_timed_mutex test; test.lock_shared(); test.unlock_shared(); test.lock(); test.unlock();'; then
     do_echo Yes
     LDFLAGS="$LDFLAGS -pthread"
   else
+    CPPFLAGS="$CPPFLAGS -DNO_SHARED_TIMED_MUTEX"
     do_echo No
+    do_echo "Warning: Your compiler supports C++14, but not std::shared_timed_mutex, which is part of the C++14 standard"
+    
     do_echo -n "Checking for std::_mutex without -pthread... "
     if cc_check '<mutex>' "$CPPFLAGS" 'std::mutex test; test.lock(); test.unlock();'; then
       do_echo Yes
@@ -214,6 +195,8 @@ else
         LDFLAGS="$LDFLAGS -pthread"
       else
         do_echo No
+        CPPFLAGS="$CPPFLAGS -DDFA_DISABLE_MUTEX"
+        do_echo "Warning: Your compiler supports C++14, but not std::mutex, which was introduced already in C++11"
       fi
     fi
   fi

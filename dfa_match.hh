@@ -2,10 +2,16 @@
 #include <istream> // std::istream
 #include <ostream> // std::ostream
 
-#if __cplusplus >= 201402L
+#ifdef __SUNPRO_CC
+#define DFA_DISABLE_MUTEX
+#endif
+
+#ifndef DFA_DISABLE_MUTEX
+#if __cplusplus >= 201402L && !defined(NO_SHARED_TIMED_MUTEX)
 # include <shared_mutex>
 #else
 # include <mutex>   // std::mutex for thread-safety
+#endif
 #endif
 
 class DFA_Matcher
@@ -122,7 +128,8 @@ public:
     // A convenience constructor that allows doing
     // multiple AddMatch calls in the single constructor call.
     // The final parameter can optionally be a reference
-    // to another DFA_Matcher instance which gets extended.
+    // to another DFA_Matcher instance which gets extended,
+    // assuming it has not been Compiled() yet.
     template<typename S, typename... Rest>
     DFA_Matcher(S&& s, bool i, int t, Rest&&... rest)
         : DFA_Matcher(std::forward<Rest>(rest)...)
@@ -131,12 +138,14 @@ public:
 private:
     struct Data;
     Data* data;
-#if __cplusplus >= 201402L
+#ifndef DFA_DISABLE_MUTEX
+#if __cplusplus >= 201402L && !defined(NO_SHARED_TIMED_MUTEX)
     // Would use std::shared_mutex (C++17), but libstdc++
     // as of GCC 5.3.1 only supports std::shared_timed_mutex.
     // Same goes for libc++ as of Clang++ version 3.6.2.
     mutable std::shared_timed_mutex lock{};
 #else
     mutable std::mutex lock{};
+#endif
 #endif
 };

@@ -6,6 +6,12 @@
 #include <fstream>
 #include <iostream>
 
+#ifdef __SUNPRO_CC
+extern "C"{
+int __gthrw___pthread_key_create(void*,void(*)(void*)){return 0;}
+}
+#endif
+
 constexpr unsigned longbits = sizeof(unsigned long long)*CHAR_BIT;
 
 static std::mt19937 rnd;
@@ -87,7 +93,10 @@ int main()
     if(mac.Load(std::ifstream("/home/bisqwit/.dirr_dfa"), true))
         std::cout << "Nope, loaded instead\n" << std::flush;
     else
+    {
+        //for(unsigned n=0; n<10; ++n)
         mac.Compile();
+    }
 
     std::cout << "Brooding...\n" << std::flush;
 
@@ -182,7 +191,7 @@ rerand:;
         }
 
         for(auto& r: VarBitCounts) r = std::min(r, longbits-1u);
-        VarBitCounts.erase(std::remove_if(VarBitCounts.begin(),VarBitCounts.end(),[](auto v) { return v==0; }), VarBitCounts.end());
+        VarBitCounts.erase(std::remove_if(VarBitCounts.begin(),VarBitCounts.end(),[](unsigned v) { return v==0; }), VarBitCounts.end());
 
         sum = 0;
         for(auto r: VarBitCounts) sum += r;
