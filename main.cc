@@ -173,7 +173,7 @@ struct FieldsToPrint: public std::vector<FieldInfo> // ParsedFieldOrder
                         case 'F': emplace_back(FieldInfo{FieldInfo::name,   0}); break;
                         case 's': emplace_back(FieldInfo{FieldInfo::size,   1}); break;
                         case 'z': emplace_back(FieldInfo{FieldInfo::size_compact, 1}); break;
-                        case 'S': emplace_back(FieldInfo{FieldInfo::size_sep,     (unsigned char)(0x80 | (s[a+1] ? s[++a] : ' '))}); break;
+                        case 'S': emplace_back(FieldInfo{FieldInfo::size_sep,     (unsigned char)(0x80 | (s[a+1] ? s[a+1] == '_' ? ' ' : s[++a] : ' '))}); break;
                         case 'd': emplace_back(FieldInfo{FieldInfo::datetime,     1}); break;
                         default: dfl_opt: emplace_back(FieldInfo{FieldInfo::literal, (unsigned char)s[a]});
                     }
@@ -204,10 +204,10 @@ struct FieldsToPrint: public std::vector<FieldInfo> // ParsedFieldOrder
         for(bool& c: used) c = false;
         for(auto i = begin(); i != end(); ++i)
         {
-            if(i->type == FieldInfo::name)
+            //if(i->type == FieldInfo::name)
                 used[i->type] = true;
-            else
-                used[ i->type ] = (i->type == FieldInfo::size_sep) ? (i->info & 0x80) : (i->info & 0x01);
+            /*else
+                used[i->type] = ((i->type == FieldInfo::size_sep) ? (i->info & 0x80) : (i->info & 0x01);*/
         }
         // Don't need column separator (space), if the last non-color item is a literal
         need_column_separator = true;
@@ -744,7 +744,7 @@ static void PrintAllFilesCollectedSoFar()
                 UpdateEstimations(Longest.back(), f[a].Name, f[a].Stat);
                 unsigned width = CalculateRowWidth(Longest.back(), true);
                 //printf("item %u on line %u column %u: column width now %u+%u\n", a, line,column, total_width, width);
-                if(total_width + width >= unsigned(COLS-1))
+                if(total_width + width >= unsigned(COLS-1) && column > 1)
                 {
                     // This number of columns does not work.
                     //printf("%u lines does not work at %u columns\n", lines,columns);
@@ -1128,7 +1128,7 @@ private:
     {
         string q = opt_m(s);
         if(!q.size())argerror(s);
-        TotalSep = q[0];
+        if(q == "_") TotalSep = ' '; else TotalSep = q[0];
         return q.substr(1);
     }
     string opt_w(const string &s)
