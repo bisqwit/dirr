@@ -134,10 +134,10 @@ static void FlushSetAttr()
 
                 struct Data { bool legacy,blink,intens; unsigned bg,fg; } olddata, newdata;
 
-                if(TextAttr&0x100) newdata={false,false,TextAttr&0x20000, unsigned(TextAttr>>9), TextAttr&0xFFu};
-                else               newdata={true,TextAttr&0x80,TextAttr&8, (TextAttr>>4u)&7u, TextAttr&7u };
-                if(OldAttr&0x100)  olddata={false,false,OldAttr&0x20000, unsigned(OldAttr>>9), OldAttr&0xFFu};
-                else               olddata={true,OldAttr&0x80,OldAttr&8, (OldAttr>>4u)&7u, OldAttr&7u };
+                if(TextAttr&0x100) newdata={false,false,bool(TextAttr&0x20000), unsigned(TextAttr>>9), TextAttr&0xFFu};
+                else               newdata={true,bool(TextAttr&0x80),bool(TextAttr&8), (TextAttr>>4u)&7u, TextAttr&7u };
+                if(OldAttr&0x100)  olddata={false,false,bool(OldAttr&0x20000), unsigned(OldAttr>>9), OldAttr&0xFFu};
+                else               olddata={true,bool(OldAttr&0x80),bool(OldAttr&8), (OldAttr>>4u)&7u, OldAttr&7u };
 
                 if( (olddata.blink && !newdata.blink) || (olddata.intens && !newdata.intens) )
                     reset_needed = true;

@@ -1,7 +1,7 @@
 # This is Bisqwit's generic depfun.mak, included from Makefile.
 # The same file is used in many different projects.
 #
-# depfun.mak version 1.6.4
+# depfun.mak version 1.6.5
 #
 # Required vars:
 #
@@ -38,7 +38,7 @@
 	       then \
 	       cd "$$n";\
 	       ${CPP} ${CPPFLAGS} -MM -MG "$$dir""$$s" |\
-	        sed -r "s|^([^ ])|$$dir\\1|" \
+	        sed -E "s|^([^ ])|$$dir\\1|" \
 	         > $@."$$s";\
 	    fi&done; \
 	    cd "$$n"; \
