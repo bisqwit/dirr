@@ -89,12 +89,12 @@ int main()
     run(0xD,true, {R"(*.wmv)", R"(*.pcx)", R"(*.lbm)", R"(*.img)", R"(*.jpg)", R"(*.jpeg)", R"(*.fl\w)", R"(*.rm)", R"(*.tiff)"});
     run(0x69D7,false, {R"(*\x13)", R"(*\?)"});
 
-    std::cout << "Compiling...\n";
+    std::cout << "Compiling 1 times...\n";
     if(mac.Load(std::ifstream("/home/bisqwit/.dirr_dfa"), true))
         std::cout << "Nope, loaded instead\n" << std::flush;
     else
     {
-        //for(unsigned n=0; n<10; ++n)
+        for(unsigned n=0; n<1; ++n)
         mac.Compile();
     }
 

@@ -34,7 +34,7 @@
 // Benefits of >= 1: Makes determinization and minimization a lot faster.
 // Benefits of >= 2: Makes determinization and minimization even faster.
 // Valid values: 0, 1, 2.   2 = hardest minimization
-static constexpr unsigned NFA_PRE_MINIMIZATION_LEVEL = 2;
+static constexpr unsigned NFA_PRE_MINIMIZATION_LEVEL = 1;
 
 // Whether to simplify rules that end in *, to not test whether '\0' is found
 // Benefits: Huge improvements in statemachine size and minimization speed.
@@ -1260,6 +1260,8 @@ static void DFA_Minimize(std::vector<std::array<unsigned,CHARSET_SIZE>>& statema
 #endif
     // Groups of states
     typedef std::list<unsigned> group_t;
+    // ^ Using __gnu_cxx::__pool_alloc<int> does not affect performance
+    //   neither does using __mt_alloc<int>
 
     // State number to group number mapping
     class mappings
@@ -1291,6 +1293,8 @@ static void DFA_Minimize(std::vector<std::array<unsigned,CHARSET_SIZE>>& statema
     // Create a single group for all non-accepting states.
     // Collect all states. Assume there are no unvisited states.
     std::vector<group_t> groups(1);
+    // Using __gnu_cxx::malloc_allocator<int> or __mt_alloc<int>
+    // does not seem to affect performance in any perceptible way.
     for(unsigned n=0; n<statemachine.size(); ++n)
         { groups[0].push_back(n); mapping.set(n, 0); }
 
