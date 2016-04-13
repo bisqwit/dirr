@@ -135,6 +135,7 @@ public:
         : DFA_Matcher(std::forward<Rest>(rest)...)
         { AddMatch(std::forward<S>(s),i,t); }
 
+
 private:
     struct Data;
     Data* data;
@@ -148,4 +149,6 @@ private:
     mutable std::mutex lock{};
 #endif
 #endif
+public:
+    Data* getdata() const { return data; }
 };

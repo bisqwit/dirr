@@ -82,12 +82,12 @@ LDFLAGS=""
 OPTIM=""
 
 do_echo -n "Determining compiler version to use... "
-#select_tool CXX g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
-#select_tool CPP g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
-#select_tool CC  gcc cc `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;done|grep -v libc) 2>/dev/null` clang
-select_tool CXX clang++
-select_tool CPP clang++
-select_tool CC clang
+select_tool CXX g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
+select_tool CPP g++ `(IFS=':'; for s in $PATH;do cd "$s"&&echo g++-*;done|grep -v libc) 2>/dev/null` clang++
+select_tool CC  gcc cc `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;done|grep -v libc) 2>/dev/null` clang
+#select_tool CXX clang++
+#select_tool CPP clang++
+#select_tool CC clang
 do_echo ""
 
 do_echo -n "Checking if the determined compiler works... "

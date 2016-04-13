@@ -5,6 +5,7 @@
 #include <random>
 #include <fstream>
 #include <iostream>
+#include <unordered_map>
 
 #ifdef __SUNPRO_CC
 extern "C"{
@@ -64,30 +65,78 @@ static bool TestLoadBit()
     return !errors;
 }
 
+static void Load(DFA_Matcher& mac, const std::string& s)
+{
+    std::unordered_multimap<std::string/*key*/, std::string/*value*/> sets{};
+    /* Syntax: keyword '(' data ')' ... */
+    std::size_t pos = 0;
+    while(pos < s.size())
+    {
+        if(std::isspace(s[pos]) || s[pos]==')') { ++pos; continue; }
+        auto parens_pos = s.find('(', pos);
+        if(parens_pos == s.npos) parens_pos = s.size();
+        std::size_t key_end = parens_pos;
+        while(key_end > pos && std::isspace(s[key_end-1])) --key_end;
+        std::string key = s.substr(pos, key_end-pos);
+        if(parens_pos == s.size())
+        {
+            sets.emplace(std::move(key), std::string{});
+            return;
+        }
+        std::size_t value_begin = ++parens_pos;
+        while(value_begin < s.size() && std::isspace(s[value_begin]))
+            ++value_begin;
+
+        std::size_t end_parens_pos = s.find(')', value_begin);
+        if(end_parens_pos == s.npos) end_parens_pos = s.size();
+
+        std::size_t value_end = end_parens_pos;
+        while(value_end > value_begin && std::isspace(s[value_end-1])) --value_end;
+
+        sets.emplace(std::move(key), s.substr(value_begin, value_end-value_begin));
+        pos = end_parens_pos+1;
+    }
+    for(const auto& s: sets)
+        if(s.first == "byext")
+        {
+            const std::string& t = s.second;
+            // Parse the string. It contains space-delimited tokens.
+            // The first token is a hex code, that is optionally followed by 'i'.
+            bool ignore_case = false;
+            int  color = -1;
+
+            std::size_t pos = 0;
+            while(pos < t.size())
+            {
+                if(std::isspace(t[pos])) { ++pos; continue; }
+                std::size_t spacepos = t.find(' ', pos);
+                if(spacepos == t.npos) spacepos = t.size();
+
+                std::string token = t.substr(pos, spacepos-pos);
+                if(color < 0)
+                {
+                    color       = std::stoi(token, nullptr, 16);
+                    ignore_case = token.back() == 'i';
+                    pos = spacepos;
+                    continue;
+                }
+                mac.AddMatch(std::move(token), ignore_case, color);
+                pos = spacepos;
+            }
+        }
+}
+
 int main()
 {
     TestLoadBit();
     DFA_Matcher mac;
     #define rand(size) std::uniform_int_distribution<>(0, (size)-1)(rnd)
 
-    auto run = [&mac](int color,bool icase, const std::initializer_list<const char*>& data)
-        { for(auto d: data) mac.AddMatch(d, icase, color); };
     std::cout << "Parsing...\n";
 
-    run(0x2,true, {R"(*.so)", R"(*.o)", R"(*.vxd)", R"(*.dll)", R"(*.drv)", R"(*.obj)", R"(*.a)", R"(*.lo)", R"(*.la)", R"(*.so.*)"});
-    run(0x3,true, {R"(*.txt)", R"(*.htm)", R"(*.html)", R"(*.xml)", R"(*.xhtml)", R"(*.1st)", R"(*.wri)", R"(*.ps)", R"(*.doc)", R"(*.docx)", R"(*.odt)"});
-    run(0x3,true, {R"(readme)", R"(quickstart)", R"(install)"});
-    run(0x4,true, {R"(core)", R"(DEADJOE)"});
-    run(0x5,true, {R"(*.mid)", R"(*.mod)", R"(*.mtm)", R"(*.s3m)", R"(*.xm*)", R"(*.mp[23])", R"(*.wav)", R"(*.ogg)", R"(*.smp)", R"(*.au)", R"(*.ult)", R"(*.669)", R"(*.aac)", R"(*.spc)", R"(*.nsf)", R"(*.wma)"});
-    run(0x6,true, {R"(*.bas)", R"(*.pas)", R"(*.php)", R"(*.phtml)", R"(*.pl)", R"(*.rb)", R"(*.c)", R"(*.cpp)", R"(*.cc)", R"(*.asm)", R"(*.S)", R"(*.s)", R"(*.inc)", R"(*.h)", R"(*.hh)", R"(*.pov)", R"(*.irc)", R"(*.hpp)"});
-    run(0x6,true, {R"(*.src)", R"(*.ttt)", R"(*.pp)", R"(*.p)", R"(makefile)", R"(*.mak)", R"(*.in)", R"(*.am)"});
-    run(0x201BA,true, {R"(configure)", R"(*.sh)"});
-    run(0x13B,true, {R"(*~)", R"(*.bak)", R"(*.old)", R"(*.bkp)", R"(*.st3)", R"(*.tmp)", R"(*.$$$)", R"(tmp*)", R"(*.out)", R"(*.~*)"});
-    run(0x14E,true, {R"(*.exe)", R"(*.com)", R"(*.bat)"});
-    run(0x1A7,true, {R"(*.tar)", R"(*.gz)", R"(*.xz)", R"(*.bz)", R"(*.brotli)", R"(*.bz2)", R"(*.zip)", R"(*.arj)", R"(*.lzh)", R"(*.lha)", R"(*.rar)", R"(*.deb)", R"(*.rpm)", R"(*.arj)", R"(*.7z)", R"(*.lzma)"});
-    run(0xD,true, {R"(*.gif)", R"(*.bmp)", R"(*.mpg)", R"(*.mpeg)", R"(*.mp4)", R"(*.avi)", R"(*.ogm)", R"(*.ogv)", R"(*.mkv)", R"(*.asf)", R"(*.x?m)", R"(*.mov)", R"(*.tga)", R"(*.png)", R"(*.tif)"});
-    run(0xD,true, {R"(*.wmv)", R"(*.pcx)", R"(*.lbm)", R"(*.img)", R"(*.jpg)", R"(*.jpeg)", R"(*.fl\w)", R"(*.rm)", R"(*.tiff)"});
-    run(0x69D7,false, {R"(*\x13)", R"(*\?)"});
+    Load(mac,
+#include "dirrsets.hh"
+    );
 
     std::cout << "Compiling 1 times...\n";
     if(mac.Load(std::ifstream("/home/bisqwit/.dirr_dfa"), true))
@@ -115,7 +164,7 @@ int main()
         else
             std::cerr << "Load ok\n";
     }
-return 0;
+//return 0;
 
     static const unsigned selection[] = {1,1,1,1,1, 2,2,2,2, 3,3,3, 4,4, 5, 6, 7, 8, 9, 10, 11, 12};
 
@@ -142,7 +191,7 @@ rerand:;
         if(VarBitCounts.size() <= 1) goto rerand;
 
         unsigned offset = rand(VarBitCounts.size());
-        switch(rand(4))
+        switch(rand(5))
         {
             case 0: // random addition to some slot
             {
@@ -183,11 +232,12 @@ rerand:;
                 VarBitCounts[offset2] += delta;
                 break;
             }
-            /*case 4:
+            case 4:
             {
-                hash_offset += rand(256);
+                //hash_offset += rand(256);
+                swap50_rotation += rand(2)*2-1;
                 break;
-            }*/
+            }
         }
 
         for(auto& r: VarBitCounts) r = std::min(r, longbits-1u);
@@ -216,9 +266,16 @@ rerand:;
          : false
           )
         {
+            auto oldstate = mac.getdata()->statemachine;
             if(!mac.Load(out))
             {
                 std::cout << "Load failed\n";
+                continue;
+            }
+            auto newstate = mac.getdata()->statemachine;
+            if(oldstate != newstate)
+            {
+                std::cout << "Load produced a different statemachine\n";
                 continue;
             }
             if(!TestLoadBit())
@@ -234,6 +291,7 @@ rerand:;
             std::cout << size << " bytes with: ";
 
             std::cout << std::hex << std::showbase << unsigned(hash_offset) << std::dec;
+            std::cout << ", rotation=" << std::dec << (swap50_rotation&0xFF);
             std::cout << ", and: ";
             char sep=' ';
             for(unsigned r: VarBitCounts) { std::cout << sep << r; sep = ','; }

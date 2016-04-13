@@ -141,13 +141,14 @@ For xterm-256color formats:
     R"(byext(3i *.txt *.htm *.html *.xml *.xhtml *.1st *.wri *.ps *.doc *.docx *.odt))"
     R"(byext(3i readme quickstart install))"
     // red: unwanted temp files
-    R"(byext(4i core DEADJOE))"
+    R"(byext(4 core DEADJOE))"
     // magenta: sound-only multimedia files
     R"(byext(5i *.mid *.mod *.mtm *.s3m *.xm* *.mp[23] *.wav *.ogg *.smp *.au *.ult *.669 *.aac *.spc *.nsf *.wma))"
     // brown: programming
-    R"(byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.S *.s *.inc *.h *.hh *.pov *.irc *.hpp))"
-    R"(byext(6i *.src *.ttt *.pp *.p makefile *.mak *.in *.am))"
-    R"(byext(201BAi configure *.sh))"
+    R"(byext(6i *.bas *.pas *.php *.phtml *.pl *.rb *.c *.cpp *.cc *.asm *.s *.inc *.h *.hh *.pov *.irc *.hpp))"
+    R"(byext(6i *.src *.pp *.p *.mak *.in *.am))"
+    R"(byext(6i makefile))"
+    R"(byext(201BA configure *.sh))"
     // dark gray: temp files
     R"(byext(13Bi *~ *.bak *.old *.bkp *.st3 *.tmp *.$$$ tmp* *.out *.~*))"
     // bright green: executable files

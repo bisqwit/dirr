@@ -111,11 +111,11 @@ static unsigned long long GetBits(const void* memory, unsigned& bitpos, unsigned
 
 /* Variable bit I/O */
 #ifndef PUTBIT_OPTIMIZER
-static constexpr std::initializer_list<unsigned> VarBitCounts = {1,4,3,1,1,7,1,6,8,8,8,8,8,8,8};
-static constexpr char hash_offset = '*';
+static constexpr std::initializer_list<unsigned> VarBitCounts = {2,3,3,2,8,6,8,8,8,8,8,8,8,8,8,8};
+static constexpr char hash_offset = '*', swap50_rotation = 45;
 #else
-static std::vector<unsigned> VarBitCounts = {1,4,3,1,1,7,1,6,8,8,8,8,8,8,8};
-static char hash_offset = '*';
+static std::vector<unsigned> VarBitCounts = {2,3,3,2,8,6,8,8,8,8,8,8,8,8,8,8};
+static char hash_offset = '*', swap50_rotation = 45;
 #endif
 
 
@@ -569,6 +569,20 @@ bool DFA_Matcher::Load(std::istream&& f, bool ignore_hash)
     return Load(f, ignore_hash); // Calls lvalue reference version
 }
 
+// Utility for swapping bits 5 and 0 (0x20 and 0x01)
+// In order to improve RLE compression of save data,
+// when data contains case-insensitive patterns.
+static unsigned char swap50(unsigned char c)
+{
+    // 76543210
+    // hgFedcbA hgAedcbF
+    if(!c) return c;
+    c = ((c-1) + (swap50_rotation&0xFF)) % 255 + 1;
+    if(c >= 0x40 && c < 0x80)
+        c = (c & ~(32u|1u)) | ((c&1u)<<5u) | ((c>>5u)&1u);
+    return c;
+}
+
 bool DFA_Matcher::Load(std::istream& f, bool ignore_hash)
 {
     lock_writing(lk, lock);
@@ -623,7 +637,7 @@ bool DFA_Matcher::Load(std::istream& f, bool ignore_hash)
             unsigned end   = LoadVarBit(&Buf[0], position) + last;
             unsigned value = LoadVarBit(&Buf[0], position);
             if(end==last) end = last+CHARSET_SIZE;
-            while(last < end && last < CHARSET_SIZE) target[last++] = value;
+            while(last < end && last < CHARSET_SIZE) target[swap50(last++)] = value;
         }
     }
     // Allow maximum of 16 bits of blank in the end
@@ -668,10 +682,10 @@ void DFA_Matcher::Save(std::ostream& f) const
 
         for(const auto& a: data->statemachine)
             for(unsigned sum=0, n=0; n<=CHARSET_SIZE; ++n, ++sum)
-                if(sum > 0 && (n == CHARSET_SIZE || a[n] != a[n-1]))
+                if(sum > 0 && (n == CHARSET_SIZE || a[swap50(n)] != a[swap50(n-1)]))
                 {
                     PutVarBit(Buf, ptr, sum);
-                    PutVarBit(Buf, ptr, a[n-1]);
+                    PutVarBit(Buf, ptr, a[swap50(n-1)]);
                     sum = 0;
                 }
         if(ptr == numbits) break;
