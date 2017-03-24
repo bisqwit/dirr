@@ -154,7 +154,7 @@ For xterm-256color formats:
     // bright green: executable files
     R"(byext(14Ei *.exe *.com *.bat))"
     // bright red: archives
-    R"(byext(1A7i *.tar *.gz *.xz *.bz *.brotli *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.arj *.7z *.lzma))"
+    R"(byext(1A7i *.tar *.gz *.xz *.bz *.brotli *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.7z *.lzma))"
     // bright magenta: image and video files
     R"(byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.ogv *.mkv *.asf *.x?m *.mov *.tga *.png *.tif))"
     R"(byext(Di *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\w *.rm *.tiff))"
