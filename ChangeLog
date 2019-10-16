@@ -1,3 +1,9 @@
+Wed 2019-10-16 12:34 Joel Yliluoma <bisqwit@iki.fi>
+
+	* Version 3.37
+
+	    - Disable DFA optimization that breaks pattern matching for .* files
+
 Wed 2016-04-12 17:23 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.36.6

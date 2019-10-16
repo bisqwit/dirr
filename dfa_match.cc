@@ -18,6 +18,8 @@
  #include <iomanip>
 #endif
 
+#include <mutex>
+
 #include "dfa_match.hh"
 
 #include <assert.h>
@@ -46,7 +48,7 @@
 //         of the DFA minimizer, but since it's a O(n^2) process, if
 //         you have the other flags set (0x01 and 0x02), you are better
 //         off _not_ setting this flag, as the DFA minimizer is faster.
-static constexpr unsigned NFA_MINIMIZATION_FLAGS = 0x03;
+static constexpr unsigned NFA_MINIMIZATION_FLAGS = 0x06;
 
 // Control the operations performed on the DFA after
 // the NFA has been determinized.

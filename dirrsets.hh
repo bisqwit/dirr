@@ -160,3 +160,4 @@ For xterm-256color formats:
     R"(byext(Di *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\w *.rm *.tiff))"
     // red background and yellow: files with clear mistakes in filenames
     R"(byext(69D7 *\x13 *\?))"
+    R"(byext(148 .*))"
