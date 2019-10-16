@@ -23,53 +23,44 @@ SMALL    {font-size:70%}
   <h1>Directory lister</h1>
   <h2 class=level2> 0. Contents </h2>
   
-  This is the documentation of dirr-3.36.6.
-<?
+  This is the documentation of dirr-3.37.
+<div class=toc><table cellspacing=0 cellpadding=0 class=toc><tr><td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;1. <a href="#h0">Purpose</a><br>&nbsp;&nbsp;&nbsp;2. <a href="#h1">Copying</a><br></td>
+<td width="50%" valign=middle align=left nowrap class=toc>&nbsp;&nbsp;&nbsp;3. <a href="#h2">To do</a><br>&nbsp;&nbsp;&nbsp;4. <a href="#h3">Requirements</a><br>&nbsp;&nbsp;&nbsp;5. <a href="#download">Downloading</a><br></td>
+</tr></table></div><H2 id="h0" class="level2"><a name="h0"></a>1. Purpose</H2><div class="level2" id="divh0">
 
-$url = 'http://iki.fi/bisqwit/source/'.rawurlencode($progname).'.html';
-$k = '
-   The official home page of '.htmlspecialchars($progname).'
-   is at <a href="'.htmlspecialchars($url).'">'.htmlspecialchars($url).'</a>.<br>
+List directories and files in *nix system. A colourful alternative
+for /bin/ls . Not completely compatible with it, though.<br>
+Given some luck, may compile on DOS too.
+
+</div><H2 id="h1" class="level2"><a name="h1"></a>2. Copying</H2><div class="level2" id="divh1">
+
+dirr has been written by Joel Yliluoma, a.k.a.
+<a href="http://iki.fi/bisqwit/">Bisqwit</a>,<br>
+and is distributed under the terms of the
+<a href="http://www.gnu.org/licenses/licenses.html#GPL">General Public License</a> (GPL).
+ <p>
+Portions contributed by <a href="http://iki.fi/warp/">Warp</a>.
+
+</div><H2 id="h2" class="level2"><a name="h2"></a>3. To do</H2><div class="level2" id="divh2">
+
+<pre class=smallerpre>- If user is a member of multiple groups,
+  all groups be shown correctly in colouring.
+
+- When listing files from a number of directories, print a grand total.
+</pre>
+
+</div><H2 id="h3" class="level2"><a name="h3"></a>4. Requirements</H2><div class="level2" id="divh3">
+
+GNU make is required.<br>
+
+</div><H2 id="download" class="level2"><a name="download"></a>5. Downloading</H2><div class="level2" id="divdownload">
+   The official home page of dirr
+   is at <a href="http://iki.fi/bisqwit/source/dirr.html">http://iki.fi/bisqwit/source/dirr.html</a>.<br>
    Check there for new versions.
-';
-if(isset($git))
-{
-  $k .=
-    '<p>'.
-    'Additionally, the most recent source code (bleeding edge) for '.htmlspecialchars($progname).
-    ' can also be downloaded by cloning the Git repository'.
-    ' by:<ul style="margin-left:3em;margin-top:0px">'.
-    '<li><code> git clone <a href="'.htmlspecialchars($git).'">'.htmlspecialchars($git).'</a></code></li>'.
-    '<li><code> git checkout origin/release -b release</code></li>'.
-    '<li><code> git checkout origin/master  -b master</code></li>'.
-    '</ul></p>';
-}
-$text['download:99999. Downloading'] = $k;
-
-include $docformatfn;
-
-$st1 = stat($docmodulefn);
-$st2 = stat('docmaker.php');
-?>
- <p align=right><small>Generated from
-       <tt>progdesc.php</tt> (last updated: Thu, 01 Jan 1970 02:00:00 +0200)<br>
-  with <tt>docmaker.php</tt> (last updated: Thu, 01 Jan 1970 02:00:00 +0200)<br>
-  at Tue, 12 Apr 2016 17:24:00 +0300</small>
+<p>Additionally, the most recent source code (bleeding edge) for dirr can also be downloaded by cloning the Git repository by:<ul style="margin-left:3em;margin-top:0px"><li><code> git clone <a href="git://bisqwit.iki.fi/dirr.git">git://bisqwit.iki.fi/dirr.git</a></code></li><li><code> git checkout origin/release -b release</code></li><li><code> git checkout origin/master  -b master</code></li></ul></p></div> <p align=right><small>Generated from
+       <tt>progdesc.php</tt> (last updated: Wed, 16 Oct 2019 12:35:26 +0300)<br>
+  with <tt>docmaker.php</tt> (last updated: Wed, 16 Oct 2019 12:35:26 +0300)<br>
+  at Wed, 16 Oct 2019 12:35:26 +0300</small>
  </p>
 </body>
 </html>
-<?
-
-if($outset)
-{
-  $s = ob_get_contents();
-  ob_end_clean();
-  if(file_exists('/usr/local/bin/htmlrecode'))
-  {
-    /* Try to ensure browser interpretes japanese characters correctly */
-    passthru('echo '.shellfix($s).
-             '|/usr/local/bin/htmlrecode -Iiso-8859-1 -O'.$outset.' 2>/dev/null');
-  }
-  else
-    print $s;
-}

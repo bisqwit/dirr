@@ -1,9 +1,12 @@
 //#define DEBUG
 
+#define SHARED_PTR_ARRAY
+
 #include <list>
 #include <array>
 #include <vector>
 #include <bitset>
+#include <memory>
 #include <unordered_map>
 
 #include <climits>   // For CHAR_BIT
@@ -14,6 +17,8 @@
  #include <iostream> // For std::cout, used in DumpNFA and DumpDFA
  #include <iomanip>
 #endif
+
+#include <mutex>
 
 #include "dfa_match.hh"
 
@@ -30,32 +35,35 @@
 /* CONFIGURATION OPTIONS */
 
 // Whether to try and avoid redundancy in NFA as it is being generated.
-// Slows down NFA generation a bit, but greatly rewarded in later phases.
-// Benefits of >= 1: Makes determinization and minimization a lot faster.
-// Benefits of >= 2: Makes determinization and minimization even faster.
-// Valid values: 0, 1, 2.   2 = hardest minimization
-static constexpr unsigned NFA_PRE_MINIMIZATION_LEVEL = 2;
+// This value is a bitmask. The following values are defined:
+//   0x01: When adding a new subnode, checks if the current parent already
+//         has a subnode in the exact same arcs (inputs), and uses that
+//         instead of creating a new one, if possible. Always recommended!
+//   0x02: After creating the NFA, goes through rules that end in * and
+//         trims them, removing the strict test for ends-with-'\0'.
+//         Very recommended, shrinks the state machine size dramatically.
+//         Note: May change results of ambiguous grammars.
+//   0x04: After creating the NFA, goes exhaustively through the states
+//         and merges identical states recursively. Reduces the workload
+//         of the DFA minimizer, but since it's a O(n^2) process, if
+//         you have the other flags set (0x01 and 0x02), you are better
+//         off _not_ setting this flag, as the DFA minimizer is faster.
+static constexpr unsigned NFA_MINIMIZATION_FLAGS = 0x06;
 
-// Whether to simplify rules that end in *, to not test whether '\0' is found
-// Benefits: Huge improvements in statemachine size and minimization speed.
-// Note: May change results in ambiguous grammars.
-static constexpr bool NFA_SIMPLIFY_ACCEPTS         = true;
-
-// Whether to minimize the DFA
-// Benefits: Cache efficiency; Save-data will be a lot smaller.
-static constexpr bool DFA_DO_MINIMIZATION          = true;
-
-// Whether to delete unused nodes before minimizing the DFA
-// Benefits: TBD
-static constexpr bool DFA_PRE_DELETE_UNUSED_NODES  = true;
-
-// Whether to delete unused nodes after minimizing the DFA
-// Benefits: TBD
-static constexpr bool DFA_POST_DELETE_UNUSED_NODES = true;
-
-// Whether to sort the DFA so most used nodes are first.
-// Benefits: Cache efficiency; Save-data will be smaller.
-static constexpr bool DFA_POST_SORT_BY_USECOUNT    = true;
+// Control the operations performed on the DFA after
+// the NFA has been determinized.
+// This value is a bitmask. The following values are defined:
+//   0x01: Before minimizing the DFA, try and find unused nodes
+//         and delete them. Benefits: TBD
+//   0x02: Minimize the DFA.
+//         Benefits: Cache efficiency; Save-data will be a lot smaller.
+//   0x04: After minimizing the DFA, try and find unused nodes
+//         and delete them. Benefits: TBD
+//   0x08: After minimizing the DFA, sort the nodes by use-count,
+//         so that most used nodes are first.
+//         Benefits: Cache efficiency; Save-data will be smaller.
+// 
+static constexpr unsigned DFA_MINIMIZATION_FLAGS = 0x0F;
 
 
 /* INTERNAL OPTIONS */
@@ -71,7 +79,7 @@ static constexpr unsigned NFA_ACCEPT_OFFSET               = 0x80000000u;
 static constexpr unsigned DFAOPT_ACCEPT_OFFSET            = 0x80000000u;
 
 // Character set size.
-static constexpr unsigned CHARSET_SIZE = (1 << CHAR_BIT);
+static constexpr unsigned CHARSET_SIZE = (1u << CHAR_BIT);
 
 
 
@@ -111,11 +119,12 @@ static unsigned long long GetBits(const void* memory, unsigned& bitpos, unsigned
 
 /* Variable bit I/O */
 #ifndef PUTBIT_OPTIMIZER
-static constexpr std::initializer_list<unsigned> VarBitCounts = {1,4,3,1,1,7,1,6,8,8,8,8,8,8,8};
-static constexpr char hash_offset = '*';
+static const std::initializer_list<unsigned> VarBitCounts = {2,3,3,3,7,6,8,24,8,8,8,8,8};
+// ^ Should be constexpr, but libc++ only gives it as const as of clang++ 3.6.2
+static const char hash_offset = '*', swap50_rotation = 45;
 #else
-static std::vector<unsigned> VarBitCounts = {1,4,3,1,1,7,1,6,8,8,8,8,8,8,8};
-static char hash_offset = '*';
+static std::vector<unsigned> VarBitCounts = {2,3,3,3,7,6,8,24,8,8,8,8,8};
+static char hash_offset = '*', swap50_rotation = 45;
 #endif
 
 
@@ -182,6 +191,51 @@ static void PutVarBit(std::vector<char>& buffer, unsigned& bitpos, unsigned long
 
 
 /* Private data */
+#ifdef SHARED_PTR_ARRAY
+template<typename Alloc>
+class StateMachine
+{
+    typename Alloc::template rebind<unsigned>::other alloc{};
+    unsigned* data; // [0] = refcount, [1+] = data
+    unsigned nstates;
+public:
+    StateMachine(unsigned n=0) : data{alloc.allocate(1+n*CHARSET_SIZE)}, nstates{n} { *data=1u; }
+    StateMachine(const StateMachine& b) : data{},nstates{} { set(b); }
+    StateMachine(StateMachine&& b)      : data{},nstates{} { set(std::move(b)); }
+    ~StateMachine() { del(); }
+    StateMachine& operator=(const StateMachine& b) { if(data!=b.data){del(); set(b);} return *this; }
+    StateMachine& operator=(StateMachine&& b) { if(data!=b.data){std::swap(data,b.data); std::swap(nstates,b.nstates);} if(this!=&b) b.setsize(0); return *this; }
+private:
+    void del() { if(!--*data) alloc.deallocate(data,1+nstates*CHARSET_SIZE); }
+    void set(const StateMachine& b) { data=b.data; nstates=b.nstates; ++*data; }
+    void set(StateMachine&& b)      { data=b.data; nstates=b.nstates; *(b.data=alloc.allocate(1))=1u; b.nstates=0; }
+    void setsize(unsigned n) { if(nstates!=n) { del(); data=alloc.allocate(1+n*CHARSET_SIZE); *data=1u; nstates=n; } }
+public:
+    unsigned size() const { return nstates; }
+    bool empty() const    { return nstates==0; }
+    bool operator!=(const StateMachine& b) const { return !operator==(b); }
+    bool operator==(const StateMachine& b) const
+    {
+        return nstates==b.nstates && (data==b.data || std::equal(data+1,data+1+nstates*CHARSET_SIZE, b.data+1));
+    }
+public:
+    typedef std::array<unsigned,CHARSET_SIZE> elem_t;
+    typedef elem_t* iterator;
+    typedef const elem_t* const_iterator;
+    iterator begin() { return reinterpret_cast<elem_t*>(data+1); }
+    iterator end()   { return reinterpret_cast<elem_t*>(data+1+nstates*CHARSET_SIZE); }
+    const_iterator begin() const  { return reinterpret_cast<const elem_t*>(data+1); }
+    const_iterator cbegin() const { return reinterpret_cast<const elem_t*>(data+1); }
+    const_iterator end() const    { return reinterpret_cast<const elem_t*>(data+1+nstates*CHARSET_SIZE); }
+    const_iterator cend() const   { return reinterpret_cast<const elem_t*>(data+1+nstates*CHARSET_SIZE); }
+    elem_t&       operator[](unsigned i)       { return *reinterpret_cast<      elem_t*>(data+1+i*CHARSET_SIZE); }
+    const elem_t& operator[](unsigned i) const { return *reinterpret_cast<const elem_t*>(data+1+i*CHARSET_SIZE); }
+};
+typedef StateMachine<std::allocator<int>> StateMachineType;
+#else
+typedef std::vector<std::array<unsigned,CHARSET_SIZE>> StateMachineType;
+#endif
+
 struct DFA_Matcher::Data
 {
     mutable std::vector<char> hash_buf{};
@@ -211,9 +265,10 @@ struct DFA_Matcher::Data
      *                    >numstates = target color +numstates+1
      *                    <numstates = new state number
      */
-    std::vector<std::array<unsigned,CHARSET_SIZE>> statemachine{};
+    StateMachineType statemachine{};
 
 public:
+    void InvalidateHash() { hash_buf.clear(); }
     void RecheckHash() const
     {
         // Check whether the hash is already valid
@@ -382,13 +437,16 @@ typedef std::array<SometimesSortedVector<unsigned>, CHARSET_SIZE> NFAnode;
 #if __cplusplus >= 201402L && !defined(NO_SHARED_TIMED_MUTEX)
 # define lock_reading(lk,l) std::shared_lock<std::shared_timed_mutex> lk(l)
 # define lock_writing(lk,l) std::lock_guard<std::shared_timed_mutex> lk(l)
+# define lock_writing_p(lk,l,p) std::lock_guard<std::shared_timed_mutex> lk(l,p)
 #else
 # define lock_reading(lk,l) std::lock_guard<std::mutex> lk(l)
 # define lock_writing(lk,l) std::lock_guard<std::mutex> lk(l)
+# define lock_writing_p(lk,l,p) std::lock_guard<std::mutex> lk(l,p)
 #endif
 #else
 # define lock_reading(lk,l)
 # define lock_writing(lk,l)
+# define lock_writing_p(lk,l,p)
 #endif
 
 
@@ -494,9 +552,16 @@ DFA_Matcher::DFA_Matcher() : data(new Data) {}
 DFA_Matcher::DFA_Matcher(const DFA_Matcher& b) : data(nullptr) { operator=( b ); }
 DFA_Matcher& DFA_Matcher::operator=(const DFA_Matcher& b)
 {
-    lock_writing(lk, lock);
-    delete data;
-    data = b.data ? new Data(*b.data) : nullptr;
+    if(&b != this)
+    {
+        //lock_reading(lk2, b.lock);
+        //lock_writing(lk, lock);
+        std::lock(lock, b.lock); // Require write lock to both at the same time
+        lock_writing_p(lk,  lock,   std::adopt_lock);
+        lock_writing_p(lk2, b.lock, std::adopt_lock);
+        delete data;
+        data = b.data ? new Data(*b.data) : nullptr;
+    }
     return *this;
 }
 DFA_Matcher::~DFA_Matcher()
@@ -507,11 +572,15 @@ DFA_Matcher::~DFA_Matcher()
 DFA_Matcher::DFA_Matcher(DFA_Matcher&& b) noexcept : data(nullptr) { operator=( std::move(b) ); }
 DFA_Matcher& DFA_Matcher::operator=(DFA_Matcher&& b) noexcept
 {
-    lock_writing(lk,  lock);
-    lock_writing(lk2, b.lock);
-    delete data;
-    data = b.data;
-    b.data = nullptr;
+    if(&b != this)
+    {
+        std::lock(lock, b.lock); // Require write lock to both at the same time
+        lock_writing_p(lk,  lock,   std::adopt_lock);
+        lock_writing_p(lk2, b.lock, std::adopt_lock);
+        delete data;
+        data = b.data;
+        b.data = nullptr;
+    }
     return *this;
 }
 
@@ -526,7 +595,7 @@ void DFA_Matcher::AddMatch(const std::string& token, bool icase, int target)
         throw std::out_of_range("AddMatch: target must be in range 0..7FFFFFFF, " + std::to_string(target) + " given");
 
     data->matches.emplace_back(Data::Match{token,target,icase});
-    data->hash_buf.clear();
+    data->InvalidateHash();
 }
 
 void DFA_Matcher::AddMatch(std::string&& token, bool icase, int target)
@@ -538,7 +607,7 @@ void DFA_Matcher::AddMatch(std::string&& token, bool icase, int target)
         throw std::out_of_range("AddMatch: target must be in range 0..7FFFFFFF, " + std::to_string(target) + " given");
 
     data->matches.emplace_back(Data::Match{std::move(token),target,icase});
-    data->hash_buf.clear();
+    data->InvalidateHash();
 }
 
 int DFA_Matcher::Test(const std::string& s, int default_value) const noexcept
@@ -569,6 +638,20 @@ bool DFA_Matcher::Load(std::istream&& f, bool ignore_hash)
     return Load(f, ignore_hash); // Calls lvalue reference version
 }
 
+// Utility for swapping bits 5 and 0 (0x20 and 0x01)
+// In order to improve RLE compression of save data,
+// when data contains case-insensitive patterns.
+static unsigned char swap50(unsigned char c)
+{
+    // 76543210
+    // hgFedcbA hgAedcbF
+    if(!c) return c;
+    c = ((c-1) + (swap50_rotation&0xFF)) % 255 + 1;
+    if(c >= 0x40 && c < 0x80)
+        c = (c & ~(32u|1u)) | ((c&1u)<<5u) | ((c>>5u)&1u);
+    return c;
+}
+
 bool DFA_Matcher::Load(std::istream& f, bool ignore_hash)
 {
     lock_writing(lk, lock);
@@ -591,7 +674,7 @@ bool DFA_Matcher::Load(std::istream& f, bool ignore_hash)
     if(!ignore_hash && hash_length != data->hash_buf.size()) return false;
 
     if(hash_length > 0x200000) return false; // Implausible length
-    if(num_states*sizeof(data->statemachine[0]) > 8000000
+    if(num_states*CHARSET_SIZE*sizeof(unsigned) > 8000000
     || num_bits > num_states*CHARSET_SIZE*42)
     {
         // implausible num_states
@@ -613,7 +696,7 @@ bool DFA_Matcher::Load(std::istream& f, bool ignore_hash)
     }
     if(!ignore_hash && loaded_hash != data->hash_buf) return false;
 
-    std::vector<std::array<unsigned,CHARSET_SIZE>> newstatemachine(num_states);
+    StateMachineType newstatemachine(num_states);
     for(unsigned state_no = 0; state_no < num_states; ++state_no)
     {
         auto& target = newstatemachine[state_no];
@@ -623,7 +706,7 @@ bool DFA_Matcher::Load(std::istream& f, bool ignore_hash)
             unsigned end   = LoadVarBit(&Buf[0], position) + last;
             unsigned value = LoadVarBit(&Buf[0], position);
             if(end==last) end = last+CHARSET_SIZE;
-            while(last < end && last < CHARSET_SIZE) target[last++] = value;
+            while(last < end && last < CHARSET_SIZE) target[swap50(last++)] = value;
         }
     }
     // Allow maximum of 16 bits of blank in the end
@@ -652,7 +735,7 @@ void DFA_Matcher::Save(std::ostream& f) const
 
     if(unlikely(!data)) return;
 #ifdef PUTBIT_OPTIMIZER
-    data->hash_buf.clear();
+    data->InvalidateHash();
 #endif
     data->RecheckHash();
 
@@ -668,12 +751,13 @@ void DFA_Matcher::Save(std::ostream& f) const
 
         for(const auto& a: data->statemachine)
             for(unsigned sum=0, n=0; n<=CHARSET_SIZE; ++n, ++sum)
-                if(sum > 0 && (n == CHARSET_SIZE || a[n] != a[n-1]))
+                if(sum > 0 && (n == CHARSET_SIZE || a[swap50(n)] != a[swap50(n-1)]))
                 {
                     PutVarBit(Buf, ptr, sum);
-                    PutVarBit(Buf, ptr, a[n-1]);
+                    PutVarBit(Buf, ptr, a[swap50(n-1)]);
                     sum = 0;
                 }
+
         if(ptr == numbits) break;
 
         // This loop does not necessarily terminate eventually.
@@ -701,7 +785,7 @@ private:
 
     unsigned AddTransition(unsigned root, unsigned newnewnode)
     {
-        if(NFA_PRE_MINIMIZATION_LEVEL >= 1)
+        if(NFA_MINIMIZATION_FLAGS & 0x01)
         {
             // Check if there already is an node number that exists
             // on this root in all given target states but in none others.
@@ -788,7 +872,7 @@ private:
             // Make new node
             next = nfa_nodes.size();
             nfa_nodes.resize(next+1);
-            if(NFA_PRE_MINIMIZATION_LEVEL >= 2 || NFA_SIMPLIFY_ACCEPTS)
+            if(NFA_MINIMIZATION_FLAGS & 0x06)
                 parents.resize(next+1);
         }
 
@@ -798,7 +882,7 @@ private:
             if(states.test(c))
                 cur[c].FastestInsert(next);
 
-        if(next < parents.size() && (NFA_PRE_MINIMIZATION_LEVEL >= 2 || NFA_SIMPLIFY_ACCEPTS))
+        if(next < parents.size() && (NFA_MINIMIZATION_FLAGS & 0x06))
             parents[next].FastestInsert(root);
         return next;
     }
@@ -1047,6 +1131,7 @@ private:
     //         the new map. New nodes are indicated being offset by new_node_offset.
     unsigned AddSet(std::vector<unsigned>&& targets)
     {
+        // targets[] may not be empty.
         auto l = targets.rbegin();
         if(l != targets.rend() && (*l >= NFA_ACCEPT_OFFSET))
         {
@@ -1091,7 +1176,7 @@ public:
         {
             // Choose one of the pending states, and generate a new node for it.
             // Numbers in pending[] always refer to new nodes even without new_node_offset.
-            // Note: If you have DFA_POST_SORT_BY_USECOUNT, it does not matter which
+            // Note: If you have DFA_MINIMIZATION_FLAGS & 0x08, it does not matter which
             // order you pick them. If you don't, you must ALWAYS pick 0 first.
             unsigned chosen = pending.begin()->first;
             auto sources    = std::move(pending.begin()->second);
@@ -1109,9 +1194,11 @@ public:
                         merged_targets.FastestInsert(src);
                     else
                         merged_targets.FastestInsert(nfa_nodes[src][c]);
-                if(merged_targets.empty()) continue;
-                // Sort and keep only unique values in the merged_targets.
-                st[c].FastestInsert(AddSet(std::move(merged_targets.StealSortedVector())));
+                if(!merged_targets.empty())
+                {
+                    // Sort and keep only unique values in the merged_targets.
+                    st[c].FastestInsert(AddSet(std::move(merged_targets.StealSortedVector())));
+                }
             }
         }
 
@@ -1140,16 +1227,17 @@ public:
     }
 
     // PHASE 3: Convert into DFA format (assumed to already follow the constraints)
-    std::vector<std::array<unsigned,CHARSET_SIZE>> LoadDFA()
+    StateMachineType LoadDFA()
     {
-        std::vector<std::array<unsigned,CHARSET_SIZE>> result(nfa_nodes.size());
+        for(auto& s: nfa_nodes) for(auto& c: s) c.MakeSureIsSortedAndUnique();
+
+        StateMachineType result(nfa_nodes.size());
         for(unsigned n=0; n<nfa_nodes.size(); ++n)
         {
             auto& s = nfa_nodes[n];
             auto& t = result[n];
             for(unsigned c=0; c<CHARSET_SIZE; ++c)
             {
-                s[c].MakeSureIsSortedAndUnique();
                 assert(s[c].size() <= 1);
                 if(s[c].empty())           { t[c] = result.size(); continue; }
                 unsigned a = s[c].front();
@@ -1161,105 +1249,122 @@ public:
     }
 };
 
-static void DFA_Transform(std::vector<std::array<unsigned,CHARSET_SIZE>>& statemachine, bool sort, bool prune)
+static void DFA_Transform(StateMachineType& statemachine, bool sort, bool prune)
 {
     if(!sort && !prune) return;
-    if(statemachine.empty()) return;
+    if(unlikely(statemachine.empty())) return;
 
     struct Info
     {
-        unsigned originalnumber;
-        unsigned uses;
-        bool     unused;
+        unsigned uses=0;
+        unsigned originalnumber=0;
     };
-    std::vector<Info> info;
-    info.reserve(statemachine.size());
-    for(unsigned stateno=0; stateno<statemachine.size(); ++stateno)
-        info.push_back({stateno,0,false});
+    const unsigned old_num_states = statemachine.size();
+    constexpr unsigned unused_flag = ~0u;
+    std::unique_ptr<Info[]> info{new Info[old_num_states]};
+    unsigned info_size = old_num_states;
 
     // Sort the states according to how many times they are
     // referred, so that most referred states get smallest numbers.
     // This helps shrink down the .dirr_dfa file size.
+    if(0)
+    {
 recalculate_uses:
-    info[0].uses = ~0u; // Make sure state 0 stays at 0
-    for(unsigned stateno=0; stateno<statemachine.size(); ++stateno)
-        if(!info[stateno].unused)
+        // Reset the use counts for all that aren't completely unused
+        for(unsigned n=0; n<info_size; ++n)
+        {
+            auto& i = info[n];
+            i.uses = (i.uses != unused_flag) ? 0 : i.uses;
+        }
+    }
+    for(unsigned stateno=0; stateno<info_size; ++stateno)
+        if(stateno==0 || info[stateno].uses != unused_flag)
             for(unsigned c=0; c<CHARSET_SIZE; ++c)
             {
                 unsigned t = statemachine[stateno][c];
-                if(t < statemachine.size()
+                if(t < info_size
                 && (c == 0 || t != statemachine[stateno][c-1])
                   )
-                    if(likely(info[t].uses < ~0u))
+                {
+                    if(likely(info[t].uses < unused_flag))
                         ++info[t].uses;
+                }
             }
 
     // Go over the states and check if some of them were unused
     bool found_unused = false;
-    for(auto& m: info)
-        if(m.uses == 0)
-            if(!m.unused) { m.unused = true; found_unused = true; }
-    if(found_unused)
-        { for(auto& m: info) m.uses = 0; goto recalculate_uses; }
+    for(unsigned n=0; n<info_size; ++n)
+    {
+        auto& i = info[n];
+        if(!i.uses) { i.uses = unused_flag; found_unused = true; }
+    }
+    if(found_unused) goto recalculate_uses;
 
     // Didn't find new unused states.
-    if(prune)
+    // Before deleting / sorting anything, preserve the states' original numbers.
+    // Also correct the usecounts for proper sorting.
+    // Make sure that state 0 stays at index 0.
+    for(unsigned n=0; n<info_size; ++n)
     {
-        // Now delete states that were previously found to be unused.
-        // State 0 will not be deleted, as it implicitly has an use count of ~0u.
-        info.erase(std::remove_if(info.begin(),info.end(),[](const Info& m)
-        {
-            return m.unused==true;
-        }), info.end());
+        auto& i = info[n];
+        i.originalnumber = n;
+        i.uses           = (n==0u ? ~0u : (unlikely(i.uses == unused_flag) ? 0u : i.uses));
     }
-
-#ifdef DEBUG
-    std::cout << (statemachine.size()-info.size()) << " DFA states deleted\n";
-#endif
 
     if(sort)
     {
         // Sort states according to their use.
         // State 0 will remain as state 0 because it has the highest uses count.
-        std::sort(info.begin(), info.end(), [](const Info& a, const Info& b)
+        std::sort(&info[0], &info[info_size], [](const Info& a, const Info& b)
         {
             return a.uses > b.uses;
         });
     }
-    else
+
+    if(prune)
     {
-        // Nothing was deleted?
-        if(info.size() == statemachine.size())
-            return;
+        // Now delete states that were previously found to be unused.
+        // State 0 will not be deleted, as it implicitly has a use count of ~0u.
+        auto i = &info[0]; while(++i != &info[info_size] && i->uses) {}
+        info_size = std::remove_if(i,&info[info_size],[](const Info& m)
+        {
+            return m.uses==0;
+        }) - &info[0];
+    #ifdef DEBUG
+        std::cout << (old_num_states-info_size) << " DFA states deleted\n";
+    #endif
+        // Return now, if nothing was changed
+        if(!sort && info_size == old_num_states) return;
     }
 
     // Create mappings to reflect the new sorted order
-    std::unordered_map<unsigned,unsigned> rewritten_mappings;
-    for(unsigned stateno=0; stateno<info.size(); ++stateno)
-        rewritten_mappings.emplace(info[stateno].originalnumber, stateno);
+    std::unique_ptr<unsigned[]> rewritten_mappings{new unsigned[old_num_states]};
+    for(unsigned n=0; n<info_size; ++n) rewritten_mappings[info[n].originalnumber] = n;
 
     // Rewrite the state machine
-    std::vector<std::array<unsigned,CHARSET_SIZE>> newstatemachine(info.size());
-    for(unsigned stateno=0; stateno<info.size(); ++stateno)
+    StateMachineType newstatemachine(info_size);
+    for(unsigned stateno=0; stateno<info_size; ++stateno)
     {
-        auto& targets = statemachine[ info[stateno].originalnumber ];
+        assert( info[stateno].originalnumber < statemachine.size() );
+        auto& old    = statemachine[ info[stateno].originalnumber ];
+        auto& target = newstatemachine[stateno];
         for(unsigned c=0; c<CHARSET_SIZE; ++c)
-        {
-            newstatemachine[stateno][c] = (targets[c] >= statemachine.size())
-                ? (targets[c] - statemachine.size() + newstatemachine.size())
-                : (rewritten_mappings.find(targets[c])->second);
-        }
+            target[c] = (old[c] >= old_num_states)
+                ? (old[c] - old_num_states + info_size)
+                : rewritten_mappings[old[c]];
     }
     statemachine = std::move(newstatemachine);
 }
 
-static void DFA_Minimize(std::vector<std::array<unsigned,CHARSET_SIZE>>& statemachine)
+static void DFA_Minimize(StateMachineType& statemachine)
 {
 #ifdef DEBUG
     DumpDFA(std::cout, "DFA before minimization", statemachine);
 #endif
     // Groups of states
     typedef std::list<unsigned> group_t;
+    // ^ Using __gnu_cxx::__pool_alloc<int> does not affect performance
+    //   neither does using __mt_alloc<int>
 
     // State number to group number mapping
     class mappings
@@ -1291,16 +1396,18 @@ static void DFA_Minimize(std::vector<std::array<unsigned,CHARSET_SIZE>>& statema
     // Create a single group for all non-accepting states.
     // Collect all states. Assume there are no unvisited states.
     std::vector<group_t> groups(1);
-    for(unsigned n=0; n<statemachine.size(); ++n)
+    // Using __gnu_cxx::malloc_allocator<int> or __mt_alloc<int>
+    // does not seem to affect performance in any perceptible way.
+    for(unsigned n=0, m=statemachine.size(); n<m; ++n)
         { groups[0].push_back(n); mapping.set(n, 0); }
 
     // Don't create groups for accepting states, since they are
     // not really states, but create a mapping for them, so that
     // we don't need special handling in the group-splitting code.
-    for(unsigned n=0; n<statemachine.size(); ++n)
+    for(unsigned n=0, m=statemachine.size(); n<m; ++n)
         for(auto v: statemachine[n])
-            if(v >= statemachine.size()) // Accepting or failing state
-                mapping.set( v, (v - statemachine.size()) + DFAOPT_ACCEPT_OFFSET );
+            if(v >= m) // Accepting or failing state
+                mapping.set( v, (v - m) + DFAOPT_ACCEPT_OFFSET );
 
 rewritten:;
     for(unsigned groupno=0; groupno<groups.size(); ++groupno)
@@ -1344,7 +1451,7 @@ rewritten:;
     // original state 0, emerges as group 0 in the new ordering.
 
     // Create a new state machine based on these groups
-    std::vector<std::array<unsigned,CHARSET_SIZE>> newstates(groups.size());
+    StateMachineType newstates(groups.size());
     for(unsigned newstateno=0; newstateno<groups.size(); ++newstateno)
     {
         auto& group          = groups[newstateno];
@@ -1355,15 +1462,14 @@ rewritten:;
         for(unsigned c=0; c<CHARSET_SIZE; ++c)
         {
             unsigned v = oldstate[c];
-            if(v >= statemachine.size()) // Accepting or failing state?
-                newstate[c] = v - statemachine.size() + newstates.size();
-            else
-                newstate[c] = mapping.get(v); // group number
+            newstate[c] = (v >= statemachine.size()) // Accepting or failing state?
+                            ? (v - statemachine.size() + newstates.size())
+                            : (mapping.get(v)); // group number
         }
     }
     statemachine = std::move(newstates);
 
-    DFA_Transform(statemachine, DFA_POST_SORT_BY_USECOUNT, DFA_POST_DELETE_UNUSED_NODES);
+    DFA_Transform(statemachine, DFA_MINIMIZATION_FLAGS & 0x08, DFA_MINIMIZATION_FLAGS & 0x04);
 
 #ifdef DEBUG
     DumpDFA(std::cout, "DFA after minimization", statemachine);
@@ -1386,7 +1492,7 @@ void DFA_Matcher::Compile()
     data->RecheckHash(); // Calculate the hash before deleting matches[]
     // Otherwise Save() will fail
 
-    data->statemachine = [this]() -> std::vector<std::array<unsigned,CHARSET_SIZE>>
+    data->statemachine = [this]() -> StateMachineType
     {
         NFAcompiler nfa_compiler;
 
@@ -1399,12 +1505,12 @@ void DFA_Matcher::Compile()
         data->matches.clear();
     #endif
 
-        if(NFA_SIMPLIFY_ACCEPTS)
+        if(NFA_MINIMIZATION_FLAGS & 0x02)
         {
             nfa_compiler.SimplifyAcceptingStates();
         }
 
-        if(NFA_PRE_MINIMIZATION_LEVEL >= 2)
+        if(NFA_MINIMIZATION_FLAGS & 0x04)
         {
             nfa_compiler.Minimize();
         }
@@ -1414,10 +1520,10 @@ void DFA_Matcher::Compile()
         return nfa_compiler.LoadDFA();
     }();
 
-    DFA_Transform(data->statemachine, false, DFA_PRE_DELETE_UNUSED_NODES);
+    DFA_Transform(data->statemachine, false, DFA_MINIMIZATION_FLAGS & 0x01);
 
     // STEP 4: Finally, minimalize the DFA (state machine).
-    if(DFA_DO_MINIMIZATION)
+    if(DFA_MINIMIZATION_FLAGS & 0x02)
     {
         DFA_Minimize(data->statemachine);
     }

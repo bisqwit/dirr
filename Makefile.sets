@@ -21,15 +21,15 @@ LDFLAGS=-g
 
 #####
 # These options were set by ./configure
-# at Tue Apr 12 16:31:37 EEST 2016
+# at Wed Apr 13 04:33:54 EEST 2016
 # for Linux chii 4.4.3 #1 SMP Wed Mar 2 16:23:50 EET 2016 x86_64 GNU/Linux
 # To change, run ./configure again.
 #
-CC=clang
-CPP=clang++
-CXX=clang++
-OPTIM +=  -Ofast -ffunction-sections -fdata-sections
-CPPFLAGS +=  -std=gnu++1z -DNO_SHARED_TIMED_MUTEX
+CC=gcc-5
+CPP=g++
+CXX=g++
+OPTIM +=  -Ofast -minline-stringops-dynamically -ffunction-cse -ffunction-sections -fdata-sections
+CPPFLAGS +=  -std=gnu++17
 LDFLAGS +=  -pthread -Wl,--gc-sections
 WARNINGS +=  -Wall -Wundef -Wcast-qual -Wpointer-arith -Wconversion -Wwrite-strings -Wsign-compare -Wredundant-decls -Winit-self -Wextra -Wparentheses -Wcast-align -Wformat -Wno-conversion
 CWARNINGS +=  -Waggregate-return -Wshadow -Winline -Wstrict-prototypes -Wmissing-prototypes
