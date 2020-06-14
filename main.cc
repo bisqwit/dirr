@@ -890,7 +890,7 @@ static void DirChangeCheck(std::string Source)
                 Gprintf("\n");
             }
             Eka=0;
-            Gprintf(" Directory of %s\n", Source.size() ? Source : ".");
+            Gprintf(" Directory of %s\n", Source.size() ? Source : "/");
         }
         CurrentColumn = 0;
         LastDir = Source;
