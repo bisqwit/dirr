@@ -36,3 +36,6 @@ CWARNINGS +=  -Waggregate-return -Wshadow -Winline -Wstrict-prototypes -Wmissing
 CXXWARNINGS +=  -Woverloaded-virtual -Weffc++ -Wno-non-virtual-dtor
 
 
+
+
+CXX += -funsigned-char

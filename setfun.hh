@@ -17,7 +17,7 @@ using std::string;
 extern bool Dumping;
 
 extern bool WasNormalColor;
-extern int GetModeColor(ColorMode m, char Chr);
+extern int GetModeColor(ColorMode m, signed char Chr);
 extern int GetDescrColor(ColorDescr d, int index);
 extern void PrintSettings();
 
