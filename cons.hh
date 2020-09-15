@@ -63,7 +63,7 @@ inline std::size_t WidthPrint(std::size_t maxlen, const string &buf, bool fill)
             else if((c & 0xE0) == 0xC0) { cache = c & 0x1F; bytesleft=1; }
             else if((c & 0xF0) == 0xE0) { cache = c & 0x0F; bytesleft=2; }
             else if((c & 0xF8) == 0xF0) { cache = c & 0x07; bytesleft=3; }
-            else                        { cache = c & 0x7F;              }
+            else                        { cache = c & 0x7F; if(c >= 0x80) break; }
             /*fprintf(stderr, "utf8 seq len=%u c=%02X cache=%04X bytesleft=%u\n", length,c,cache,bytesleft);*/
             if(!bytesleft)
             {
@@ -77,17 +77,7 @@ inline std::size_t WidthPrint(std::size_t maxlen, const string &buf, bool fill)
                     case 4: mincode = 0x10000; break;
                 }
                 if(c < mincode) break; // Invalid sequence
-                /*
-                TODO: Implement surrogate support
-                if(__builtin_expect(result.empty(), false)
-                || __builtin_expect(c < 0xDC00 || c > 0xDFFF, true)
-                || __builtin_expect(result.back() < 0xD800 || result.back() > 0xDBFF, false))
-                */
-                    return c | (((std::uint_fast64_t)length) << 32);
-                /*
-                else
-                    result.back() = (result.back() - 0xD800u)*0x400u + (c - 0xDC00u) + 0x10000u;
-                */
+                return c | (((std::uint_fast64_t)length) << 32);
             }
         }
         return 0; // Invalid sequence
@@ -106,6 +96,26 @@ inline std::size_t WidthPrint(std::size_t maxlen, const string &buf, bool fill)
         {
             char32_t seq = utf8 & 0xFFFFFFFFu;
             unsigned length = utf8 >> 32;
+
+            if(seq >= 0xD800 && seq <= 0xDFFF)
+            {
+                if(seq >= 0xDC00) goto invalid_unicode_char;
+                // Check for surrogate sequence
+                auto another = ParseUTF8([&](unsigned index) -> int
+                {
+                    if(bytepos+length+index >= buf.size()) return -1;
+                    return (unsigned char)buf[bytepos+length+index];
+                });
+                char32_t seq2 = another & 0xFFFFFFFu;
+                if(seq2 >= 0xDC00 && seq2 <= 0xDFFF)
+                {
+                    length += another >> 32;
+                    // Recompose from the surrogate
+                    seq = ((seq - 0xD800u)*0x400u) + (seq2 - 0xDC00u) + 0x10000u;
+                }
+                else
+                    goto invalid_unicode_char;
+            }
             if(print)
                 for(unsigned n=0; n<length; ++n)
                     Gputch( buf[bytepos+n] );
@@ -114,7 +124,7 @@ inline std::size_t WidthPrint(std::size_t maxlen, const string &buf, bool fill)
             if(is_doublewide(seq))
                 ++column;
         }
-        else
+        else invalid_unicode_char:
         {
             unsigned char c = buf[bytepos++];
             /*fprintf(stderr, "not valid %02X\n", c);*/
