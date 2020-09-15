@@ -370,7 +370,7 @@ private:
 //   and   C is the color code.
 //   If Chr is positive, the color is also set using SetAttr()!
 //   If Chr is negative, it is treated as positive but not set.
-int GetModeColor(ColorMode m, char Chr)
+int GetModeColor(ColorMode m, signed char Chr)
 {
     Settings.Load();
 

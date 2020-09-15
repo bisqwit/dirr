@@ -1,3 +1,9 @@
+Tue 2020-09-15 15:05 Joel Yliluoma <bisqwit@iki.fi>
+
+	* Version 3.38
+
+	    - Rudimentary UTF-8 support in filename printing
+
 Wed 2019-10-16 12:34 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.37
