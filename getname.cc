@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <cstring>
+#include <cstdint>
 
 #include "config.h"
 #include "getname.hh"
@@ -15,27 +16,6 @@ static const char HLinkArrow[] = " = ";
 int Links;
 #endif
 
-static std::size_t WidthPrint(std::size_t maxlen, const string &buf, bool fill)
-{
-    /* Print maximum of "maxlen" characters from buf.
-     * If buf is longer, print spaces.
-     * Convert unprintable characters into question marks.
-     * Printable (unsigned): 20..7E, A0..FF    Unprintable: 00..1F, 7F..9F
-     * Printable (signed):   32..126, -96..-1, Unprintable: -128..-97, 0..31
-     */
-    std::size_t n=0;
-    for(std::size_t limit=std::min(maxlen, buf.size()); n<limit; ++n)
-    {
-        unsigned char c = buf[n];
-        if((c >= 32 && c < 0x7F) || (c >= 0xA0))
-            Gputch(c);
-        else
-            Gputch('?');
-    }
-    if(fill) for(; n < maxlen; ++n) Gputch(' ');
-    return n;
-}
-
 int GetName(const string &fn, const StatType &sta, int Space,
             bool Fill, bool nameonly,
             const char *hardlinkfn)
@@ -44,7 +24,6 @@ int GetName(const string &fn, const StatType &sta, int Space,
     const StatType *Stat = &sta;
 
     unsigned Len = 0;
-    int i;
 
     bool maysublink = true;
     bool wasinvalid = false;
@@ -58,12 +37,14 @@ Redo:
     // mistä tähän funktioon (tai Redo-labeliin) tullaan.
 
     Buf = Puuh;
-    Len += (i = Buf.size());
+    int i = WidthPrint<false>(~0u, Buf, false);
+    Len += i;
 
-    if(i > Space && nameonly)i = Space;
-    Buf.erase(i);
+    if(i > Space && nameonly) i = Space;
+    int j = WidthPrint<true>(i, Buf, Fill);
+    //fprintf(stderr, "i=%d, len=%d, Space=%d, j=%d\n", i, int(Buf.size()), Space, j);
 
-    Space -= WidthPrint(i, Buf, Fill);
+    Space -= j;
 
     #define PutSet(c) do \
         if(Space) \
@@ -97,14 +78,13 @@ Redo:
 
             Buf = SLinkArrow;
 
-            Len += (a = Buf.size());
+            Len += (a = WidthPrint<false>(~0u, Buf, false));
 
             if(a > Space)a = Space;
             if(a > 0)
             {
-                Buf.erase(a);
                 GetModeColor(ColorMode::INFO, '@');
-                Gwrite(Buf, a);
+                WidthPrint<true>(a, Buf, false);
             }
             Space -= a;
 
@@ -153,8 +133,9 @@ Redo:
 
         SetAttr(GetModeColor(ColorMode::INFO, '&'));
 
-        Len += Gprintf("%s", HLinkArrow);
-        Space -= strlen(HLinkArrow);
+        int arrowlength = Gwrite(HLinkArrow);
+        Len += arrowlength;
+        Space -= arrowlength;
 
         Puuh = Relativize(s, hardlinkfn);
 

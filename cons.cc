@@ -3,6 +3,7 @@
 #include <string>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 
 using namespace std;
 
@@ -387,14 +388,145 @@ int ColorNums = -1;
 
 std::size_t Gwrite(const std::string& s)
 {
-    for(char c: s) Gputch(c);
-    return s.size();
+    return WidthPrint<true>(~std::size_t(), s, false);
+    //for(char c: s) Gputch(c);
+    //return s.size();
 }
 
 std::size_t Gwrite(const std::string& s, std::size_t pad)
 {
-    if(pad < s.size()) return Gwrite(s);
     std::size_t res = Gwrite(s);
     while(res < pad) { ++res; Gputch(' '); }
     return pad;
+}
+
+constexpr std::array width_table {
+	std::pair<char32_t,char32_t>{ 0x1100, 0x115f },
+	std::pair<char32_t,char32_t>{ 0x231a, 0x231b },
+	std::pair<char32_t,char32_t>{ 0x2329, 0x232a },
+	std::pair<char32_t,char32_t>{ 0x23e9, 0x23ec },
+	std::pair<char32_t,char32_t>{ 0x23f0, 0x23f0 },
+	std::pair<char32_t,char32_t>{ 0x23f3, 0x23f3 },
+	std::pair<char32_t,char32_t>{ 0x25fd, 0x25fe },
+	std::pair<char32_t,char32_t>{ 0x2614, 0x2615 },
+	std::pair<char32_t,char32_t>{ 0x2648, 0x2653 },
+	std::pair<char32_t,char32_t>{ 0x267f, 0x267f },
+	std::pair<char32_t,char32_t>{ 0x2693, 0x2693 },
+	std::pair<char32_t,char32_t>{ 0x26a1, 0x26a1 },
+	std::pair<char32_t,char32_t>{ 0x26aa, 0x26ab },
+	std::pair<char32_t,char32_t>{ 0x26bd, 0x26be },
+	std::pair<char32_t,char32_t>{ 0x26c4, 0x26c5 },
+	std::pair<char32_t,char32_t>{ 0x26ce, 0x26ce },
+	std::pair<char32_t,char32_t>{ 0x26d4, 0x26d4 },
+	std::pair<char32_t,char32_t>{ 0x26ea, 0x26ea },
+	std::pair<char32_t,char32_t>{ 0x26f2, 0x26f3 },
+	std::pair<char32_t,char32_t>{ 0x26f5, 0x26f5 },
+	std::pair<char32_t,char32_t>{ 0x26fa, 0x26fa },
+	std::pair<char32_t,char32_t>{ 0x26fd, 0x26fd },
+	std::pair<char32_t,char32_t>{ 0x2705, 0x2705 },
+	std::pair<char32_t,char32_t>{ 0x270a, 0x270b },
+	std::pair<char32_t,char32_t>{ 0x2728, 0x2728 },
+	std::pair<char32_t,char32_t>{ 0x274c, 0x274c },
+	std::pair<char32_t,char32_t>{ 0x274e, 0x274e },
+	std::pair<char32_t,char32_t>{ 0x2753, 0x2755 },
+	std::pair<char32_t,char32_t>{ 0x2757, 0x2757 },
+	std::pair<char32_t,char32_t>{ 0x2795, 0x2797 },
+	std::pair<char32_t,char32_t>{ 0x27b0, 0x27b0 },
+	std::pair<char32_t,char32_t>{ 0x27bf, 0x27bf },
+	std::pair<char32_t,char32_t>{ 0x2b1b, 0x2b1c },
+	std::pair<char32_t,char32_t>{ 0x2b50, 0x2b50 },
+	std::pair<char32_t,char32_t>{ 0x2b55, 0x2b55 },
+	std::pair<char32_t,char32_t>{ 0x2e80, 0x2e99 },
+	std::pair<char32_t,char32_t>{ 0x2e9b, 0x2ef3 },
+	std::pair<char32_t,char32_t>{ 0x2f00, 0x2fd5 },
+	std::pair<char32_t,char32_t>{ 0x2ff0, 0x2ffb },
+	std::pair<char32_t,char32_t>{ 0x3000, 0x303e },
+	std::pair<char32_t,char32_t>{ 0x3041, 0x3096 },
+	std::pair<char32_t,char32_t>{ 0x3099, 0x30ff },
+	std::pair<char32_t,char32_t>{ 0x3105, 0x312f },
+	std::pair<char32_t,char32_t>{ 0x3131, 0x318e },
+	std::pair<char32_t,char32_t>{ 0x3190, 0x31e3 },
+	std::pair<char32_t,char32_t>{ 0x31f0, 0x321e },
+	std::pair<char32_t,char32_t>{ 0x3220, 0x3247 },
+	std::pair<char32_t,char32_t>{ 0x3250, 0x4dbf },
+	std::pair<char32_t,char32_t>{ 0x4e00, 0xa48c },
+	std::pair<char32_t,char32_t>{ 0xa490, 0xa4c6 },
+	std::pair<char32_t,char32_t>{ 0xa960, 0xa97c },
+	std::pair<char32_t,char32_t>{ 0xac00, 0xd7a3 },
+	std::pair<char32_t,char32_t>{ 0xf900, 0xfaff },
+	std::pair<char32_t,char32_t>{ 0xfe10, 0xfe19 },
+	std::pair<char32_t,char32_t>{ 0xfe30, 0xfe52 },
+	std::pair<char32_t,char32_t>{ 0xfe54, 0xfe66 },
+	std::pair<char32_t,char32_t>{ 0xfe68, 0xfe6b },
+	std::pair<char32_t,char32_t>{ 0xff01, 0xff60 },
+	std::pair<char32_t,char32_t>{ 0xffe0, 0xffe6 },
+	std::pair<char32_t,char32_t>{ 0x16fe0, 0x16fe4 },
+	std::pair<char32_t,char32_t>{ 0x16ff0, 0x16ff1 },
+	std::pair<char32_t,char32_t>{ 0x17000, 0x187f7 },
+	std::pair<char32_t,char32_t>{ 0x18800, 0x18cd5 },
+	std::pair<char32_t,char32_t>{ 0x18d00, 0x18d08 },
+	std::pair<char32_t,char32_t>{ 0x1b000, 0x1b11e },
+	std::pair<char32_t,char32_t>{ 0x1b150, 0x1b152 },
+	std::pair<char32_t,char32_t>{ 0x1b164, 0x1b167 },
+	std::pair<char32_t,char32_t>{ 0x1b170, 0x1b2fb },
+	std::pair<char32_t,char32_t>{ 0x1f004, 0x1f004 },
+	std::pair<char32_t,char32_t>{ 0x1f0cf, 0x1f0cf },
+	std::pair<char32_t,char32_t>{ 0x1f18e, 0x1f18e },
+	std::pair<char32_t,char32_t>{ 0x1f191, 0x1f19a },
+	std::pair<char32_t,char32_t>{ 0x1f200, 0x1f202 },
+	std::pair<char32_t,char32_t>{ 0x1f210, 0x1f23b },
+	std::pair<char32_t,char32_t>{ 0x1f240, 0x1f248 },
+	std::pair<char32_t,char32_t>{ 0x1f250, 0x1f251 },
+	std::pair<char32_t,char32_t>{ 0x1f260, 0x1f265 },
+	std::pair<char32_t,char32_t>{ 0x1f300, 0x1f320 },
+	std::pair<char32_t,char32_t>{ 0x1f32d, 0x1f335 },
+	std::pair<char32_t,char32_t>{ 0x1f337, 0x1f37c },
+	std::pair<char32_t,char32_t>{ 0x1f37e, 0x1f393 },
+	std::pair<char32_t,char32_t>{ 0x1f3a0, 0x1f3ca },
+	std::pair<char32_t,char32_t>{ 0x1f3cf, 0x1f3d3 },
+	std::pair<char32_t,char32_t>{ 0x1f3e0, 0x1f3f0 },
+	std::pair<char32_t,char32_t>{ 0x1f3f4, 0x1f3f4 },
+	std::pair<char32_t,char32_t>{ 0x1f3f8, 0x1f43e },
+	std::pair<char32_t,char32_t>{ 0x1f440, 0x1f440 },
+	std::pair<char32_t,char32_t>{ 0x1f442, 0x1f4fc },
+	std::pair<char32_t,char32_t>{ 0x1f4ff, 0x1f53d },
+	std::pair<char32_t,char32_t>{ 0x1f54b, 0x1f54e },
+	std::pair<char32_t,char32_t>{ 0x1f550, 0x1f567 },
+	std::pair<char32_t,char32_t>{ 0x1f57a, 0x1f57a },
+	std::pair<char32_t,char32_t>{ 0x1f595, 0x1f596 },
+	std::pair<char32_t,char32_t>{ 0x1f5a4, 0x1f5a4 },
+	std::pair<char32_t,char32_t>{ 0x1f5fb, 0x1f64f },
+	std::pair<char32_t,char32_t>{ 0x1f680, 0x1f6c5 },
+	std::pair<char32_t,char32_t>{ 0x1f6cc, 0x1f6cc },
+	std::pair<char32_t,char32_t>{ 0x1f6d0, 0x1f6d2 },
+	std::pair<char32_t,char32_t>{ 0x1f6d5, 0x1f6d7 },
+	std::pair<char32_t,char32_t>{ 0x1f6eb, 0x1f6ec },
+	std::pair<char32_t,char32_t>{ 0x1f6f4, 0x1f6fc },
+	std::pair<char32_t,char32_t>{ 0x1f7e0, 0x1f7eb },
+	std::pair<char32_t,char32_t>{ 0x1f90c, 0x1f93a },
+	std::pair<char32_t,char32_t>{ 0x1f93c, 0x1f945 },
+	std::pair<char32_t,char32_t>{ 0x1f947, 0x1f978 },
+	std::pair<char32_t,char32_t>{ 0x1f97a, 0x1f9cb },
+	std::pair<char32_t,char32_t>{ 0x1f9cd, 0x1f9ff },
+	std::pair<char32_t,char32_t>{ 0x1fa70, 0x1fa74 },
+	std::pair<char32_t,char32_t>{ 0x1fa78, 0x1fa7a },
+	std::pair<char32_t,char32_t>{ 0x1fa80, 0x1fa86 },
+	std::pair<char32_t,char32_t>{ 0x1fa90, 0x1faa8 },
+	std::pair<char32_t,char32_t>{ 0x1fab0, 0x1fab6 },
+	std::pair<char32_t,char32_t>{ 0x1fac0, 0x1fac2 },
+	std::pair<char32_t,char32_t>{ 0x1fad0, 0x1fad6 },
+	std::pair<char32_t,char32_t>{ 0x20000, 0x2fffd },
+	std::pair<char32_t,char32_t>{ 0x30000, 0x3fffd },
+};
+bool is_doublewide(char32_t c)
+{
+    auto i = std::lower_bound(width_table.begin(), width_table.end(), c,
+                              [](std::pair<char32_t,char32_t> a,
+                                 char32_t b)
+                              {
+                                  return b < a.first;
+                              });
+    if(i == width_table.end()) return false;
+    if(i->second > c) return false;
+    return true;
 }
