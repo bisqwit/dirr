@@ -24,6 +24,7 @@
 # include <ext/stdio_filebuf.h>
 # include <unistd.h>
 #endif
+#include <fcntl.h>
 
 using std::vector;
 using std::map;
