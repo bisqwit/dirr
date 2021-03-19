@@ -520,13 +520,17 @@ constexpr std::pair<char32_t,char32_t> width_table[] {
 };
 bool is_doublewide(char32_t c)
 {
-    auto i = std::lower_bound(std::begin(width_table), std::end(width_table), c,
-                              [](std::pair<char32_t,char32_t> a,
-                                 char32_t b)
+    // find earliest element greater than value
+    auto i = std::upper_bound(std::begin(width_table), std::end(width_table), c,
+                              [](char32_t a, std::pair<char32_t,char32_t> b)
                               {
-                                  return b < a.first;
+                                  return a < b.first;
                               });
-    if(i == std::end(width_table)) return false;
-    if(i->second > c) return false;
+    // if the first element is greater, then value is not in any range
+    if(i == std::begin(width_table)) return false;
+    // otherwise i is the earliest greater element, so
+    // go back one to the earliest lesser-or-equal element
+    i--;
+    if(i->second < c) return false;
     return true;
 }
