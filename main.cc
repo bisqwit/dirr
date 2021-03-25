@@ -869,8 +869,14 @@ static void DirChangeCheck(std::string Source)
 {
     std::size_t ss = Source.size();
     // Remove trailing /./ and /
-    while(ss >= 1 && Source[ss-1] == '/')
-        { --ss; if(ss>=2 && Source[ss-2]=='/' && Source[ss-1] == '.') ss -= 2; }
+    // Do not remove singular / though.
+    while(ss > 1 && Source[ss-1] == '/')
+    {
+        if(ss >= 3 && Source[ss-3] == '/' && Source[ss-2] == '.')
+            ss -= 2; // Change dir/./ into dir/
+        else
+            ss -= 1; // Change dir/   into dir
+    }
     Source.erase(ss);
 
     if(LastDir != Source)
