@@ -430,11 +430,11 @@ static void TellMe(const StatType &Stat, string&& Name
                     struct tm *NOW = localtime(&now);
                     if(NOW->tm_year == y || (y==NOW->tm_year-1 && m>NOW->tm_mon))
                     {
-                        str = Printf("%3d.%d", d,m+1);
-                        if(str.size() >= 5) str.erase(0,1);
+                        str = Printf("%3d.%d", d,m+1); // 5 characters
+                        if(str.size() > 5) str.erase(0,1);
                     }
                     else
-                        str = Printf("%5d", y+1900);
+                        str = Printf("%5d", y+1900);   // 5 characters
                 }
                 else
                 {
