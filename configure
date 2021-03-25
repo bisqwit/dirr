@@ -152,7 +152,7 @@ test_func $AC_FUNC
 
 
 found_ext=""
-for ext in gnu++17 gnu++1z c++17 c++1z gnu++14 gnu++1y c++14 c++1y; do
+for ext in c++20 c++2a gnu++20 gnu++2a c++17 c++1z gnu++17 gnu++1z c++14 c++1y gnu++14 gnu++1y; do
 #gnu++11 gnu++0x c++11 c++0x
   if [ "$found_ext" = "" ]; then
     do_echo -n "Checking for -std=$ext... "
