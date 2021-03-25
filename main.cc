@@ -119,9 +119,9 @@ static void SetDefaultOptions()
 
                     // Modify with -f
     #ifdef DJGPP
-    FieldOrder = ".f.s_.d";
+    FieldOrder = ".f_.s_.d";
     #else
-    FieldOrder = ".f.s_.a4_.d_.o_.g";
+    FieldOrder = ".f_.s_.a4_.d_.o_.g";
     #endif
 
     BlkStr = "<B%u,%u>"; // Modify with -db
