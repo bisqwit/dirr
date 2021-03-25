@@ -7,7 +7,7 @@
 #include "config.h"
 #include "strfun.hh"
 
-string NameOnly(const string &Name)
+std::string NameOnly(const std::string &Name)
 {
     std::size_t p = Name.rfind('/');
     // No path?
@@ -21,7 +21,7 @@ string NameOnly(const string &Name)
 }
 /*
 #include "cons.hh"
-string NameOnly(const string &Name)
+std::string NameOnly(const std::string &Name)
 {
     auto r = NameOnly_(Name);
     Gprintf("NameOnly(%s)=(%s)\n", Name,r);
@@ -29,15 +29,15 @@ string NameOnly(const string &Name)
 }*/
 
 // Return value ends with '/'.
-// If no directory, returns empty string.
-string DirOnly(const string &Name)
+// If no directory, returns empty std::string.
+std::string DirOnly(const std::string &Name)
 {
     std::size_t p = Name.rfind('/');
     if(p == Name.npos) return {};
     return Name.substr(0, p+1);
 }
 
-string LinkTarget(const string &link, bool fixit)
+std::string LinkTarget(const std::string &link, bool fixit)
 {
     char Target[PATH_MAX+1];
 
@@ -57,7 +57,7 @@ string LinkTarget(const string &link, bool fixit)
     return DirOnly(link) + Target;
 }
 
-string GetError(int e)
+std::string GetError(int e)
 {
     return strerror(e); /*
     int a;
@@ -69,7 +69,7 @@ string GetError(int e)
     return Buffer; */
 }
 
-string Relativize(const string &base, const string &name)
+std::string Relativize(const std::string &base, const std::string &name)
 {
     const char *b = base.c_str();
     const char *n = name.c_str();
@@ -88,7 +88,7 @@ string Relativize(const string &base, const string &name)
         n = n1+1;
     }
 
-    string retval;
+    std::string retval;
 
     while(*n=='.' && n[1]=='/') n += 2;
 

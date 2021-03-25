@@ -6,17 +6,15 @@
 
 #include "printf.hh"
 
-using namespace std;
-
-extern string NameOnly(const string &Name);
+extern std::string NameOnly(const std::string &Name);
 
 // Ends with '/'.
-// If no directory, returns empty string.
-extern string DirOnly(const string &Name);
+// If no directory, returns empty std::string.
+extern std::string DirOnly(const std::string &Name);
 
 // Without fixit, simply returns the link target text.
 // With fixit, it makes the link absolute, if it was relative.
-extern string LinkTarget(const string &link, bool fixit=false);
+extern std::string LinkTarget(const std::string &link, bool fixit=false);
 
 template<typename... Args>
 void PrintNum(std::string &Dest, char Seps, const std::string& fmt, Args&&... args)
@@ -44,9 +42,9 @@ void PrintNum(std::string &Dest, char Seps, const std::string& fmt, Args&&... ar
 #endif
 
 /* Does merely strerror() */
-extern string GetError(int e);
+extern std::string GetError(int e);
 
 // base="/usr/bin/diu", name="/usr/doc/dau", return="../doc/dau"
-extern string Relativize(const string &base, const string &name);
+extern std::string Relativize(const std::string &base, const std::string &name);
 
 #endif

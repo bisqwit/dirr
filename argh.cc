@@ -195,7 +195,7 @@ void arghandler::listoptions()
         SetAttr(DEFAULTATTR);
         Gprintf(GPRINTF_ARGS "%s", l);
 
-        Gprintf(GPRINTF_ARGS "%*s", int(space-(strlen(s) + strlen(l))), "");
+        Gprintf(GPRINTF_ARGS "%*s", space-(strlen(s) + strlen(l)), "");
 
         SetAttr(DEFAULTATTR);
 

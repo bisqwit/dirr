@@ -41,48 +41,50 @@ extern bool is_doublewide(char32_t c);
 
 extern void GetScreenGeometry();
 
-template<bool print>
-inline std::size_t WidthPrint(std::size_t maxlen, const string &buf, bool fill)
+/* Print maximum of "maxlen" characters from buf.
+ * If buf is longer, print spaces.
+ * Convert unprintable characters into question marks.
+ * Printable (unsigned): 20..7E, A0..FF    Unprintable: 00..1F, 7F..9F
+ * Printable (signed):   32..126, -96..-1, Unprintable: -128..-97, 0..31
+ */
+template<typename F>
+inline std::uint_fast64_t ParseUTF8(F&& getchar) // Return value: 32-bits char, >>32 = length in bytes. 0 = invalid sequence
 {
-    /* Print maximum of "maxlen" characters from buf.
-     * If buf is longer, print spaces.
-     * Convert unprintable characters into question marks.
-     * Printable (unsigned): 20..7E, A0..FF    Unprintable: 00..1F, 7F..9F
-     * Printable (signed):   32..126, -96..-1, Unprintable: -128..-97, 0..31
-     */
-    auto ParseUTF8 = [](auto&& getchar) -> std::uint_fast64_t // Return value: 32-bits char, >>32 = length in bytes. 0 = invalid sequence
+    unsigned cache = 0/*, bytesleft = 0*/, length = 0, bytesleft = 0;
+    for(;;)
     {
-        unsigned cache = 0/*, bytesleft = 0*/, length = 0, bytesleft = 0;
-        for(;;)
+        unsigned c = getchar(length++);
+        if(c & ~0xFF) break;
+        if(bytesleft > 0)           { cache = cache * 0x40 + (c & 0x3F); --bytesleft;
+                                      if((c & 0xC0) != 0x80) { /*fprintf(stderr, "rej=%02X\n", c);*/ break; }
+                                    }
+        else if((c & 0xE0) == 0xC0) { cache = c & 0x1F; bytesleft=1; }
+        else if((c & 0xF0) == 0xE0) { cache = c & 0x0F; bytesleft=2; }
+        else if((c & 0xF8) == 0xF0) { cache = c & 0x07; bytesleft=3; }
+        else                        { cache = c & 0x7F; if(c >= 0x80) break; }
+        /*fprintf(stderr, "utf8 seq len=%u c=%02X cache=%04X bytesleft=%u\n", length,c,cache,bytesleft);*/
+        if(!bytesleft)
         {
-            unsigned c = getchar(length++);
-            if(c & ~0xFF) break;
-            if(bytesleft > 0)           { cache = cache * 0x40 + (c & 0x3F); --bytesleft;
-                                          if((c & 0xC0) != 0x80) { /*fprintf(stderr, "rej=%02X\n", c);*/ break; }
-                                        }
-            else if((c & 0xE0) == 0xC0) { cache = c & 0x1F; bytesleft=1; }
-            else if((c & 0xF0) == 0xE0) { cache = c & 0x0F; bytesleft=2; }
-            else if((c & 0xF8) == 0xF0) { cache = c & 0x07; bytesleft=3; }
-            else                        { cache = c & 0x7F; if(c >= 0x80) break; }
-            /*fprintf(stderr, "utf8 seq len=%u c=%02X cache=%04X bytesleft=%u\n", length,c,cache,bytesleft);*/
-            if(!bytesleft)
+            char32_t c = cache, mincode = 0;
+            switch(length)
             {
-                char32_t c = cache, mincode = 0;
-                switch(length)
-                {
-                    default:
-                    case 1: mincode = 0; break;
-                    case 2: mincode = 0x80; break;
-                    case 3: mincode = 0x800; break;
-                    case 4: mincode = 0x10000; break;
-                }
-                if(c < mincode) break; // Invalid sequence
-                return c | (((std::uint_fast64_t)length) << 32);
+                default:
+                case 1: mincode = 0; break;
+                case 2: mincode = 0x80; break;
+                case 3: mincode = 0x800; break;
+                case 4: mincode = 0x10000; break;
             }
+            if(c < mincode) break; // Invalid sequence
+            return c | (((std::uint_fast64_t)length) << 32);
         }
-        return 0; // Invalid sequence
-    };
+    }
+    return 0; // Invalid sequence
+};
 
+
+template<bool print>
+std::size_t WidthPrintHelper(std::size_t maxlen, const std::string &buf, bool fill)
+{
     std::size_t column = 0, bytepos = 0;
     for(; column<maxlen && bytepos<buf.size(); ++column)
     {
@@ -138,13 +140,24 @@ inline std::size_t WidthPrint(std::size_t maxlen, const string &buf, bool fill)
         }
     }
     /*fprintf(stderr, "Printed %zu bytes: <%.*s>\n", bytepos, (int)bytepos, buf.c_str());*/
-    if(print && fill)
+    if(fill && column < maxlen)
     {
-        for(; column < maxlen; ++column) Gputch(' ');
+        if(print) Gprintf("%*s", maxlen-column, "");
+        column = maxlen;
     }
     return column;
 }
 
+inline std::size_t WidthPrint(std::size_t maxlen, const std::string &buf, bool fill)
+{
+    return WidthPrintHelper<true>( maxlen, buf, fill );
+}
 
+
+inline std::size_t WidthInColumns(const std::string& buf)
+{
+    return WidthPrintHelper<false>( ~std::size_t(), buf, false );
+}
 
 #endif
+

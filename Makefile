@@ -25,7 +25,7 @@ include Makefile.sets
 #OPTIM=-Og -fno-inline
 #CXXFLAGS += -fsanitize=address
 
-VERSION = 3.38.1
+VERSION = 3.39
 
 BINDIR=/usr/local/bin
 INSTALL=install

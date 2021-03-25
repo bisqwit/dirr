@@ -388,18 +388,24 @@ int ColorNums = -1;
 
 std::size_t Gwrite(const std::string& s)
 {
-    return WidthPrint<true>(~std::size_t(), s, false);
-    //for(char c: s) Gputch(c);
-    //return s.size();
+    return WidthPrintHelper<true>( ~std::size_t(), s, false );
 }
 
 std::size_t Gwrite(const std::string& s, std::size_t pad)
 {
-    std::size_t res = Gwrite(s);
-    while(res < pad) { ++res; Gputch(' '); }
-    return pad;
+    return WidthPrintHelper<true>( pad, s, true );
 }
 
+/* This width_table comes from analyzing
+ * http://ftp.unicode.org/Public/UNIDATA/EastAsianWidth.txt
+ * You can regenerate it like this:
+
+ (echo 'constexpr std::pair<char32_t,char32_t> width_table[] {';
+  grep ';W' EastAsianWidth.txt| \
+  perl -pe 's/;W.+//;s/^([^.]*)\.\.(.*)/{0x\1,0x\2},/;s/^([0-9A-Z]+)/{0x\1,0x\1},/';
+  echo '};'
+ )
+*/
 constexpr std::pair<char32_t,char32_t> width_table[] {
     { 0x1100, 0x115f },
     { 0x231a, 0x231b },
@@ -520,13 +526,17 @@ constexpr std::pair<char32_t,char32_t> width_table[] {
 };
 bool is_doublewide(char32_t c)
 {
-    auto i = std::lower_bound(std::begin(width_table), std::end(width_table), c,
-                              [](std::pair<char32_t,char32_t> a,
-                                 char32_t b)
+    // find earliest element greater than value
+    auto i = std::upper_bound(std::begin(width_table), std::end(width_table), c,
+                              [](char32_t a, std::pair<char32_t,char32_t> b)
                               {
-                                  return b < a.first;
+                                  return a < b.first;
                               });
-    if(i == std::end(width_table)) return false;
-    if(i->second > c) return false;
+    // if the first element is greater, then value is not in any range
+    if(i == std::begin(width_table)) return false;
+    // otherwise i is the earliest greater element, so
+    // go back one to the earliest lesser-or-equal element
+    i--;
+    if(i->second < c) return false;
     return true;
 }

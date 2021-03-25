@@ -5,11 +5,9 @@
 
 */
 
-#define VERSIONSTR \
-    "DIRR " VERSION " copyright (C) 1992,2016 Bisqwit (http://iki.fi/bisqwit/)\n" \
-    "This program is under GPL. dirr-" VERSION ".tar.[gx]z\n" \
-    "are available at the homepage of the author.\n" \
-    "Thanks to Warp for contributing ideas to this program.\n"
+static const char VERSIONSTR[] =
+    "DIRR %s copyright (C) 1992,2021 Bisqwit (http://iki.fi/bisqwit/)\n"
+    "License: GPL. Source code: https://iki.fi/bisqwit/source/dirr.html\n";
 
 #include <cstdio>
 #include <cstring>
@@ -121,9 +119,9 @@ static void SetDefaultOptions()
 
                     // Modify with -f
     #ifdef DJGPP
-    FieldOrder = ".f.s_.d";
+    FieldOrder = ".f_.s_.d";
     #else
-    FieldOrder = ".f.s_.a4_.d_.o_.g";
+    FieldOrder = ".f_.s_.a4_.d_.o_.g";
     #endif
 
     BlkStr = "<B%u,%u>"; // Modify with -db
@@ -432,11 +430,11 @@ static void TellMe(const StatType &Stat, string&& Name
                     struct tm *NOW = localtime(&now);
                     if(NOW->tm_year == y || (y==NOW->tm_year-1 && m>NOW->tm_mon))
                     {
-                        str = Printf("%3d.%d", d,m+1);
-                        if(str.size() >= 5) str.erase(0,1);
+                        str = Printf("%3d.%d", d,m+1); // 5 characters
+                        if(str.size() > 5) str.erase(0,1);
                     }
                     else
-                        str = Printf("%5d", y+1900);
+                        str = Printf("%5d", y+1900);   // 5 characters
                 }
                 else
                 {
@@ -865,12 +863,18 @@ static void SingleFile(string&& Buffer)
     }
 }
 
-static void DirChangeCheck(std::string Source)
+static void DirChangeCheck(std::string&& Source /* modified */)
 {
     std::size_t ss = Source.size();
     // Remove trailing /./ and /
-    while(ss >= 1 && Source[ss-1] == '/')
-        { --ss; if(ss>=2 && Source[ss-2]=='/' && Source[ss-1] == '.') ss -= 2; }
+    // Do not remove singular / though.
+    while(ss > 1 && Source[ss-1] == '/')
+    {
+        if(ss >= 3 && Source[ss-3] == '/' && Source[ss-2] == '.')
+            ss -= 2; // Change dir/./ into dir/
+        else
+            ss -= 1; // Change dir/   into dir
+    }
     Source.erase(ss);
 
     if(LastDir != Source)
@@ -944,7 +948,7 @@ static void ScanDir(std::string&& Source) // Directory to list
     }
 
     // Directory successfully opened.
-    DirChangeCheck(Source);
+    DirChangeCheck(std::string(Source)); // Operates on a copy of Source
 
     for(struct dirent *ent = readdir(dir); ent != NULL; ent = readdir(dir))
     {
@@ -1044,7 +1048,7 @@ private:
     string opt_vc(const string& s) { VerticalColumns = true; return s; }
     string opt_V(const string &)
     {
-        printf(VERSIONSTR);
+        printf(VERSIONSTR, VERSION);
         exit(0);
     }
     string opt_a(const string &s)
@@ -1270,7 +1274,7 @@ public:
 
             GetDescrColor(ColorDescr::TEXT, 1);
 
-            Gprintf(VERSIONSTR);
+            Gprintf(VERSIONSTR, VERSION);
 
             Gprintf(
 #ifndef DJGPP
