@@ -195,7 +195,9 @@ static void PutVarBit(std::vector<char>& buffer, unsigned& bitpos, unsigned long
 template<typename Alloc>
 class StateMachine
 {
+    // FIXME: rebind is deleted in c++20
     typename Alloc::template rebind<unsigned>::other alloc{};
+
     unsigned* data; // [0] = refcount, [1+] = data
     unsigned nstates;
 public:

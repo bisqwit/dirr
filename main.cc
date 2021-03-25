@@ -114,7 +114,7 @@ static void SetDefaultOptions()
     TotalSep= 0;    // Modify with -Mx
 
     Sorting = "pmgU";
-    DateForm = "%d.%m.%y %H:%M";
+    DateForm = "%d.%m.%y_%H:%M";
                     // Modify with -F
 
                     // Modify with -f
@@ -1211,11 +1211,11 @@ public:
                                   "  .F and .G and .O are respectively, without space fitting\n"
                                   "  .uid and .gid are .o and .g but always in numeric form\n"
                                   "  .z is .s in \"human-readable\" format\n"
-                                  "   anything else=printed\n"
+                                  "   anything else=printed, except _ produces space\n"
                                   "  Colors follow the same format as in DIRR_COLORS\n"
                                   "   Default is `--format="+FieldOrder+"'",
                                   &Handle::opt_f);
-        add("-F",  "--dates",     "Specify new date format. man strftime.\n"
+        add("-F",  "--dates",     "Specify new date format. man strftime. Underscore (_) produces space.\n"
                                   "Default is `-F"+DateForm+"'",
                                   &Handle::opt_F);
         add("-h",  "--help",      "mm.. familiar?", &Handle::opt_h);
@@ -1292,11 +1292,17 @@ public:
             Gwrite(
                 "\n"
                 "You can set environment variable 'DIRR' for the options.\n"
-                "You can also use 'DIRR_COLORS' -variable for color settings.\n"
+                "You can also use 'DIRR_COLORS' environment variable for color settings.\n"
                 "Current DIRR_COLORS:\n"
             );
-
             PrintSettings();
+            Gwrite(
+                "\n"
+                "Attributes are expressed in hexadecimal, and interpreted bitwise:\n"
+                "   When < 0x100,           0BbbbIfff\n"
+                "   When >= 0x100, Ibbbbbbbb1ffffffff\n"
+                "   Where B=blink, bb...=background, I=bold or intensity, ff...=foreground\n"
+                "   Background and foreground color indexes are as in xterm-256color/ansi.\n");
 
             exit(0);
         }

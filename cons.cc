@@ -65,11 +65,13 @@ int OldAttr  = DEFAULTATTR;
  *             B...I...       B=blink/bright, I=intensity/bold
  * Xterm-256color compatible attributes:
  *   uBBBBBBBB*ffffffff   where * = 0x100
- *                              u = 0x20000 for underline
+ *                              u = 0x20000 for bold
  */
 
-static unsigned BackgroundOf(int attr) { return (attr & 0x100) ? (attr >> 9) & 0xFF : (attr >> 4) & 0x0F; }
-static unsigned ForegroundOf(int attr) { return (attr & 0x100) ? (attr & 0xFF)      : (attr & 0x0F); }
+static unsigned BackgroundOf(unsigned attr) { return (attr & 0x100) ? ((attr >> 9) & 0xFF) : ((attr >> 4) & 0x07); }
+static unsigned ForegroundOf(unsigned attr) { return (attr & 0x100) ? (attr & 0xFF)        : (attr & 0x07); }
+static bool     BoldOf(unsigned attr)       { return (attr & 0x100) ? (attr & 0x20000)     : (attr & 0x8); }
+static bool     BlinkOf(unsigned attr)      { return (attr & 0x100) ? false                : (attr & 0x80); }
 
 static class GetScreenGeometry
 {
@@ -124,117 +126,99 @@ static void FlushSetAttr()
         // max length for 256-colors:  "e[0;38;5;255;48;5;255;1m" = 24 characters
         char Buffer[32]={'\33','['};
         unsigned Buflen=2;
+
         if(TextAttr != DEFAULTATTR)
         {
-            static const char Swap[8] = {'0','4','2','6','1','5','3','7'};
+            bool pp           = false; // semicolon needed
+            bool reset_needed = false;
+            auto param = [&]{ if(pp) Buffer[Buflen++]=';'; pp=true; };
+            auto appint = [&](unsigned value)
+            {
+                param();
+                if(value >= 100)
+                {
+                    if(value >= 10000) Buffer[Buflen++] = '0' + (value/10000u)%10u;
+                    if(value >= 1000)  Buffer[Buflen++] = '0' + (value/1000u)%10u;
+                    Buffer[Buflen++] = '0' + (value/100u)%10u;
+                }
+                if(value >= 10) Buffer[Buflen++] = '0' + (value/10u)%10u;
+                Buffer[Buflen++] = '0' + (value/1u)%10u;
+            };
+            auto appcolor = [&](int value, int lowdelta, int highdelta, const char* xterm)
+            {
+                if(value < 16)
+                {
+                    appint((value & 7) + ((value & 8) ? highdelta : lowdelta));
+                }
+                else
+                {
+                    param();
+                    memcpy(Buffer+Buflen, xterm, 5); Buflen += 5; pp=false;
+                    appint(value);
+                }
+            };
+
+            static const char Swap[8] = {0,4,2,6,1,5,3,7};
             if(AnsiOpt)
             {
-                bool pp           = false; // semicolon needed
-                bool reset_needed = false;
-                auto param = [&]{ if(pp) Buffer[Buflen++]=';'; pp=true; };
-
                 struct Data { bool legacy,blink,intens; unsigned bg,fg; } olddata, newdata;
 
-                if(TextAttr&0x100) newdata={false,false,bool(TextAttr&0x20000), unsigned(TextAttr>>9), TextAttr&0xFFu};
-                else               newdata={true,bool(TextAttr&0x80),bool(TextAttr&8), (TextAttr>>4u)&7u, TextAttr&7u };
-                if(OldAttr&0x100)  olddata={false,false,bool(OldAttr&0x20000), unsigned(OldAttr>>9), OldAttr&0xFFu};
-                else               olddata={true,bool(OldAttr&0x80),bool(OldAttr&8), (OldAttr>>4u)&7u, OldAttr&7u };
+                newdata = { !bool(TextAttr&0x100), BlinkOf(TextAttr),BoldOf(TextAttr), BackgroundOf(TextAttr),ForegroundOf(TextAttr)};
+                olddata = { !bool(OldAttr&0x100 ), BlinkOf(OldAttr), BoldOf(OldAttr),  BackgroundOf(OldAttr), ForegroundOf(OldAttr) };
 
-                if( (olddata.blink && !newdata.blink) || (olddata.intens && !newdata.intens) )
+                if( (olddata.blink != newdata.blink)
+                  + (olddata.intens != newdata.intens) >= 1
+                &&  (olddata.bg != newdata.bg)
+                  + (olddata.fg != newdata.fg) >= 1)
+                {
                     reset_needed = true;
+                }
 
                 if(reset_needed)
                 {
                     // '0' resets both blink and intensity flags
-                    Buffer[Buflen++] = '0'; pp=true;
-                    olddata.intens = false;
-                    olddata.blink = false;
-                    olddata.bg = BackgroundOf(DEFAULTATTR);
-                    olddata.fg = ForegroundOf(DEFAULTATTR);
+                    appint(0);
                     OldAttr = DEFAULTATTR; // Presumed default color
+                    olddata = { !bool(OldAttr&0x100), BlinkOf(OldAttr), BoldOf(OldAttr),  BackgroundOf(OldAttr), ForegroundOf(OldAttr)};
                 }
-                if(newdata.intens && !olddata.intens) { param(); Buffer[Buflen++] = '1'; }
-                if(newdata.blink  && !olddata.blink)  { param(); Buffer[Buflen++] = '5'; }
+                if(newdata.intens && !olddata.intens) { appint(1); } // Add bold
+                if(newdata.blink  && !olddata.blink)  { appint(5); } // Add blink
+                if(!newdata.intens && olddata.intens) { appint(22); } // Remove bold
+                if(!newdata.blink  && olddata.blink)  { appint(25); } // Remove blink
                 if(newdata.bg != olddata.bg)
                 {
-                    param();
+                    // Renew background color
                     if(newdata.legacy)
-                    {
-                        Buffer[Buflen++] = '4';
-                        Buffer[Buflen++] = Swap[newdata.bg];
-                    }
+                        appint(40 + Swap[newdata.bg]);
                     else
-                    {
-                        Buffer[Buflen++] = '4';
-                        Buffer[Buflen++] = '8';
-                        Buffer[Buflen++] = ';';
-                        Buffer[Buflen++] = '5';
-                        Buffer[Buflen++] = ';';
-                        if(newdata.bg >= 100) Buffer[Buflen++] = '0' + (newdata.bg/100)%10;
-                        if(newdata.bg >= 10) Buffer[Buflen++] = '0' + (newdata.bg/10)%10;
-                        Buffer[Buflen++] = '0' + newdata.bg%10;
-                    }
+                        appcolor(newdata.bg, 40,100, "48;5;");
                 }
                 if(newdata.fg != olddata.fg)
                 {
-                    param();
+                    // Renew foreground color
                     if(newdata.legacy)
-                    {
-                        Buffer[Buflen++] = '3';
-                        Buffer[Buflen++] = Swap[newdata.fg];
-                    }
+                        appint(30 + Swap[newdata.fg]);
                     else
-                    {
-                        Buffer[Buflen++] = '3';
-                        Buffer[Buflen++] = '8';
-                        Buffer[Buflen++] = ';';
-                        Buffer[Buflen++] = '5';
-                        Buffer[Buflen++] = ';';
-                        if(newdata.fg >= 100) Buffer[Buflen++] = '0' + (newdata.fg/100)%10;
-                        if(newdata.fg >= 10) Buffer[Buflen++] = '0' + (newdata.fg/10)%10;
-                        Buffer[Buflen++] = '0' + newdata.fg%10;
-                    }
+                        appcolor(newdata.fg, 30,90, "38;5;");
                 }
             }
             else
             {
-                Buffer[Buflen++] = '0';
+                appint(0);
                 if(TextAttr & 0x100) // 256color tag
                 {
                     unsigned bg = (TextAttr>>9)&0xFF, fg = TextAttr&0xFF;
-                    if(TextAttr & 0x20000)
-                    {
-                        Buffer[Buflen++] = ';';
-                        Buffer[Buflen++] = '1';
-                    }
-                    Buffer[Buflen++] = ';';
-                    Buffer[Buflen++] = '3';
-                    Buffer[Buflen++] = '8';
-                    Buffer[Buflen++] = ';';
-                    Buffer[Buflen++] = '5';
-                    Buffer[Buflen++] = ';';
-                    Buffer[Buflen++] = '0' + (fg/100)%10;
-                    Buffer[Buflen++] = '0' + (fg/10)%10;
-                    Buffer[Buflen++] = '0' + (fg/1)%10;
-                    Buffer[Buflen++] = ';';
-                    Buffer[Buflen++] = '4';
-                    Buffer[Buflen++] = '8';
-                    Buffer[Buflen++] = ';';
-                    Buffer[Buflen++] = '5';
-                    Buffer[Buflen++] = ';';
-                    Buffer[Buflen++] = '0' + (bg/100)%10;
-                    Buffer[Buflen++] = '0' + (bg/10)%10;
-                    Buffer[Buflen++] = '0' + (bg/1)%10;
+                    if(TextAttr & 0x20000) appint(1);
+                    appcolor(bg, 40,100, "48;5;");
+                    appcolor(fg, 30,90, "38;5;");
                 }
                 else
                 {
                     unsigned bg = (TextAttr>>4)&7, fg = TextAttr&7;
-                    if(TextAttr&0x08) { Buffer[Buflen++]=';';Buffer[Buflen++]='1'; }
-                    if(TextAttr&0x80) { Buffer[Buflen++]=';';Buffer[Buflen++]='5'; }
-                    Buffer[Buflen++] = '4';
-                    Buffer[Buflen++] = Swap[bg];
-                    Buffer[Buflen++] = '3';
-                    Buffer[Buflen++] = Swap[fg];
+                    if(TextAttr&0x08) appint(1);
+                    if(TextAttr&0x80) appint(5);
+                    appint(40 + Swap[bg]);
+                    appint(30 + Swap[fg]);
                 }
             }
         }
