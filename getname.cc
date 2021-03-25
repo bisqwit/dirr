@@ -24,7 +24,7 @@ int GetName(const string &fn, const StatType &sta, int Space,
     const StatType *Stat = &sta;
 
     unsigned Len = 0;
-
+    bool estimating = (Space == 0);
     bool maysublink = true;
     bool wasinvalid = false;
 
@@ -43,11 +43,12 @@ Redo:
     if(i > Space && nameonly) i = Space;
     int j = WidthPrint<true>(i, Buf, Fill);
     //fprintf(stderr, "i=%d, len=%d, Space=%d, j=%d\n", i, int(Buf.size()), Space, j);
-
     Space -= j;
 
     #define PutSet(c) do \
-        if(Space) \
+        if(estimating) \
+            ++Len; \
+        else if(Space) \
         { \
             char ch = (c); \
             ++Len; --Space; \
@@ -81,12 +82,15 @@ Redo:
             Len += (a = WidthPrint<false>(~0u, Buf, false));
 
             if(a > Space)a = Space;
-            if(a > 0)
+            if(estimating)
+                ++Len;
+            else if(a > 0)
             {
                 GetModeColor(ColorMode::INFO, '@');
                 WidthPrint<true>(a, Buf, false);
+                ++Len;
+                Space -= a;
             }
-            Space -= a;
 
             StatType Stat1;
             Buf = LinkTarget(s, true);
@@ -123,8 +127,8 @@ Redo:
     else
     #endif
     {
-        if(S_ISDIR(Stat->st_mode))  PutSet('/');
-        else if(Stat->st_mode & 00111)PutSet('*');
+        if(S_ISDIR(Stat->st_mode))     PutSet('/');
+        else if(Stat->st_mode & 00111) PutSet('*'); // Executable by someone
     }
 
     if(hardlinkfn && Space)

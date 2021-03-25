@@ -5,11 +5,9 @@
 
 */
 
-#define VERSIONSTR \
-    "DIRR " VERSION " copyright (C) 1992,2016 Bisqwit (http://iki.fi/bisqwit/)\n" \
-    "This program is under GPL. dirr-" VERSION ".tar.[gx]z\n" \
-    "are available at the homepage of the author.\n" \
-    "Thanks to Warp for contributing ideas to this program.\n"
+static const char VERSIONSTR[] =
+    "DIRR %s copyright (C) 1992,2021 Bisqwit (http://iki.fi/bisqwit/)\n"
+    "License: GPL. Source code: https://iki.fi/bisqwit/source/dirr.html\n";
 
 #include <cstdio>
 #include <cstring>
@@ -865,7 +863,7 @@ static void SingleFile(string&& Buffer)
     }
 }
 
-static void DirChangeCheck(std::string Source)
+static void DirChangeCheck(std::string&& Source /* modified */)
 {
     std::size_t ss = Source.size();
     // Remove trailing /./ and /
@@ -950,7 +948,7 @@ static void ScanDir(std::string&& Source) // Directory to list
     }
 
     // Directory successfully opened.
-    DirChangeCheck(Source);
+    DirChangeCheck(std::string(Source)); // Operates on a copy of Source
 
     for(struct dirent *ent = readdir(dir); ent != NULL; ent = readdir(dir))
     {
@@ -1050,7 +1048,7 @@ private:
     string opt_vc(const string& s) { VerticalColumns = true; return s; }
     string opt_V(const string &)
     {
-        printf(VERSIONSTR);
+        printf(VERSIONSTR, VERSION);
         exit(0);
     }
     string opt_a(const string &s)
@@ -1276,7 +1274,7 @@ public:
 
             GetDescrColor(ColorDescr::TEXT, 1);
 
-            Gprintf(VERSIONSTR);
+            Gprintf(VERSIONSTR, VERSION);
 
             Gprintf(
 #ifndef DJGPP
