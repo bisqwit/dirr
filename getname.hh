@@ -9,8 +9,6 @@
 extern int Links;
 #endif
 
-using std::string;
-
 /***********************************************
  *
  * GetName(fn, Stat, Space, Fill)
@@ -29,8 +27,9 @@ using std::string;
  *
  **********************************************************/
 
-extern int GetName(const string &fn, const StatType &sta, int Space,
-                   bool Fill, bool nameonly,
-                   const char *hardlinkfn = NULL);
+int GetName(std::string fn /* modified, so operate on a copy */,
+            const StatType &sta, int Space,
+            bool Fill, bool nameonly,
+            const char *hardlinkfn);
 
 #endif

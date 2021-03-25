@@ -16,11 +16,11 @@ static const char HLinkArrow[] = " = ";
 int Links;
 #endif
 
-int GetName(const string &fn, const StatType &sta, int Space,
+int GetName(std::string fn /* modified, so operate on a copy */,
+            const StatType &sta, int Space,
             bool Fill, bool nameonly,
             const char *hardlinkfn)
 {
-    string Puuh, Buf, s=fn;
     const StatType *Stat = &sta;
 
     unsigned Len = 0;
@@ -28,34 +28,38 @@ int GetName(const string &fn, const StatType &sta, int Space,
     bool maysublink = true;
     bool wasinvalid = false;
 
-    Puuh = nameonly ? NameOnly(s) : s;
+    std::string fn_print = nameonly ? NameOnly(fn) : fn;
 #ifdef S_ISLNK
 Redo:
 #endif
-    // T‰h‰n kohtaan hyp‰t‰‰n tulostamaan nimi.
-    // Tekstin v‰ri on s‰‰detty jo valmiiksi siell‰
-    // mist‰ t‰h‰n funktioon (tai Redo-labeliin) tullaan.
+    // We land here to print a name.
+    // The color has already been prepared where
+    // either this function is called, or Redo is jumped to.
 
-    Buf = Puuh;
-    int i = WidthPrint<false>(~0u, Buf, false);
-    Len += i;
+    auto PrintIfRoom = [&](const std::string& what)
+    {
+        int i = WidthInColumns(what);
+        Len += i;
 
-    if(i > Space && nameonly) i = Space;
-    int j = WidthPrint<true>(i, Buf, Fill);
-    //fprintf(stderr, "i=%d, len=%d, Space=%d, j=%d\n", i, int(Buf.size()), Space, j);
-    Space -= j;
+        if(i > Space && nameonly) i = Space;
 
-    #define PutSet(c) do \
-        if(estimating) \
-            ++Len; \
-        else if(Space) \
-        { \
-            char ch = (c); \
-            ++Len; --Space; \
-            GetModeColor(ColorMode::INFO, ch); \
-            Gputch(ch); \
-        } \
-    while(0)
+        int j = WidthPrint(i, what, Fill);
+        Space -= j;
+    };
+    auto PutSet = [&](char ch)
+    {
+        if(estimating)
+            ++Len;
+        else if(Space)
+        {
+            ++Len;
+            --Space;
+            GetModeColor(ColorMode::INFO, ch);
+            Gputch(ch);
+        }
+    };
+
+    PrintIfRoom(fn_print);
 
     if(wasinvalid)
     {
@@ -75,41 +79,27 @@ Redo:
     {
         if(Links >= 2 && maysublink)
         {
-            int a;
-
-            Buf = SLinkArrow;
-
-            Len += (a = WidthPrint<false>(~0u, Buf, false));
-
-            if(a > Space)a = Space;
-            if(estimating)
-                ++Len;
-            else if(a > 0)
-            {
-                GetModeColor(ColorMode::INFO, '@');
-                WidthPrint<true>(a, Buf, false);
-                ++Len;
-                Space -= a;
-            }
+            if(Space > 0) GetModeColor(ColorMode::INFO, '@');
+            PrintIfRoom(SLinkArrow);
 
             StatType Stat1;
-            Buf = LinkTarget(s, true);
+            std::string Buf = LinkTarget(fn, true);
 
-            /* Target status */
+            /* Analyze the link target. */
             if(StatFunc(Buf.c_str(), &Stat1) < 0)
             {
                 if(LStatFunc(Buf.c_str(), &Stat1) < 0)
                 {
                     wasinvalid = true;
-                    if(Space)GetModeColor(ColorMode::TYPE, '?');
+                    if(Space > 0) GetModeColor(ColorMode::TYPE, '?');
                 }
                 else
                 {
-                    if(Space)GetModeColor(ColorMode::TYPE, 'l');
+                    if(Space > 0) GetModeColor(ColorMode::TYPE, 'l');
                 }
                 maysublink = false;
             }
-            else if(Space)
+            else if(Space > 0)
             {
                 StatType Stat2;
                 if(LStatFunc(Buf.c_str(), &Stat2) >= 0 && S_ISLNK(Stat2.st_mode))
@@ -118,7 +108,8 @@ Redo:
                    SetAttr(GetNameAttr(Stat1, Buf));
             }
 
-            Puuh = s = LinkTarget(s, false); // Unfixed link.
+            fn       = LinkTarget(fn, false); // Unfixed link.
+            fn_print = fn;
             Stat = &Stat1;
             goto Redo;
         }
@@ -135,13 +126,10 @@ Redo:
     {
         StatType Stat1;
 
-        SetAttr(GetModeColor(ColorMode::INFO, '&'));
+        GetModeColor(ColorMode::INFO, '&');
+        PrintIfRoom(HLinkArrow);
 
-        int arrowlength = Gwrite(HLinkArrow);
-        Len += arrowlength;
-        Space -= arrowlength;
-
-        Puuh = Relativize(s, hardlinkfn);
+        fn_print = Relativize(fn, hardlinkfn);
 
         StatFunc(hardlinkfn, &Stat1);
         SetAttr(GetNameAttr(Stat1, NameOnly(hardlinkfn)));
@@ -151,13 +139,10 @@ Redo:
         maysublink = false;
         wasinvalid = false;
 
-        if(Space < 0)Space = 0;
-
         goto Redo;
     }
 
-    #undef PutSet
-
-    if(Fill) while(Space > 0) { Gputch(' '); --Space; }
+    if(Fill && Space > 0)
+        Gprintf("%*s", Space, "");
     return Len;
 }

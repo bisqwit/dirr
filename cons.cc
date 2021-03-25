@@ -388,16 +388,13 @@ int ColorNums = -1;
 
 std::size_t Gwrite(const std::string& s)
 {
-    return WidthPrint<true>(~std::size_t(), s, false);
-    //for(char c: s) Gputch(c);
-    //return s.size();
+    return WidthPrintHelper<true>( ~std::size_t(), s, false );
 }
 
 std::size_t Gwrite(const std::string& s, std::size_t pad)
 {
-    std::size_t res = Gwrite(s);
-    while(res < pad) { ++res; Gputch(' '); }
-    return pad;
+    // Note: Possibility for overflow due to cast
+    return Gprintf("%-*s", pad, s);
 }
 
 constexpr std::pair<char32_t,char32_t> width_table[] {
