@@ -140,9 +140,10 @@ std::size_t WidthPrintHelper(std::size_t maxlen, const std::string &buf, bool fi
         }
     }
     /*fprintf(stderr, "Printed %zu bytes: <%.*s>\n", bytepos, (int)bytepos, buf.c_str());*/
-    if(print && fill)
+    if(fill && column < maxlen)
     {
-        for(; column < maxlen; ++column) Gputch(' ');
+        if(print) Gprintf("%*s", maxlen-column, "");
+        column = maxlen;
     }
     return column;
 }

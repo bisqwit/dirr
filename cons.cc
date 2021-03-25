@@ -393,10 +393,19 @@ std::size_t Gwrite(const std::string& s)
 
 std::size_t Gwrite(const std::string& s, std::size_t pad)
 {
-    // Note: Possibility for overflow due to cast
-    return Gprintf("%-*s", pad, s);
+    return WidthPrintHelper<true>( pad, s, true );
 }
 
+/* This width_table comes from analyzing
+ * http://ftp.unicode.org/Public/UNIDATA/EastAsianWidth.txt
+ * You can regenerate it like this:
+
+ (echo 'constexpr std::pair<char32_t,char32_t> width_table[] {';
+  grep ';W' EastAsianWidth.txt| \
+  perl -pe 's/;W.+//;s/^([^.]*)\.\.(.*)/{0x\1,0x\2},/;s/^([0-9A-Z]+)/{0x\1,0x\1},/';
+  echo '};'
+ )
+*/
 constexpr std::pair<char32_t,char32_t> width_table[] {
     { 0x1100, 0x115f },
     { 0x231a, 0x231b },
