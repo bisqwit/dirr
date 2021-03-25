@@ -115,7 +115,7 @@ Redo:
         }
         PutSet('@');
     }
-    else
+    else if(!wasinvalid)
     #endif
     {
         if(S_ISDIR(Stat->st_mode))     PutSet('/');
