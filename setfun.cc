@@ -121,8 +121,10 @@ public:
             const char* var = getenv("DIRR_COLORS");
             if(var)
             {
-                auto i = find_range("byext");
-                sets.erase(i.first, i.second);
+                if (std::strstr(var, "byext") != NULL) {
+                    auto i = find_range("byext");
+                    sets.erase(i.first, i.second);
+                }
                 Load(var);
             }
             Parse();
@@ -188,6 +190,8 @@ private:
             std::string key = s.substr(pos, key_end-pos);
             if(parens_pos == s.size())
             {
+                if (key != "byext")
+                    sets.erase(key);
                 sets.emplace(std::move(key), std::string{});
                 return;
             }
@@ -201,6 +205,8 @@ private:
             std::size_t value_end = end_parens_pos;
             while(value_end > value_begin && std::isspace(s[value_end-1])) --value_end;
 
+            if (key != "byext")
+                sets.erase(key);
             sets.emplace(std::move(key), s.substr(value_begin, value_end-value_begin));
             pos = end_parens_pos+1;
         }
@@ -213,7 +219,7 @@ private:
         {
             if(s.first == "mode" || s.first == "type" || s.first == "info")
             {
-                // Parse "txt", "mode" and "info".
+                // Parse "type", "mode" and "info".
                 // These strings in DIRR_COLORS have the format: text(sC,...)
                 // Where s is the character key
                 // and   C is the color code.
@@ -266,7 +272,7 @@ private:
             }
             else
             {
-                // Parse "txt", "owner", "group", "nrlink", "date", or "num".
+                // Parse "txt", "owner", "group", "nrlink", "date", "num", "descr", or "size".
                 // These strings in DIRR_COLORS have the format: text(color,...)
                 int m = ColorDescrFromName(s.first);
                 if(m == -1)
