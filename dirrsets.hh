@@ -157,7 +157,7 @@ For xterm-256color formats:
     R"(byext(1A7i *.tar *.gz *.xz *.bz *.brotli *.bz2 *.zip *.arj *.lzh *.lha *.rar *.deb *.rpm *.7z *.lzma))"
     // bright magenta: image and video files
     R"(byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.ogv *.mkv *.asf *.x?m *.mov *.tga *.png *.tif))"
-    R"(byext(Di *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\w *.rm *.tiff))"
+    R"(byext(Di *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\w *.rm *.tiff *.web[mp]))"
     // red background and yellow: files with clear mistakes in filenames
     R"(byext(69D7 * *\?))"
     R"(byext(148 .*))"
