@@ -101,14 +101,14 @@ void PrintfFormatter::Execute(PrintfFormatter::State& state)
 {
     for(std::size_t pos = (state.position + 3) / 4; pos < formats.size(); ++pos)
     {
-        state.result.append(formats[pos].before);
+        state.result.append( std::move(formats[pos].before) );
         state.result.append( (std::size_t) formats[pos].min_width, L' ' );
+        formats[pos].before.clear();
     }
-    state.result += trail;
+    state.result += std::move(trail); trail.clear();
 
     formats.clear();
     state.position = 0;
-    trail.clear();
 }
 
 namespace PrintfPrivate
@@ -435,19 +435,14 @@ template void PrintfFormatter::MakeFrom(std::basic_string_view<char8_t>);
 template void PrintfFormatter::MakeFrom(std::basic_string_view<char16_t>);
 template void PrintfFormatter::MakeFrom(std::basic_string_view<char32_t>);
 
-PrintfProxy::PrintfProxy(std::basic_string_view<char> fmt) : PrintfProxy()
-{
-    data->first.MakeFrom(fmt);
-}
-
 PrintfProxy PrintfProxy::operator+ (PrintfProxy&& b) &&
 {
     // Finish our string
-    data->first.Execute(data->second);
+    ref().first.Execute(ref().second);
     // Finish their string
-    b.data->first.Execute(b.data->second);
+    b.ref().first.Execute(b.ref().second);
     // Append their result to us
-    data->second.result += b.data->second.result;
+    ref().second.result += b.ref().second.result;
     return std::move(*this);
 }
 
@@ -455,9 +450,26 @@ PrintfProxy PrintfProxy::operator+ (PrintfProxy&& b) &&
 PrintfProxy& PrintfProxy::operator %= (PrintfProxy&& arg)
 {
     // Finish their string
-    arg.data->first.Execute(arg.data->second);
+    arg.ref().first.Execute(arg.ref().second);
     // Execute their outcome as a parameter to our printf
-    data->first.ExecutePart<const std::basic_string<char32_t>&>
-        (data->second, arg.data->second.result);
+    ref().first.ExecutePart<const std::basic_string<char32_t>&>
+        (ref().second, arg.ref().second.result);
     return *this;
 }
+
+template<typename CT,typename TR,typename A>
+PrintfProxy::operator std::basic_string<CT,TR,A> () // Implements str()
+{
+    ref().first.Execute(ref().second); // Finally calls the no-parameters remaining function
+    if constexpr(std::is_same_v<CT, char32_t>)
+    {
+        return std::move(ref().second.result);
+    }
+    else
+    {
+        return {ref().second.result.begin(), ref().second.result.end()};
+    }
+}
+
+template PrintfProxy::operator std::basic_string<char> ();
+template PrintfProxy::operator std::basic_string<char32_t> ();

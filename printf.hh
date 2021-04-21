@@ -143,42 +143,55 @@ std::basic_string<char> Printf(FmtT&& fmt, T&&... args)
     }
 }
 
+//#define USE_PRINTFPROXY_PTR
+
 struct PrintfProxy
 {
     using data_t = std::pair<PrintfFormatter, PrintfFormatter::State>;
-    std::unique_ptr<data_t> data {};
+  #ifdef USE_PRINTFPROXY_PTR
+    data_t* data{};
+  #else
+    data_t data {};
+  #endif
+
+    //template<typename CT,typename TR,typename A>
+    //operator std::basic_string<CT,TR,A> () &&; // This implements str()
 
     template<typename CT,typename TR,typename A>
-    operator std::basic_string<CT,TR,A> () && // This implements str()
-    {
-        data->first.Execute(data->second);
-        return {data->second.result.begin(), data->second.result.end()};
-    }
+    operator std::basic_string<CT,TR,A> (); // Implements str()
 
     std::string str() && { return std::move(*this); }
 
-    PrintfProxy() : data{std::make_unique<data_t>()} {}
-    PrintfProxy(std::basic_string_view<char> fmt);
-    inline ~PrintfProxy() = default;
-
+  #ifdef USE_PRINTFPROXY_PTR
+    PrintfProxy() : data{new data_t{}} {}
+    ~PrintfProxy() { delete data; }
+    PrintfProxy(PrintfProxy&& b) : data(b.data) { b.data = nullptr; }
+    PrintfProxy& operator=(PrintfProxy&& b) { if(this != &b) { data = b.data; b.data = nullptr; } return *this; }
+  #else
+    PrintfProxy() = default;
     PrintfProxy(PrintfProxy&& b) = default;
     PrintfProxy& operator=(PrintfProxy&&) = default;
+    ~PrintfProxy() = default;
+  #endif
+    PrintfProxy(std::basic_string_view<char> fmt) : PrintfProxy()
+    {
+        ref().first.MakeFrom(fmt);
+    }
 
     PrintfProxy(const PrintfProxy&) = delete;
     PrintfProxy& operator= (const PrintfProxy&) = delete;
 
     // Parameter operands. These two functions have the same semantics as Execute(),
     // except that the actual formatting is only done when the string conversion operator is called.
-    template<typename T>
+    /*template<typename T>
     PrintfProxy operator % (T&& arg) &&
     {
-        *this %= std::forward<T>(arg);
-        return std::move(*this);
-    }
+        return std::move(*this %= std::forward<T>(arg));
+    }*/
     template<typename T>
     PrintfProxy& operator %= (T&& arg)
     {
-        data->first.Execute( data->second, std::forward<T>(arg), PrintfPrivate::Postpone{} );
+        ref().first.Execute( ref().second, std::forward<T>(arg), PrintfPrivate::Postpone{} );
         return *this;
     }
 
@@ -188,7 +201,33 @@ struct PrintfProxy
     template<typename T>
     PrintfProxy operator+ (T&& b) &&;
     PrintfProxy operator+ (PrintfProxy&& b) &&;
+
+private:
+    inline data_t& ref()
+    {
+  #ifdef USE_PRINTFPROXY_PTR
+        return *data;
+  #else
+        return data;
+  #endif
+    }
 };
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Weffc++"
+template<typename T>
+inline PrintfProxy& operator % (PrintfProxy&& lhs,  T&& arg)
+{
+    lhs %= std::forward<T>(arg);
+    return lhs; // Note: Converts rvalue reference into lvalue reference
+}
+template<typename T>
+inline PrintfProxy& operator % (PrintfProxy& lhs,  T&& arg)
+{
+    lhs %= std::forward<T>(arg);
+    return lhs;
+}
+#pragma GCC diagnostic pop
 
 inline PrintfProxy operator ""_f(const char* format, std::size_t num)
 {
@@ -199,15 +238,21 @@ template<typename T>
 PrintfProxy PrintfProxy::operator+ (T&& b) &&
 {
     // Finish our string
-    data->first.Execute(data->second);
+    ref().first.Execute(ref().second);
     // Create a "%s" parameter
-    data->first.formats.emplace_back(); // arg{} with default options
+    ref().first.formats.emplace_back(); // arg{} with default options
     // Continue our processing with "b" as a new parameter
     return std::move(*this) % std::forward<T>(b);
 }
 
 template<typename T, typename TR>
 std::basic_ostream<T,TR>& operator<< (std::basic_ostream<T,TR>& out, PrintfProxy&& b)
+{
+    out << std::move(b).str();
+    return out;
+}
+template<typename T, typename TR>
+std::basic_ostream<T,TR>& operator<< (std::basic_ostream<T,TR>& out, PrintfProxy& b)
 {
     out << std::move(b).str();
     return out;

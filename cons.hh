@@ -35,14 +35,9 @@ public:
         p %= std::forward<T>(arg);
         return *this;
     }
-    template<typename T>
-    GprintfProxy operator % (T&& arg) &&
+    operator std::size_t()
     {
-        return GprintfProxy(std::move(p) % std::forward<T>(arg));
-    }
-    operator std::size_t() &&
-    {
-        std::string str = std::move(p);
+        std::string str = std::move(p).str();
         int ta = TextAttr, cn = ColorNums >= 0 ? ColorNums : ta;
         std::size_t n = 0;
         for(char c: str)
@@ -59,6 +54,23 @@ public:
         return n;
     }
 };
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Weffc++"
+template<typename T>
+inline GprintfProxy& operator % (GprintfProxy&& lhs, T&& arg)
+{
+    lhs %= std::forward<T>(arg);
+    return lhs; // Note: Converts rvalue reference into lvalue reference
+}
+template<typename T>
+inline GprintfProxy& operator % (GprintfProxy& lhs,  T&& arg)
+{
+    lhs %= std::forward<T>(arg);
+    return lhs;
+}
+#pragma GCC diagnostic pop
+
 inline GprintfProxy operator ""_g(const char* format, std::size_t num)
 {
     return GprintfProxy(std::string_view(format,num));
