@@ -25,7 +25,7 @@ include Makefile.sets
 #OPTIM=-Og -fno-inline
 #CXXFLAGS += -fsanitize=address
 
-VERSION = 3.39
+VERSION = 3.39.1
 
 BINDIR=/usr/local/bin
 INSTALL=install
@@ -50,7 +50,7 @@ ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh config.h \
           cons.cc cons.hh \
           argh.cc argh.hh \
           printf.cc printf.hh \
-          stat.h likely.hh \
+          stat.h \
           TODO progdesc.php \
           Makefile.sets.in \
           Makefile.sets \

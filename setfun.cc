@@ -294,9 +294,9 @@ private:
 
         // Load/Compile/Save byext_sets for use by NameColor()
         bool loaded = false, compiled = false;
-        for(const std::string& path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
+        for(const char* path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
         {
-            std::string hash_save_fn = path + "/.dirr_dfa";
+            std::string hash_save_fn = std::string(path) + "/.dirr_dfa";
             #if defined(HAVE_FLOCK) && defined(HAVE_STDIO_FILEBUF)
             unsigned num_write_tries=0;
             retry_reading:;
@@ -515,8 +515,8 @@ void PrintSettings()
 
 */
 
-int NameColor(const string &Name, int default_color)
+int NameColor(std::string_view name, int default_color)
 {
     Settings.Load();
-    return Settings.byext_sets.Test(Name, default_color);
+    return Settings.byext_sets.Test(name, default_color);
 }

@@ -1,3 +1,15 @@
+Wed 2021-04-21 19:00 Joel Yliluoma <bisqwit@iki.fi>
+
+	* Version 3.9.1
+
+	    - Regression fix: Unprintable characters in filenames
+	      are now again printed as question marks
+	    - Theoretical performance improvements
+	      by using std::string_view instead of
+	      full-fledged std::string, where possible
+	    - A c++20 capable compiler is now necessary
+	      to compile dirr (GCC 9 or newer)
+
 Wed 2021-03-25 10:34 Joel Yliluoma <bisqwit@iki.fi>
 
 	* Version 3.9

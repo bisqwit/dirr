@@ -159,5 +159,5 @@ For xterm-256color formats:
     R"(byext(Di *.gif *.bmp *.mpg *.mpeg *.mp4 *.avi *.ogm *.ogv *.mkv *.asf *.x?m *.mov *.tga *.png *.tif))"
     R"(byext(Di *.wmv *.pcx *.lbm *.img *.jpg *.jpeg *.fl\w *.rm *.tiff))"
     // red background and yellow: files with clear mistakes in filenames
-    R"(byext(69D7 *\x13 *\?))"
+    R"(byext(69D7 * *\?))"
     R"(byext(148 .*))"

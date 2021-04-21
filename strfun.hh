@@ -6,18 +6,20 @@
 
 #include "printf.hh"
 
-extern std::string NameOnly(const std::string &Name);
+extern std::string_view NameOnly(std::string_view Name);
 
 // Ends with '/'.
 // If no directory, returns empty std::string.
-extern std::string DirOnly(const std::string &Name);
+extern std::string_view DirOnly(std::string_view Name);
 
 // Without fixit, simply returns the link target text.
 // With fixit, it makes the link absolute, if it was relative.
-extern std::string LinkTarget(const std::string &link, bool fixit=false);
+// Parameter is not a string_view,
+// because it cals a POSIX function that requires nul terminator.
+extern std::string LinkTarget(const std::string& link, bool fixit=false);
 
 template<typename... Args>
-void PrintNum(std::string &Dest, char Seps, const std::string& fmt, Args&&... args)
+void PrintNum(std::string &Dest, char Seps, std::string_view fmt, Args&&... args)
 {
     Dest = Printf(fmt, std::forward<Args>(args)...);
     if(Seps)
@@ -34,6 +36,12 @@ void PrintNum(std::string &Dest, char Seps, const std::string& fmt, Args&&... ar
     }
 }
 
+template<std::size_t N, typename... Args>
+inline void PrintNum(std::string &Dest, char Seps, const char (&fmt)[N], Args&&... args)
+{
+    PrintNum(Dest, Seps, std::string_view(fmt, N-1), std::forward<Args>(args)...);
+}
+
 #ifndef NAME_MAX
  #define NAME_MAX 255  /* Chars in a file name */
 #endif
@@ -45,6 +53,6 @@ void PrintNum(std::string &Dest, char Seps, const std::string& fmt, Args&&... ar
 extern std::string GetError(int e);
 
 // base="/usr/bin/diu", name="/usr/doc/dau", return="../doc/dau"
-extern std::string Relativize(const std::string &base, const std::string &name);
+extern std::string Relativize(std::string_view base, std::string_view name);
 
 #endif

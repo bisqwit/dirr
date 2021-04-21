@@ -1,6 +1,7 @@
 #include <string>  // std::string
 #include <istream> // std::istream
 #include <ostream> // std::ostream
+#include <string_view>
 
 #ifdef __SUNPRO_CC
 #define DFA_DISABLE_MUTEX
@@ -60,7 +61,7 @@ public:
      *
      * When Valid() = false, the behavior of this function is undefined.
      */
-    int Test(const std::string& s, int default_value) const noexcept;
+    int Test(std::string_view s, int default_value) const noexcept;
 
     /* Compile() : Builds the statemachine from the patterns submitted
      *             with AddMatch() beforehand. Will cause Valid() = true.
