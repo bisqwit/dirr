@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <iomanip>
+#include <limits>
 #include <tuple>
 #include <ios>
 #ifdef HAVE_CHARCONV
@@ -287,32 +288,34 @@ namespace PrintfPrivate
                     {
                         //fprintf(stderr, "Formatting arith\n");
                         // Is integer type
-                        std::string s;
-                        std::make_unsigned_t<T> upart = part;
+                        using UT = std::make_unsigned_t<T>;
+                        char32_t digitbuf[std::numeric_limits<UT>::digits + 1], sign{};
+                        // 2^64 in base-10 requires 20 letters + sign.
+                        // In octal, it requires 22 letters + sign.
+                        // But we also support binary. So, 64 + sign.
+                        // std::numeric_limits::digits gives the bit-width.
+                        unsigned end = std::size(digitbuf), begin = end;
 
+                        UT upart = part;
                         if(IsNegative(part))
-                                          { s += '-'; upart = -part; }
-                        else if(arg.sign)   s += '+';
-
-                        std::string digitbuf;
+                                          { sign = U'-'; upart = -part; }
+                        else if(arg.sign)   sign = U'+';
 
                         const char* digits = (arg.base & 64) ? DigitBufUp : DigitBufLo;
                         unsigned base = arg.base & ~64;
                         while(upart != 0)
                         {
-                            digitbuf += digits[ upart % base ];
+                            // Append the digits in reverse order
+                            digitbuf[--begin] = digits[ upart % base ];
                             upart /= base;
                         }
 
-                        // Append the digits in reverse order
-                        for(std::size_t a = digitbuf.size(); a--; )
-                            s += digitbuf[a];
-                        if(digitbuf.empty())
-                            s += '0';
+                        if(begin == end) digitbuf[--begin] = U'0';
+                        if(sign)         digitbuf[--begin] = sign;
 
                         // Process the rest as a string (deals with width)
                         arg.max_width = ~0u;
-                        DoString(arg, result, std::string_view(s));
+                        DoString(arg, result, std::basic_string_view(digitbuf+begin, digitbuf+end));
                     }
                     break;
                 }
