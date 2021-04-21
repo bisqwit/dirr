@@ -90,9 +90,9 @@ select_tool CC  gcc cc clang `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;do
 #select_tool CXX g++
 #select_tool CPP g++
 #select_tool CC gcc
-#select_tool CXX clang++
-#select_tool CPP clang++
-#select_tool CC clang
+#TOOL1
+#TOOL2
+#TOOL3
 do_echo ""
 
 do_echo -n "Checking if the determined compiler works... "
@@ -228,8 +228,15 @@ fi
 
 do_echo -n "Checking for concepts... "
 if cc_check '<type_traits>' "$CPPFLAGS" '} namespace { template<typename T> concept test = std::is_same_v<T, char>; } int foo() {'; then
-  do_echo Yes
-  echo "#define HAVE_CONCEPTS" >> config.h
+  do_echo -n Yes
+  if cc_check '<type_traits>' "$CPPFLAGS" '} namespace { template<typename T> concept test = std::is_same_v<T, char>; } int foo() { return test<char>; '; then
+    do_echo ""
+    echo "#define HAVE_CONCEPTS" >> config.h
+  else
+    do_echo ", but not specializable concepts"
+    echo "#undef HAVE_CONCEPTS"                  >> config.h
+    echo "#define concept static constexpr bool" >> config.h
+  fi
 else
   do_echo No
   do_echo -n "Checking for concepts with -fconcepts... "

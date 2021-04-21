@@ -88,11 +88,11 @@ public:
      * This overload is for arithmetic types (including chars) and strings.
      */
     template<typename T, typename... T2>
-    /*
+  #ifdef HAVE_CONCEPTS
         requires (std::is_arithmetic_v< std::remove_cv_t<T>>
                || std::is_assignable_v< std::basic_string<char>, T >
                || std::is_assignable_v< std::basic_string<char32_t>, T >)
-    */
+  #endif
     void Execute(State& state, const T& a, T2&&... rest)
     {
         // Use const reference or value-copy depending on which is more optimal

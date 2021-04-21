@@ -18,10 +18,12 @@
  #include <iomanip>
 #endif
 
-#include <mutex>
-
 #include "dfa_match.hh"
 #include "config.h"
+
+#ifndef DFA_DISABLE_MUTEX
+# include <mutex>
+#endif
 
 #include <assert.h>
 
@@ -551,9 +553,11 @@ DFA_Matcher& DFA_Matcher::operator=(const DFA_Matcher& b)
 {
     if(&b != this)
     {
+      #ifndef DFA_DISABLE_MUTEX
         //lock_reading(lk2, b.lock);
         //lock_writing(lk, lock);
         std::lock(lock, b.lock); // Require write lock to both at the same time
+      #endif
         lock_writing_p(lk,  lock,   std::adopt_lock);
         lock_writing_p(lk2, b.lock, std::adopt_lock);
         delete data;
@@ -571,7 +575,9 @@ DFA_Matcher& DFA_Matcher::operator=(DFA_Matcher&& b) noexcept
 {
     if(&b != this)
     {
+      #ifndef DFA_DISABLE_MUTEX
         std::lock(lock, b.lock); // Require write lock to both at the same time
+      #endif
         lock_writing_p(lk,  lock,   std::adopt_lock);
         lock_writing_p(lk2, b.lock, std::adopt_lock);
         delete data;
