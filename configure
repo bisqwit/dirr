@@ -88,6 +88,9 @@ select_tool CC  gcc cc clang `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;do
 #select_tool CXX g++
 #select_tool CPP g++
 #select_tool CC gcc
+select_tool CXX g++-8
+select_tool CPP g++-8
+select_tool CC gcc-8
 do_echo ""
 
 do_echo -n "Checking if the determined compiler works... "
@@ -152,7 +155,7 @@ test_func $AC_FUNC
 
 
 found_ext=""
-for ext in c++20 c++2a gnu++20 gnu++2a; do
+for ext in c++20 c++2a gnu++20 gnu++2a c++17 c++1z gnu++17 gnu++1z; do
 #gnu++11 gnu++0x c++11 c++0x
   if [ "$found_ext" = "" ]; then
     do_echo -n "Checking for -std=$ext... "
@@ -222,11 +225,58 @@ else
     CXX="$CXX -fconcepts"
   else
     do_echo No
-    do_echo "Error: You need a compiler that supports c++20 constraints and concepts."
-    exit
+    do_echo "Warning: You need a compiler that supports c++20 constraints and concepts. Activating kludge..."
+    echo "#define concept static constexpr bool" >> config.h
   fi
 fi
 
+do_echo -n "Checking for [[likely]] and [[unlikely]]... "
+if cc_check '<type_traits>' "$CPPFLAGS" 'int r; switch(1) { case 0: [[likely]] r += 5; break; } return r;'; then
+  do_echo Yes
+  echo "#define LIKELY   [[likely]]"   >> config.h
+  echo "#define UNLIKELY [[unlikely]]" >> config.h
+  echo "#define likely(x)   (x) LIKELY"   >> config.h
+  echo "#define unlikely(x) (x) UNLIKELY" >> config.h
+else
+  do_echo No
+  echo "#define LIKELY "   >> config.h
+  echo "#define UNLIKELY " >> config.h
+  cat >> config.h <<EOF
+#ifdef __GNUC__
+# define likely(x)       __builtin_expect(!!(x), 1)
+# define unlikely(x)     __builtin_expect(!!(x), 0)
+#else
+# define likely(x)   (x)
+# define unlikely(x) (x)
+#endif
+EOF
+fi
+
+do_echo -n "Checking for char8_t... "
+if cc_check '<type_traits>' "$CPPFLAGS" 'return char8_t{};'; then
+  do_echo Yes
+  echo "#define HAVE_CHAR8_T"   >> config.h
+else
+  do_echo No
+  echo "#undef HAVE_CHAR8_T"    >> config.h
+fi
+
+do_echo -n "Checking for std::remove_cvref... "
+if cc_check '<type_traits>' "$CPPFLAGS" 'std::remove_cvref_t<int&> i = 5; return i;'; then
+  do_echo Yes
+  echo "#define HAVE_REMOVE_CVREF"   >> config.h
+else
+  do_echo No
+  echo "#undef HAVE_REMOVE_CVREF"    >> config.h
+fi
+
+do_echo -n "Checking for std::string_view... "
+if cc_check '<string_view>' "$CPPFLAGS" 'std::string_view test("kissa",5);'; then
+  do_echo Yes
+else
+  do_echo No
+  do_echo "Error: You need a compiler that supports c++17 std::string_view."
+fi
 
 do_echo -n "Checking for -Ofast... "
 if cc_check '<stdio.h>' '-Ofast' ''; then

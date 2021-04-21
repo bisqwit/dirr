@@ -21,16 +21,9 @@
 #include <mutex>
 
 #include "dfa_match.hh"
+#include "config.h"
 
 #include <assert.h>
-
-#ifdef __GNUC__
-# define likely(x)       __builtin_expect(!!(x), 1)
-# define unlikely(x)     __builtin_expect(!!(x), 0)
-#else
-# define likely(x)   (x)
-# define unlikely(x) (x)
-#endif
 
 /* CONFIGURATION OPTIONS */
 
@@ -625,7 +618,7 @@ int DFA_Matcher::Test(std::string_view s, int default_value) const noexcept
     {
         // Note: std::string_view is not guaranteed to be nul-terminated.
         unsigned char ch = '\0';
-        if(a < b) [[likely]] ch = s[a];
+        if(a < b) LIKELY ch = s[a];
 
         cur_state = statemachine[cur_state][ch];
         if(cur_state >= statemachine.size())

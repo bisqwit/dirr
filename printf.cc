@@ -1,4 +1,6 @@
 #include "printf.hh"
+#include "config.h"
+
 #include <sstream>
 #include <iomanip>
 #include <tuple>
@@ -353,13 +355,13 @@ void PrintfFormatter::ExecutePart(PrintfFormatter::State& state, T part) /* Note
 
     switch(subpos)
     {
-        case 0: [[likely]]
+        case 0: LIKELY
             state.result   += formats[pos].before;
             state.minwidth  = formats[pos].min_width;
             state.maxwidth  = formats[pos].max_width;
             state.leftalign = formats[pos].leftalign;
             //
-            if(formats[pos].param_minwidth) [[unlikely]]
+            if(formats[pos].param_minwidth) UNLIKELY
             {
                 // This param should be an integer.
                 auto p = MakeInt(std::move(part));
@@ -380,7 +382,7 @@ void PrintfFormatter::ExecutePart(PrintfFormatter::State& state, T part) /* Note
             }
             [[fallthrough]];
         case 1:
-            if(formats[pos].param_maxwidth) [[unlikely]]
+            if(formats[pos].param_maxwidth) UNLIKELY
             {
                 // This param should be an integer.
                 auto p = MakeInt(std::move(part));
@@ -411,7 +413,9 @@ void PrintfFormatter::ExecutePart(PrintfFormatter::State& state, T part) /* Note
 }
 
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, char);
+#ifdef HAVE_CHAR8_T
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, char8_t);
+#endif
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, char16_t);
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, char32_t);
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, short);
@@ -436,7 +440,9 @@ template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, std::basic_s
 
 template void PrintfFormatter::MakeFrom(std::basic_string_view<char>);
 template void PrintfFormatter::MakeFrom(std::basic_string_view<wchar_t>);
+#ifdef HAVE_CHAR8_T
 template void PrintfFormatter::MakeFrom(std::basic_string_view<char8_t>);
+#endif
 template void PrintfFormatter::MakeFrom(std::basic_string_view<char16_t>);
 template void PrintfFormatter::MakeFrom(std::basic_string_view<char32_t>);
 

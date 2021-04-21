@@ -38,3 +38,14 @@
 #define HAVE_FLOCK_SYS_FILE_H
 #define HAVE_FLOCK
 #define HAVE_STDIO_FILEBUF
+#define LIKELY 
+#define UNLIKELY 
+#ifdef __GNUC__
+# define likely(x)       __builtin_expect(!!(x), 1)
+# define unlikely(x)     __builtin_expect(!!(x), 0)
+#else
+# define likely(x)   (x)
+# define unlikely(x) (x)
+#endif
+#undef HAVE_CHAR8_T
+#undef HAVE_REMOVE_CVREF

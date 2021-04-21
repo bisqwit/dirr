@@ -3,6 +3,7 @@
 
 #include <algorithm> // std::swap
 #include "printf.hh"
+#include "config.h"
 
 extern bool Colors;
 extern bool AnsiOpt;
@@ -41,7 +42,7 @@ public:
         int ta = TextAttr, cn = ColorNums >= 0 ? ColorNums : ta;
         std::size_t n = 0;
         for(char c: str)
-            if(c != '\1') [[likely]]
+            if(c != '\1') LIKELY
             {
                 Gputch(c);
                 ++n;
@@ -172,7 +173,7 @@ std::size_t WidthPrintHelper(std::size_t maxlen, std::string_view buf, bool fill
                 else
                     goto invalid_unicode_char;
             }
-            if(length == 1) [[likely]]
+            if(length == 1) LIKELY
             {
                 // Use the code that avoids unprintable characters
                 // Also, no single-byte character is double-wide.
