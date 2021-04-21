@@ -124,6 +124,15 @@ namespace PrintfPrivate
         return false;
     }
 
+    auto MakeInt(std::string_view part)
+    {
+        // We decide to judge it as a signed value.
+        long long l = 0;
+        if(!part.empty())
+            std::from_chars(&part[0], &part[0]+part.size(), l);
+        return l;
+    }
+
     template<typename T>
     auto MakeInt(T&& part)
     {
@@ -143,16 +152,12 @@ namespace PrintfPrivate
             }
             else if constexpr(std::is_same_v<typename TT::value_type, char>)
             {
-                // We decide to judge it as a signed value.
-                long long l = 0;
-                if(!part.empty())
-                    std::from_chars(&part[0], &part[0]+part.size(), l);
-                return l;
+                return MakeInt(std::string_view(&part[0], part.size()));
             }
             else
             {
                 // Convert into 8-bit string so we can use from_chars.
-                return MakeInt(std::string(part.begin(), part.end()));
+                return MakeInt(std::string_view(std::string(part.begin(), part.end())));
             }
             //return std::stoll(part); // Doesn't work with char32_t
             //                            Neither does std::from_chars.

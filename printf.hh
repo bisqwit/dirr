@@ -23,11 +23,11 @@ namespace PrintfPrivate
     struct PrintfFormatDo;
 }
 
-class PrintfProxy;
+struct PrintfProxy;
 class PrintfFormatter
 {
     friend class PrintfFormatDo;
-    friend class PrintfProxy;
+    friend struct PrintfProxy;
 
 public:
     struct argsmall
