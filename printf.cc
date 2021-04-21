@@ -89,7 +89,7 @@ void PrintfFormatter::MakeFrom(std::basic_string_view<CT> format)
             }
 
             argument.before.swap(trail);
-            formats.push_back(argument);
+            formats.push_back(std::move(argument));
         }
         else
         {
