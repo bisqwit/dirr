@@ -63,7 +63,7 @@ INSTALLPROGS=$(PROG)
 $(PROG): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
 
-argh.o: argh.cc
+argh.o: argh.cc printf.o
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -DColourPrints -o $@ -c $<
 
 clean:

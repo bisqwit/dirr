@@ -21,6 +21,9 @@ namespace std
         basic_string_view(const CharT* p, size_t n): ptr(p), length(n)
         {
         }
+        //basic_string_view(const CharT* b, const CharT* e): ptr(b), length(e-b)
+        //{
+        //}
         basic_string_view(const CharT* p): ptr(p), length(strlen(p))
         {
         }

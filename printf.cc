@@ -128,7 +128,7 @@ namespace PrintfPrivate
         return false;
     }
 
-    auto MakeInt(std::string_view part)
+    static auto MakeInt(std::string_view part)
     {
         // We decide to judge it as a signed value.
         long long l = 0;
@@ -151,7 +151,7 @@ namespace PrintfPrivate
     }
 
     template<typename T>
-    auto MakeInt(T&& part)
+    static auto MakeInt(T&& part)
     {
         using TT = std::remove_cvref_t<T>;
         if constexpr(std::is_arithmetic_v<TT>)
@@ -181,166 +181,15 @@ namespace PrintfPrivate
         }
     }
 
-    struct PrintfFormatDo
+    struct MakeIntCaller
     {
-        template<typename CT>
-        static void DoString(
-            PrintfFormatter::argsmall& arg,
-            std::basic_string<char32_t> & result,
-            std::basic_string_view<CT> part);
-
-        template<typename FT, typename K = std::stringstream>
-      #ifdef HAVE_CONCEPTS
-        requires std::is_arithmetic_v<FT>
-      #endif
-        static void DoString(
-            PrintfFormatter::argsmall& arg,
-            std::basic_string<char32_t> & result,
-            FT part)
-        {
-            if constexpr(std::is_integral_v<FT>)
-            {
-                // This deals with char16_t, char32_t which std::stringstream doesn't support
-                return DoString(arg, result, MakeInt(part));
-            }
-            else
-            {
-                // Print float or int as string
-                // TODO: Handle different formatting styles (exponents, automatic precisions etc.)
-                //       better than this.
-                K s; // This must be a template type; otherwise the constexpr-requires does not work at least in GCC.
-                if(arg.sign) s << std::showpos;
-                if(arg.base == PrintfFormatter::arg::hex) s << std::setbase(16);
-                if(arg.base == PrintfFormatter::arg::oct) s << std::setbase(8);
-                if(arg.base == PrintfFormatter::arg::bin) s << std::setbase(2);
-                s << std::setprecision( arg.max_width);
-                s << std::fixed;
-                s << part;
-                arg.max_width = ~0u;
-
-                // Use view(), if the STL has support for it
-            #if defined(HAVE_CONCEPTS) && (!defined(__GNUC__) || __GNUC__ >= 10)
-                if constexpr(requires() { s.rdbuf()->view(); })
-                {
-                    DoString(arg, result, s.rdbuf()->view());
-                }
-                else
-            #endif
-                {
-                    DoString(arg, result, std::string_view(s.rdbuf()->str()));
-                }
-            }
-        }
-
-        template<typename T>
-        static void Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t>& result, T&& part)
-        {
-            using TT = std::remove_cvref_t<T>;
-            switch(arg.format)
-            {
-                case PrintfFormatter::argsmall::as_char:
-                {
-                    // If int or float, interpret as character.
-                    if constexpr(std::is_arithmetic_v<TT>)
-                    {
-                        //fprintf(stderr, "Formatting arith as char\n");
-                        char32_t n = part;
-                        DoString(arg, result, std::basic_string_view<char32_t>(&n, 1));
-                        return;
-                    }
-                    else
-                    {
-                        using CT = std::remove_cvref_t<decltype(part[0])>;
-                        //fprintf(stderr, "Formatting string as char\n");
-                        DoString(arg, result, std::basic_string_view<CT>(part));
-                    }
-                    return;
-                }
-                case PrintfFormatter::argsmall::as_int:
-                case PrintfFormatter::argsmall::as_float:
-                {
-                    if constexpr(std::is_floating_point_v<T>)
-                    {
-                        // If float, cast into integer, and reinterpret
-                        Do(arg, result, (long long)(part));
-                        return;
-                    }
-                    else if constexpr(!std::is_arithmetic_v<T>)
-                    {
-                        // If not integer, process as string
-                        using CT = std::remove_cvref_t<decltype(part[0])>;
-                        //fprintf(stderr, "Formatting string as arith\n");
-                        DoString(arg, result, std::basic_string_view<CT>(part));
-                    }
-                    else if constexpr(std::is_integral_v<T> && std::is_signed_v<T> && !std::is_same_v<T, long long>)
-                    {
-                        // Convert into long long to reduce duplicated code
-                        Do(arg, result, (long long)(part));
-                        return;
-                    }
-                    else if constexpr(std::is_integral_v<T> && !std::is_signed_v<T> && !std::is_same_v<T, unsigned long long>)
-                    {
-                        // Convert into long long to reduce duplicated code
-                        Do(arg, result, (unsigned long long)(part));
-                        return;
-                    }
-                    else
-                    {
-                        //fprintf(stderr, "Formatting arith\n");
-                        // Is integer type
-                        using UT = std::make_unsigned_t<T>;
-                        char32_t digitbuf[std::numeric_limits<UT>::digits + 1], sign{};
-                        // 2^64 in base-10 requires 20 letters + sign.
-                        // In octal, it requires 22 letters + sign.
-                        // But we also support binary. So, 64 + sign.
-                        // std::numeric_limits::digits gives the bit-width.
-                        unsigned end = std::size(digitbuf), begin = end;
-
-                        UT upart = part;
-                        if(IsNegative(part))
-                                          { sign = U'-'; upart = -part; }
-                        else if(arg.sign)   sign = U'+';
-
-                        const char* digits = (arg.base & 64) ? DigitBufUp : DigitBufLo;
-                        unsigned base = arg.base & ~64;
-                        while(upart != 0)
-                        {
-                            // Append the digits in reverse order
-                            digitbuf[--begin] = digits[ upart % base ];
-                            upart /= base;
-                        }
-
-                        if(begin == end) digitbuf[--begin] = U'0';
-                        if(sign)         digitbuf[--begin] = sign;
-
-                        // Process the rest as a string (deals with width)
-                        arg.max_width = ~0u;
-                        DoString(arg, result, std::basic_string_view(digitbuf+begin, digitbuf+end));
-                    }
-                    break;
-                }
-
-                case PrintfFormatter::argsmall::as_string:
-                {
-                    if constexpr(std::is_arithmetic_v<TT>)
-                    {
-                        //fprintf(stderr, "Formatting num as string\n");
-                        DoString(arg, result, std::forward<T>(part));
-                    }
-                    else
-                    {
-                        using CT = std::remove_cvref_t<decltype(part[0])>;
-                        //fprintf(stderr, "Formatting string as string\n");
-                        DoString(arg, result, std::basic_string_view<CT>(part));
-                    }
-                    break;
-                }
-            }
-        }
+        // This is only so that std::invoke_result_t on MakeInt will work.
+        template<typename T> auto operator()(T&& part) const
+        { return MakeInt(std::forward<T>(part)); }
     };
 
     template<typename CT>
-    void PrintfFormatDo::DoString(
+    static void DoString(
         PrintfFormatter::argsmall& arg,
         std::basic_string<char32_t> & result,
         std::basic_string_view<CT> part)
@@ -361,6 +210,140 @@ namespace PrintfPrivate
         result.append(pad_left, padding);
         result.insert(result.end(), part.begin(), part.begin() + length);
         result.append(pad_right, padding);
+    }
+
+    template<typename T, typename K = std::stringstream>
+    static void Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t>& result, T&& part)
+    {
+        using TT = std::remove_cvref_t<T>;
+        switch(arg.format)
+        {
+            case PrintfFormatter::argsmall::as_char:
+            {
+                // If int or float, interpret as character.
+                if constexpr(std::is_arithmetic_v<TT>)
+                {
+                    //fprintf(stderr, "Formatting arith as char\n");
+                    char32_t n = part;
+                    DoString(arg, result, std::basic_string_view<char32_t>(&n, 1));
+                    return;
+                }
+                else
+                {
+                    using CT = std::remove_cvref_t<decltype(part[0])>;
+                    //fprintf(stderr, "Formatting string as char\n");
+                    DoString(arg, result, std::basic_string_view<CT>(part));
+                }
+                return;
+            }
+            case PrintfFormatter::argsmall::as_int:
+            case PrintfFormatter::argsmall::as_float:
+            {
+                if constexpr(std::is_floating_point_v<T>)
+                {
+                    // If float, cast into integer, and reinterpret
+                    Do(arg, result, (long long)(part));
+                    return;
+                }
+                else if constexpr(!std::is_arithmetic_v<T>)
+                {
+                    // If not integer, process as string
+                    using CT = std::remove_cvref_t<decltype(part[0])>;
+                    //fprintf(stderr, "Formatting string as arith\n");
+                    DoString(arg, result, std::basic_string_view<CT>(part));
+                }
+                else if constexpr(std::is_integral_v<T> && std::is_signed_v<T> && !std::is_same_v<T, long long>)
+                {
+                    // Convert into long long to reduce duplicated code
+                    Do(arg, result, (long long)(part));
+                    return;
+                }
+                else if constexpr(std::is_integral_v<T> && !std::is_signed_v<T> && !std::is_same_v<T, unsigned long long>)
+                {
+                    // Convert into long long to reduce duplicated code
+                    Do(arg, result, (unsigned long long)(part));
+                    return;
+                }
+                else
+                {
+                    // TODO: Handle floating point formats.
+
+                    //fprintf(stderr, "Formatting arith\n");
+                    // Is integer type
+                    using UT = std::make_unsigned_t<T>;
+                    char32_t digitbuf[std::numeric_limits<UT>::digits + 1], sign{};
+                    // 2^64 in base-10 requires 20 letters + sign.
+                    // In octal, it requires 22 letters + sign.
+                    // But we also support binary. So, 64 + sign.
+                    // std::numeric_limits::digits gives the bit-width.
+                    unsigned end = std::size(digitbuf), begin = end;
+
+                    UT upart = part;
+                    if(IsNegative(part))
+                                      { sign = U'-'; upart = -part; }
+                    else if(arg.sign)   sign = U'+';
+
+                    const char* digits = (arg.base & 64) ? DigitBufUp : DigitBufLo;
+                    unsigned base = arg.base & ~64;
+                    while(upart != 0)
+                    {
+                        // Append the digits in reverse order
+                        unsigned digit = upart % base; upart /= base;
+                        digitbuf[--begin] = digits[digit];
+                    }
+
+                    if(begin == end) digitbuf[--begin] = U'0';
+                    if(sign)         digitbuf[--begin] = sign;
+
+                    // Process the rest as a string (deals with width)
+                    arg.max_width = ~0u;
+                    DoString(arg, result, std::basic_string_view<char32_t>(digitbuf+begin, end-begin));
+                }
+                break;
+            }
+
+            case PrintfFormatter::argsmall::as_string:
+            {
+                //fprintf(stderr, "Formatting num as string\n");
+                if constexpr(std::is_integral_v<TT> && !std::is_same_v<TT, std::invoke_result_t<MakeIntCaller,TT>>)
+                {
+                    // This deals with char16_t, char32_t which std::stringstream doesn't support
+                    Do(arg, result, MakeInt(part));
+                }
+                else if constexpr(std::is_arithmetic_v<TT>)
+                {
+                    // Print float or int as string
+                    K s; // This must be a template type; otherwise the constexpr-requires does not work at least in GCC.
+                    if(arg.sign) s << std::showpos;
+                    //if(arg.base == PrintfFormatter::arg::hex) s << std::setbase(16);
+                    //if(arg.base == PrintfFormatter::arg::oct) s << std::setbase(8);
+                    //if(arg.base == PrintfFormatter::arg::bin) s << std::setbase(2);
+                    s << std::setprecision(arg.max_width);
+                    s << std::fixed;
+                    s << part;
+                    arg.max_width = ~0u;
+
+                    // Use view(), if the STL has support for it
+                #if defined(HAVE_CONCEPTS) && (!defined(__GNUC__) || __GNUC__ >= 10)
+                    if constexpr(requires() { s.rdbuf()->view(); })
+                    {
+                        DoString(arg, result, s.rdbuf()->view());
+                    }
+                    else
+                #endif
+                    {
+                        DoString(arg, result, std::basic_string_view<char>(s.rdbuf()->str()));
+                    }
+                }
+                else
+                {
+                    using CT = std::remove_cvref_t<decltype(part[0])>;
+                    //fprintf(stderr, "Formatting string as string\n");
+                    DoString(arg, result, std::basic_string_view<CT>(part));
+                }
+                break;
+            }
+        }
     }
 }
 
@@ -425,7 +408,7 @@ void PrintfFormatter::ExecutePart(PrintfFormatter::State& state, T part) /* Note
                          formats[pos].zeropad,
                          formats[pos].base,
                          formats[pos].format };
-            PrintfFormatDo::Do(a, state.result, std::move(part));
+            Do(a, state.result, std::move(part));
 
             state.position = (pos+1)*4; // Sets subpos as 0
     }

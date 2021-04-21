@@ -41,13 +41,11 @@ namespace PrintfPrivate
   #endif
 
     struct Postpone{};
-    struct PrintfFormatDo;
 }
 
 struct PrintfProxy;
 class PrintfFormatter
 {
-    friend class PrintfFormatDo;
     friend struct PrintfProxy;
 
 public:
