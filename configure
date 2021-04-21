@@ -96,8 +96,18 @@ select_tool CC  gcc cc clang `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;do
 do_echo ""
 
 do_echo -n "Checking if the determined compiler works... "
-if cc_check '<stdio.h>' '' 'for(int a=0; a<10;++a) { for(int a=0; a<5;++a) { } } puts("ok");'; then
+if cc_check '<cstdio>' '' 'for(int a=0; a<10;++a) { for(int a=0; a<5;++a) { } } puts("ok");'; then
   do_echo Ok
+elif cc_check '<cstdio>' '-stdlib=libc++' 'for(int a=0; a<10;++a) { for(int a=0; a<5;++a) { } } std::puts("ok");'; then
+  do_echo Ok, with -stdlib=libc++
+  CC="$CC -stdlib=libc++"
+  CPP="$CPP -stdlib=libc++"
+  CXX="$CXX -stdlib=libc++"
+elif cc_check '<cstdio>' '-stdlib=libstdc++' 'for(int a=0; a<10;++a) { for(int a=0; a<5;++a) { } } std::puts("ok");'; then
+  do_echo Ok, with -stdlib=libstdc++
+  CC="$CC -stdlib=libstdc++"
+  CPP="$CPP -stdlib=libstdc++"
+  CXX="$CXX -stdlib=libstdc++"
 else
   do_echo No
   do_echo "Error: Configure cannot figure out how to use your compiler."
@@ -161,7 +171,7 @@ for ext in c++20 c++2a gnu++20 gnu++2a c++17 c++1z gnu++17 gnu++1z; do
 #gnu++11 gnu++0x c++11 c++0x
   if [ "$found_ext" = "" ]; then
     do_echo -n "Checking for -std=$ext... "
-    if cc_check '<stdio.h>' "-std=$ext" ''; then
+    if cc_check '<cstdio>' "-std=$ext" ''; then
       do_echo Yes
       found_ext=$ext
     else
