@@ -152,7 +152,7 @@ test_func $AC_FUNC
 
 
 found_ext=""
-for ext in c++20 c++2a gnu++20 gnu++2a c++17 c++1z gnu++17 gnu++1z c++14 c++1y gnu++14 gnu++1y; do
+for ext in c++20 c++2a gnu++20 gnu++2a; do
 #gnu++11 gnu++0x c++11 c++0x
   if [ "$found_ext" = "" ]; then
     do_echo -n "Checking for -std=$ext... "
@@ -165,7 +165,7 @@ for ext in c++20 c++2a gnu++20 gnu++2a c++17 c++1z gnu++17 gnu++1z c++14 c++1y g
   fi
 done
 if [ "$found_ext" = "" ]; then
-  do_echo "Error: You need a compiler that supports C++ version C++14 or newer."
+  do_echo "Error: You need a compiler that supports C++ version C++20 or newer."
 else
   CPPFLAGS="$CPPFLAGS -std=$found_ext"
 fi
@@ -182,7 +182,7 @@ else
   else
     CPPFLAGS="$CPPFLAGS -DNO_SHARED_TIMED_MUTEX"
     do_echo No
-    do_echo "Warning: Your compiler supports C++14, but not std::shared_timed_mutex, which is part of the C++14 standard"
+    do_echo "Warning: Your compiler supports C++20, but not std::shared_timed_mutex, which was introduced already in C++14"
     
     do_echo -n "Checking for std::_mutex without -pthread... "
     if cc_check '<mutex>' "$CPPFLAGS" 'std::mutex test; test.lock(); test.unlock();'; then
@@ -196,7 +196,7 @@ else
       else
         do_echo No
         CPPFLAGS="$CPPFLAGS -DDFA_DISABLE_MUTEX"
-        do_echo "Warning: Your compiler supports C++14, but not std::mutex, which was introduced already in C++11"
+        do_echo "Warning: Your compiler supports C++20, but not std::mutex, which was introduced already in C++11"
       fi
     fi
   fi
@@ -312,7 +312,8 @@ else
     -Wsequence-points \
     -Wparentheses \
     -Wcast-align -Wformat \
-    -Wno-conversion"
+    -Wno-conversion \
+    -fanalyzer"
   T_CWARNINGS="-Waggregate-return -Wshadow -Winline \
     -Wstrict-prototypes \
     -Wmissing-prototypes"
