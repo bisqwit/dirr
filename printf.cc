@@ -1,11 +1,12 @@
 #include "printf.hh"
-#include "config.h"
 
 #include <sstream>
 #include <iomanip>
 #include <tuple>
 #include <ios>
-#include <charconv>
+#ifdef HAVE_CHARCONV
+# include <charconv>
+#endif
 
 static const char DigitBufUp[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 static const char DigitBufLo[16] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
@@ -131,7 +132,20 @@ namespace PrintfPrivate
         // We decide to judge it as a signed value.
         long long l = 0;
         if(!part.empty())
+        {
+          #ifdef HAVE_CHARCONV
             std::from_chars(&part[0], &part[0]+part.size(), l);
+          #else
+            bool nega = false;
+            if(part[0]=='-') { nega=true; part.remove_prefix(1); }
+            while(!part.empty() && part[0]>='0' && part[0]<='9')
+            {
+                l = l*10 + part[0]-'0';
+                part.remove_prefix(1);
+            }
+            if(nega) l = -l;
+          #endif
+        }
         return l;
     }
 
@@ -175,7 +189,9 @@ namespace PrintfPrivate
             std::basic_string_view<CT> part);
 
         template<typename FT, typename K = std::stringstream>
+      #ifdef HAVE_CONCEPTS
         requires std::is_arithmetic_v<FT>
+      #endif
         static void DoString(
             PrintfFormatter::argsmall& arg,
             std::basic_string<char32_t> & result,

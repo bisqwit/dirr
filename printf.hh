@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include "config.h"
 
 #ifndef HAVE_REMOVE_CVREF
 namespace std
@@ -19,11 +20,26 @@ namespace std
 #endif
 namespace PrintfPrivate
 {
+  #ifdef HAVE_CONCEPTS
     template<typename T>
     concept IsStringView = std::is_same_v<T, std::basic_string_view<typename T::value_type>>;
     template<typename T>
     concept IsString     = std::is_same_v<T, std::basic_string<typename T::value_type>>;
+  #else
+    template<typename T>
+    struct IsStringView_s { static constexpr bool value = false; };
+    template<typename CT>
+    struct IsStringView_s<std::basic_string_view<CT>> { static constexpr bool value = true; };
+    template<typename T>
+    concept IsStringView = IsStringView_s<T>::value;
 
+    template<typename T>
+    struct IsString_s { static constexpr bool value = false; };
+    template<typename CT>
+    struct IsString_s<std::basic_string<CT>> { static constexpr bool value = true; };
+    template<typename T>
+    concept IsString = IsString_s<T>::value;
+  #endif
     template<typename T>
     concept PassAsCopy = (std::is_trivially_copyable_v<T> && sizeof(T) <= (2*sizeof(long long)))
                       || IsStringView<std::remove_cvref_t<T>>;
@@ -76,9 +92,11 @@ public:
      * This overload is for arithmetic types (including chars) and strings.
      */
     template<typename T, typename... T2>
+    /*
         requires (std::is_arithmetic_v< std::remove_cv_t<T>>
                || std::is_assignable_v< std::basic_string<char>, T >
                || std::is_assignable_v< std::basic_string<char32_t>, T >)
+    */
     void Execute(State& state, const T& a, T2&&... rest)
     {
         // Use const reference or value-copy depending on which is more optimal

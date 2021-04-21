@@ -88,9 +88,6 @@ select_tool CC  gcc cc clang `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;do
 #select_tool CXX g++
 #select_tool CPP g++
 #select_tool CC gcc
-select_tool CXX g++-8
-select_tool CPP g++-8
-select_tool CC gcc-8
 do_echo ""
 
 do_echo -n "Checking if the determined compiler works... "
@@ -168,7 +165,7 @@ for ext in c++20 c++2a gnu++20 gnu++2a c++17 c++1z gnu++17 gnu++1z; do
   fi
 done
 if [ "$found_ext" = "" ]; then
-  do_echo "Error: You need a compiler that supports C++ version C++20 or newer."
+  do_echo "Error: You need a compiler that supports C++ version c++20 or newer."
 else
   CPPFLAGS="$CPPFLAGS -std=$found_ext"
 fi
@@ -185,9 +182,9 @@ else
   else
     CPPFLAGS="$CPPFLAGS -DNO_SHARED_TIMED_MUTEX"
     do_echo No
-    do_echo "Warning: Your compiler supports C++20, but not std::shared_timed_mutex, which was introduced already in C++14"
+    do_echo "Warning: Your compiler supports c++20, but not std::shared_timed_mutex, which was introduced already in c++14"
     
-    do_echo -n "Checking for std::_mutex without -pthread... "
+    do_echo -n "Checking for std::mutex without -pthread... "
     if cc_check '<mutex>' "$CPPFLAGS" 'std::mutex test; test.lock(); test.unlock();'; then
       do_echo Yes
     else
@@ -199,7 +196,7 @@ else
       else
         do_echo No
         CPPFLAGS="$CPPFLAGS -DDFA_DISABLE_MUTEX"
-        do_echo "Warning: Your compiler supports C++20, but not std::mutex, which was introduced already in C++11"
+        do_echo "Warning: Your compiler supports c++20, but not std::mutex, which was introduced already in c++11"
       fi
     fi
   fi
@@ -217,30 +214,39 @@ fi
 do_echo -n "Checking for concepts... "
 if cc_check '<type_traits>' "$CPPFLAGS" '} namespace { template<typename T> concept test = std::is_same_v<T, char>; } int foo() {'; then
   do_echo Yes
+  echo "#define HAVE_CONCEPTS" >> config.h
 else
   do_echo No
   do_echo -n "Checking for concepts with -fconcepts... "
   if cc_check '<type_traits>' "$CPPFLAGS -fconcepts" '} namespace { template<typename T> concept test = true; } int foo() {'; then
     do_echo Yes
     CXX="$CXX -fconcepts"
+    echo "#define HAVE_CONCEPTS" >> config.h
   else
     do_echo No
     do_echo "Warning: You need a compiler that supports c++20 constraints and concepts. Activating kludge..."
+    echo "#undef HAVE_CONCEPTS"                  >> config.h
     echo "#define concept static constexpr bool" >> config.h
   fi
 fi
 
 do_echo -n "Checking for [[likely]] and [[unlikely]]... "
 if cc_check '<type_traits>' "$CPPFLAGS" 'int r; switch(1) { case 0: [[likely]] r += 5; break; } return r;'; then
-  do_echo Yes
+  do_echo -n yes
+  if cc_check '<type_traits>' "$CPPFLAGS -Wattributes -Werror" \
+              'int r; switch(1) { case 0: [[likely]] r += 5; break; } if(r) [[likely]] { return r; }'; then
+    do_echo ""
+  else
+    do_echo ", with a warning. Disabling warning."
+    CPPFLAGS="$CPPFLAGS -Wno-attributes"
+  fi
   echo "#define LIKELY   [[likely]]"   >> config.h
   echo "#define UNLIKELY [[unlikely]]" >> config.h
-  echo "#define likely(x)   (x) LIKELY"   >> config.h
-  echo "#define unlikely(x) (x) UNLIKELY" >> config.h
 else
   do_echo No
   echo "#define LIKELY "   >> config.h
   echo "#define UNLIKELY " >> config.h
+fi
   cat >> config.h <<EOF
 #ifdef __GNUC__
 # define likely(x)       __builtin_expect(!!(x), 1)
@@ -250,7 +256,6 @@ else
 # define unlikely(x) (x)
 #endif
 EOF
-fi
 
 do_echo -n "Checking for char8_t... "
 if cc_check '<type_traits>' "$CPPFLAGS" 'return char8_t{};'; then
@@ -268,6 +273,15 @@ if cc_check '<type_traits>' "$CPPFLAGS" 'std::remove_cvref_t<int&> i = 5; return
 else
   do_echo No
   echo "#undef HAVE_REMOVE_CVREF"    >> config.h
+fi
+
+do_echo -n "Checking for charconv... "
+if cc_check '<charconv>' "$CPPFLAGS" ''; then
+  do_echo Yes
+  echo "#define HAVE_CHARCONV"   >> config.h
+else
+  do_echo No
+  echo "#undef HAVE_CHARCONV"    >> config.h
 fi
 
 do_echo -n "Checking for std::string_view... "
