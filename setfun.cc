@@ -294,9 +294,9 @@ private:
 
         // Load/Compile/Save byext_sets for use by NameColor()
         bool loaded = false, compiled = false;
-        for(const std::string& path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
+        for(const char* path: std::initializer_list<const char*>{getenv("HOME"),"",getenv("TEMP"),getenv("TMP"),"/tmp"})
         {
-            std::string hash_save_fn = path + "/.dirr_dfa";
+            std::string hash_save_fn = std::string(path) + "/.dirr_dfa";
             #if defined(HAVE_FLOCK) && defined(HAVE_STDIO_FILEBUF)
             unsigned num_write_tries=0;
             retry_reading:;

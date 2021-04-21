@@ -21,17 +21,17 @@ LDFLAGS=-g
 
 #####
 # These options were set by ./configure
-# at Wed Apr 21 15:08:52 EEST 2021
+# at Wed Apr 21 17:23:40 EEST 2021
 # for Linux chii 5.10.0-3-amd64 #1 SMP Debian 5.10.13-1 (2021-02-06) x86_64 GNU/Linux
 # To change, run ./configure again.
 #
 CC=gcc
 CPP=g++
 CXX=g++
-OPTIM +=  -Ofast -ffunction-sections -fdata-sections
+OPTIM +=  -Ofast -minline-stringops-dynamically -ffunction-cse -ffunction-sections -fdata-sections
 CPPFLAGS +=  -std=c++20
 LDFLAGS +=  -Wl,--gc-sections
-WARNINGS +=  -Wall -Wundef -Wcast-qual -Wpointer-arith -Wconversion -Wwrite-strings -Wsign-compare -Wredundant-decls -Winit-self -Wextra -Wparentheses -Wcast-align -Wformat -Wno-conversion -fanalyzer
+WARNINGS +=  -Wall -Wundef -Wcast-qual -Wpointer-arith -Wconversion -Wwrite-strings -Wsign-compare -Wredundant-decls -Winit-self -Wextra -Wparentheses -Wcast-align -Wformat -Wno-conversion
 CWARNINGS +=  -Waggregate-return -Wshadow -Winline -Wstrict-prototypes -Wmissing-prototypes
 CXXWARNINGS +=  -Woverloaded-virtual -Weffc++ -Wno-non-virtual-dtor
 

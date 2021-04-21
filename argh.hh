@@ -68,7 +68,9 @@ public:
     template<typename T>
     inline void add(const char *Short, const char *Long, const std::string &Descr, std::string(T::*handler)(const std::string &))
     {
-        subadd(Short, Long, Descr, new MethodPtrImplementation<T>(handler));
+        auto p = new MethodPtrImplementation<T>(handler);
+        if(p)
+            subadd(Short, Long, Descr, p);
     }
 
     virtual void parse();

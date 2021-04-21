@@ -12,17 +12,24 @@ namespace PrintfPrivate
 {
     template<typename T>
     concept IsStringView = std::is_same_v<T, std::basic_string_view<typename T::value_type>>;
+    template<typename T>
+    concept IsString     = std::is_same_v<T, std::basic_string<typename T::value_type>>;
 
     template<typename T>
     concept PassAsCopy = (std::is_trivially_copyable_v<T> && sizeof(T) <= (2*sizeof(long long)))
                       || IsStringView<std::remove_cvref_t<T>>;
 
     struct Postpone{};
+    struct PrintfFormatDo;
 }
 
+class PrintfProxy;
 class PrintfFormatter
 {
-public: // ...blah (must be public because of PrintfFormatDo in printf.cc)
+    friend class PrintfFormatDo;
+    friend class PrintfProxy;
+
+public:
     struct argsmall
     {
         unsigned min_width  = 0,     max_width = ~0u;
@@ -39,6 +46,7 @@ public: // ...blah (must be public because of PrintfFormatDo in printf.cc)
         std::basic_string<char32_t> before{};
         bool param_minwidth = false, param_maxwidth = false;
     };
+
     struct State
     {
         std::size_t position = 0;
@@ -47,7 +55,7 @@ public: // ...blah (must be public because of PrintfFormatDo in printf.cc)
         bool        leftalign = false;
         std::basic_string<char32_t> result{};
     };
-
+private:
     std::vector<arg>            formats{};
     std::basic_string<char32_t> trail{};
 
@@ -70,8 +78,7 @@ public:
         Execute(state, std::forward<T2>(rest)...);
     }
 
-    /* This overload is for string constants, which are converted into string_views.
-     */
+    /* This overload is for string constants, which are converted into string_views. */
     template<typename CT, std::size_t N, typename... T2>
     void Execute(State& state, const CT (&arg)[N], T2&&... rest)
     {
@@ -100,37 +107,41 @@ std::basic_string<char> Printf(PrintfFormatter& fmt, T&&... args)
     return std::basic_string<char>( state.result.begin(), state.result.end() );
 }
 
-
-/* This is the function you would use. */
-template<typename CT, typename... T>
-std::basic_string<char> Printf(std::basic_string_view<CT> format, T&&... args)
+template<typename FmtT, typename... T>
+std::basic_string<char> Printf(FmtT&& fmt, T&&... args)
 {
-    PrintfFormatter Formatter;
-    Formatter.MakeFrom(format);
-    return Printf(Formatter, std::forward<T>(args)...);
+    if constexpr(std::is_same_v<std::remove_reference_t<FmtT>, PrintfFormatter>)
+    {
+        PrintfFormatter::State state;
+        fmt.Execute(state, std::forward<T>(args)...);
+        return std::basic_string<char>( state.result.begin(), state.result.end() );
+    }
+    else if constexpr(PrintfPrivate::IsString<std::remove_cvref_t<FmtT>>)
+    {
+        // The format string may be a string
+        using CT = typename std::remove_cvref_t<FmtT>::value_type;
+        return Printf( std::basic_string_view<CT>(fmt), std::forward<T>(args)...);
+    }
+    else if constexpr(std::is_array_v<std::remove_cvref_t<FmtT>>)
+    {
+        // The format string may be a character array (string constant)
+        using CT = std::remove_cvref_t<decltype(fmt[0])>;
+        return Printf( std::basic_string_view<CT>(&fmt[0], std::size(fmt)-1), std::forward<T>(args)... );
+    }
+    else if constexpr(std::is_pointer_v<FmtT> && std::is_integral_v<std::remove_pointer_t<FmtT>>)
+    {
+        // The format string may be a character pointer
+        using CT = std::remove_pointer_t<FmtT>;
+        return Printf( std::basic_string_view<CT>(fmt), std::forward<T>(args)... );
+    }
+    else
+    {
+        // The format string may be a string view. The prototype of MakeFrom() will validate this.
+        PrintfFormatter Formatter;
+        Formatter.MakeFrom(std::forward<FmtT>(fmt));
+        return Printf( Formatter, std::forward<T>(args)... );
+    }
 }
-/* Or this */
-template<typename CT, std::size_t N, typename... T>
-std::basic_string<char> Printf(const CT (&arr)[N], T&&... args)
-{
-    return Printf( std::basic_string_view<CT>(&arr[0], N-1), std::forward<T>(args)... );
-}
-/* Or this */
-template<typename CP, typename... T>
-    requires (std::is_pointer_v<CP> && std::is_integral_v<std::remove_pointer_t<CP>>)
-std::basic_string<char> Printf(CP s, T&&... args)
-{
-    using CT = std::remove_pointer_t<CP>;
-    return Printf( std::basic_string_view<CT>(s), std::forward<T>(args)... );
-}
-/* Or this */
-template<typename CT, typename... T>
-std::basic_string<char> Printf(const std::basic_string<CT>& s, T&&... args)
-{
-    return Printf( std::basic_string_view<CT>(s), std::forward<T>(args)... );
-}
-
-
 
 struct PrintfProxy
 {
