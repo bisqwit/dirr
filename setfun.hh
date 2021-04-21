@@ -21,6 +21,6 @@ extern int GetModeColor(ColorMode m, signed char Chr);
 extern int GetDescrColor(ColorDescr d, int index);
 extern void PrintSettings();
 
-extern int NameColor(const string &Name, int default_color);
+extern int NameColor(std::string_view name, int default_color);
 
 #endif

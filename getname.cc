@@ -28,7 +28,7 @@ int GetName(std::string fn /* modified, so operate on a copy */,
     bool maysublink = true;
     bool wasinvalid = false;
 
-    std::string fn_print = nameonly ? NameOnly(fn) : fn;
+    std::string fn_print = nameonly ? std::string(NameOnly(fn)) : fn;
 #ifdef S_ISLNK
 Redo:
 #endif
@@ -36,7 +36,7 @@ Redo:
     // The color has already been prepared where
     // either this function is called, or Redo is jumped to.
 
-    auto PrintIfRoom = [&](const std::string& what)
+    auto PrintIfRoom = [&](std::string_view what)
     {
         int i = WidthInColumns(what);
         Len += i;

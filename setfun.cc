@@ -515,8 +515,8 @@ void PrintSettings()
 
 */
 
-int NameColor(const string &Name, int default_color)
+int NameColor(std::string_view name, int default_color)
 {
     Settings.Load();
-    return Settings.byext_sets.Test(Name, default_color);
+    return Settings.byext_sets.Test(name, default_color);
 }

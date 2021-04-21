@@ -4,7 +4,7 @@
 #include "colouring.hh"
 #include "printf.hh"
 
-int GetNameAttr(const StatType &Stat, const string &fn)
+int GetNameAttr(const StatType &Stat, std::string_view fn)
 {
     int NameAttr = NameColor(fn, -1);
     if(NameAttr != -1) return NameAttr;

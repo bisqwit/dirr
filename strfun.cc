@@ -7,21 +7,23 @@
 #include "config.h"
 #include "strfun.hh"
 
-std::string NameOnly(const std::string &Name)
+std::string_view NameOnly(std::string_view Name)
 {
     std::size_t p = Name.rfind('/');
     // No path?
-    if(p == Name.npos) return Name;
+    if(p == Name.npos) { return Name; }
     // Regular file?
-    if(p <= Name.size()) return Name.substr(p+1);
+    if(p <= Name.size()) { Name.remove_prefix(p+1); return Name; }
     // It ends in '/'?
     p = Name.rfind('/', p-1);
     if(p == Name.npos) p = 0; else p = p+1;
-    return Name.substr(p, Name.size()-p-1);
+    Name.remove_prefix(p);
+    Name.remove_suffix(1);
+    return Name;
 }
 /*
 #include "cons.hh"
-std::string NameOnly(const std::string &Name)
+std::string NameOnly(std::string_view Name)
 {
     auto r = NameOnly_(Name);
     Gprintf("NameOnly(%s)=(%s)\n", Name,r);
@@ -30,31 +32,36 @@ std::string NameOnly(const std::string &Name)
 
 // Return value ends with '/'.
 // If no directory, returns empty std::string.
-std::string DirOnly(const std::string &Name)
+std::string_view DirOnly(std::string_view Name)
 {
     std::size_t p = Name.rfind('/');
     if(p == Name.npos) return {};
-    return Name.substr(0, p+1);
+    Name.remove_suffix( Name.size() - (p+1) ); // Remove everything except p+1 letters, which are kept
+    return Name;
 }
 
-std::string LinkTarget(const std::string &link, bool fixit)
+std::string LinkTarget(const std::string& link, bool fixit)
 {
-    char Target[PATH_MAX+1];
+    char target[PATH_MAX+1];
 
-    int a = readlink(link.c_str(), Target, sizeof Target);
-    if(a < 0)a = 0;
-    Target[a] = 0;
+    int length = readlink(link.c_str(), target, sizeof target);
+    if(length < 0) length = 0;
+    target[length] = 0;
 
-    if(!fixit)return Target;
-
-    if(Target[0] == '/')
+    if(!fixit || target[0] == '/')
     {
         // Absolute link
-        return Target;
+        return std::string(target, length);
     }
 
     // Relative link
-    return DirOnly(link) + Target;
+    //return std::string(DirOnly(link)) + target;
+    auto dir = DirOnly(link);
+    std::string result;
+    result.reserve(dir.size() + length);
+    result.insert(result.end(), dir.begin(),dir.end());
+    result.insert(result.end(), target,     target+length);
+    return result;
 }
 
 std::string GetError(int e)
@@ -69,49 +76,51 @@ std::string GetError(int e)
     return Buffer; */
 }
 
-std::string Relativize(const std::string &base, const std::string &name)
+std::string Relativize(std::string_view base, std::string_view name)
 {
-    const char *b = base.c_str();
-    const char *n = name.c_str();
-
 //    fprintf(stderr, "Relativize(\"%s\", \"%s\") -> \"", b, n);
-
     for(;;)
     {
-        const char *b1 = strchr(b, '/');
-        const char *n1 = strchr(n, '/');
-        if(!b1 || !n1)break;
-        if((b1-b) != (n1-n))break;
-        if(strncmp(b, n, b1-b))break;
-
-        b = b1+1;
-        n = n1+1;
+        std::size_t slash_in_base = base.find('/');
+        std::size_t slash_in_name = name.find('/');
+        if(slash_in_base == base.npos
+        || slash_in_name == name.npos) break;
+        if(base.compare(0, slash_in_base,
+                  name, 0, slash_in_base) != 0) break;
+        base.remove_prefix(slash_in_base+1);
+        name.remove_prefix(slash_in_name+1);
     }
 
-    std::string retval;
-
-    while(*n=='.' && n[1]=='/') n += 2;
-
-    if(*n=='/')
+    while(name.size() >= 2 && name[0]=='.' && name[1]=='/') // Remove sequences of ./
+    {
+        name.remove_prefix(2);
+    }
+    if(name.empty() || name[0] == '/')
     {
         /* Absolute path, can do nothing */
-        return n;
+        return std::string(name);
     }
 
     /* archives/tiedosto /WWW/src/tiedosto */
 
+    std::size_t num_dotdot = 0;
     for(;;)
     {
-        while(*b=='.' && b[1]=='/') b += 2;
-        const char *b1 = strchr(b, '/');
-        if(!b1)break;
-        b = b1+1;
-        retval += "../";
+        while(base.size() >= 2 && base[0]=='.' && base[1]=='/') // Remove sequences of ./
+        {
+            base.remove_prefix(2);
+        }
+        std::size_t slash_in_base = base.find('/');
+        if(slash_in_base == base.npos) break;
+        base.remove_prefix(slash_in_base+1);
+        ++num_dotdot; // Add one ../ to the beginning
     }
-    retval += n;
-
+    // Create a string with num_dotdot times ../
+    std::string retval(num_dotdot*3, '.');
+    for(std::size_t n=0; n<num_dotdot; ++n) retval[n*3+2] = '/';
+    // Append the name
+    retval += name;
 //    fprintf(stderr, "%s\"\n", retval.c_str());
-
     return retval;
 }
 

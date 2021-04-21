@@ -196,7 +196,8 @@ template<typename Alloc>
 class StateMachine
 {
     // FIXME: rebind is deleted in c++20
-    typename Alloc::template rebind<unsigned>::other alloc{};
+    std::allocator_traits<Alloc>::template rebind_alloc<unsigned> alloc{};
+    //typename Alloc::template rebind<unsigned>::other alloc{};
 
     unsigned* data; // [0] = refcount, [1+] = data
     unsigned nstates;
@@ -612,7 +613,7 @@ void DFA_Matcher::AddMatch(std::string&& token, bool icase, int target)
     data->InvalidateHash();
 }
 
-int DFA_Matcher::Test(const std::string& s, int default_value) const noexcept
+int DFA_Matcher::Test(std::string_view s, int default_value) const noexcept
 {
     lock_reading(lk, lock);
     if(unlikely(!data || data->statemachine.empty())) return default_value;
@@ -621,11 +622,11 @@ int DFA_Matcher::Test(const std::string& s, int default_value) const noexcept
     unsigned cur_state = 0;
     for(std::size_t a=0, b=s.size(); a<=b; ++a) // Use <= to iterate '\0'.
     {
-        // Note: C++98 guarantees that operator[] const with index==size()
-        //       returns a reference to '\0'.
-        //       C++11 added the same guarantee to non-const operator[].
-        //       Therefore, we do not need to do c_str() in this function.
-        cur_state = statemachine[cur_state][ (unsigned char)s[a] ];
+        // Note: std::string_view is not guaranteed to be nul-terminated.
+        unsigned char ch = '\0';
+        if(a < b) [[likely]] ch = s[a];
+
+        cur_state = statemachine[cur_state][ch];
         if(cur_state >= statemachine.size())
         {
             cur_state -= statemachine.size();

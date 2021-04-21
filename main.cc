@@ -51,8 +51,6 @@ static const char VERSIONSTR[] =
 
 #include "stat.h"
 
-using namespace std;
-
 static int RowLen;
 
 struct Estimation
@@ -70,9 +68,9 @@ static bool Contents, PreScan, MultiColumn, VerticalColumns;
 static unsigned CurrentColumn;
 static int DateTime, MyUid=-1, MyGid=-1;
 
-static string Sorting; /* n,d,s,u,g */
-static string DateForm;
-static string FieldOrder;
+static std::string Sorting; /* n,d,s,u,g */
+static std::string DateForm;
+static std::string FieldOrder;
 
 struct FieldInfo
 {
@@ -223,7 +221,7 @@ struct FieldsToPrint: public std::vector<FieldInfo> // ParsedFieldOrder
 #include <unordered_map>
 static class Inodemap
 {
-    std::unordered_map<dev_t, std::unordered_map<ino_t, string>> items;
+    std::unordered_map<dev_t, std::unordered_map<ino_t, std::string>> items;
     bool enabled;
 public:
     Inodemap() : items(), enabled(true) { }
@@ -236,7 +234,7 @@ public:
     {
         enabled = true;
     }
-    void insert(dev_t dev, ino_t ino, const string &name)
+    void insert(dev_t dev, ino_t ino, const std::string &name)
     {
         if(enabled)
         {
@@ -264,7 +262,7 @@ public:
     }
 } Inodemap;
 
-static void TellMe(const StatType &Stat, string&& Name
+static void TellMe(const StatType &Stat, std::string&& Name
 #ifdef DJGPP
     , unsigned int dosattr
 #endif
@@ -297,6 +295,8 @@ static void TellMe(const StatType &Stat, string&& Name
     auto& Limits = CurrentColumn < Longest.size() ? Longest[CurrentColumn] : Longest.back();
 
     for(const auto& f: FieldsToPrint)
+    {
+        //fprintf(stderr, "ItemLen=%zu\n", ItemLen);
         switch(f.type)
         {
             case FieldInfo::literal:
@@ -430,11 +430,11 @@ static void TellMe(const StatType &Stat, string&& Name
                     struct tm *NOW = localtime(&now);
                     if(NOW->tm_year == y || (y==NOW->tm_year-1 && m>NOW->tm_mon))
                     {
-                        str = Printf("%3d.%d", d,m+1); // 5 characters
+                        str = "%3d.%d"_f % d % (m+1); // 5 characters
                         if(str.size() > 5) str.erase(0,1);
                     }
                     else
-                        str = Printf("%5d", y+1900);   // 5 characters
+                        str = "%5d"_f % (y+1900);    // 5 characters
                 }
                 else
                 {
@@ -449,10 +449,12 @@ static void TellMe(const StatType &Stat, string&& Name
             }
             case FieldInfo::num_different_fields:;
         }
+    }
 
     if(!FieldsToPrint.empty())
     {
         ++CurrentColumn;
+        //fprintf(stderr, "ItemLen=%zu, RowLen becomes %zu\n", ItemLen, RowLen+ItemLen);
         RowLen += ItemLen;
         // Make a newline if the _next_ item of the same width would not fit
         if(!MultiColumn || int(RowLen + ItemLen) >= int(COLS))
@@ -576,7 +578,7 @@ public:
     }
 };
 
-static vector<StatItem> CollectedFilesForCurrentDirectory;
+static std::vector<StatItem> CollectedFilesForCurrentDirectory;
 
 static std::size_t CalculateRowWidth(const Estimation& estimation, bool file_too)
 {
@@ -863,7 +865,7 @@ static void SingleFile(string&& Buffer)
     }
 }
 
-static void DirChangeCheck(std::string&& Source /* modified */)
+static void DirChangeCheck(std::string_view Source)
 {
     std::size_t ss = Source.size();
     // Remove trailing /./ and /
@@ -875,7 +877,7 @@ static void DirChangeCheck(std::string&& Source /* modified */)
         else
             ss -= 1; // Change dir/   into dir
     }
-    Source.erase(ss);
+    Source.remove_suffix(Source.size() - ss);
 
     if(LastDir != Source)
     {
@@ -894,7 +896,7 @@ static void DirChangeCheck(std::string&& Source /* modified */)
                 Gprintf("\n");
             }
             Eka=0;
-            Gprintf(" Directory of %s\n", Source.size() ? Source : "/");
+            Gprintf(" Directory of %s\n", Source.empty() ? "/" : Source);
         }
         CurrentColumn = 0;
         LastDir = Source;
@@ -927,9 +929,9 @@ static void ScanDir(std::string&& Source) // Directory to list
         // Then list it as a file.
         if(dir) closedir(dir);
 
-        std::string Tmp = DirOnly(Source);
+        std::string_view Tmp = DirOnly(Source);
         if(Tmp.empty()) Tmp = "./";
-        DirChangeCheck(std::move(Tmp));
+        DirChangeCheck(Tmp);
 
         SingleFile(std::move(Source));
         return;
@@ -954,7 +956,7 @@ static void ScanDir(std::string&& Source) // Directory to list
     {
         if(!ShowDotFiles && ent->d_name[0] == '.') continue;
 
-        string Buffer = Source;
+        std::string Buffer = Source;
         if(Buffer.back() != '/') Buffer += '/';
         Buffer += ent->d_name;
 
@@ -989,24 +991,24 @@ class Handle : public arghandler
     bool Files;
     bool Help;
 private:
-    string opt_h(const string &s)
+    std::string opt_h(const std::string &s)
     {
         Help = true;
         return s;
     }
-    string opt_r(const string &s)
+    std::string opt_r(const std::string &s)
     {
         SetDefaultOptions();
         Inodemap.enable();
         return s;
     }
-    string opt_d1(const string &s) { DateTime = 1; return s; }
-    string opt_d2(const string &s) { DateTime = 2; return s; }
-    string opt_d3(const string &s) { DateTime = 3; return s; }
-    string opt_db(const string &s) { BlkStr = s; return ""; }
-    string opt_dc(const string &s) { ChrStr = s; return ""; }
+    std::string opt_d1(const std::string &s) { DateTime = 1; return s; }
+    std::string opt_d2(const std::string &s) { DateTime = 2; return s; }
+    std::string opt_d3(const std::string &s) { DateTime = 3; return s; }
+    std::string opt_db(const std::string &s) { BlkStr = s; return ""; }
+    std::string opt_dc(const std::string &s) { ChrStr = s; return ""; }
 #ifdef S_ISLNK
-    string opt_l(const string &s)
+    std::string opt_l(const std::string &s)
     {
         const char *q = s.c_str();
         const char *p = q;
@@ -1015,7 +1017,7 @@ private:
         return s.substr(p-q);
     }
 #endif
-    string opt_X(const string &s)
+    std::string opt_X(const std::string &s)
     {
         const char *q = s.c_str();
         const char *p = q;
@@ -1024,34 +1026,34 @@ private:
         if(v) COLS = v;
         return s.substr(p-q);
     }
-    string opt_H1(const string &s)
+    std::string opt_H1(const std::string &s)
     {
         Inodemap.enable();
         return s;
     }
-    string opt_H(const string &s)
+    std::string opt_H(const std::string &s)
     {
         Inodemap.disable();
         if(s.size() && s[0]=='0')return s.substr(1);
         return s;
     }
-    string opt_c1(const string &s) { Colors = true;    return s; }
-    string opt_c(const string &s) { Colors = false;    return s; }
-    string opt_C(const string &s) { MultiColumn = true; return s; }
-    string opt_D(const string &s) { Contents = false;  return s; }
-    string opt_p(const string &s) { Pagebreaks = true; return s; }
-    string opt_P(const string &s) { AnsiOpt = false;   return s; }
-    string opt_e(const string &s) { PreScan = false; Sorting = ""; return s; }
-    string opt_o(const string &s) { Sorting = s; return ""; }
-    string opt_F(const string &s) { DateForm = s; return ""; }
-    string opt_f(const string &s) { FieldOrder = s; return ""; }
-    string opt_vc(const string& s) { VerticalColumns = true; return s; }
-    string opt_V(const string &)
+    std::string opt_c1(const std::string &s) { Colors = true;    return s; }
+    std::string opt_c(const std::string &s) { Colors = false;    return s; }
+    std::string opt_C(const std::string &s) { MultiColumn = true; return s; }
+    std::string opt_D(const std::string &s) { Contents = false;  return s; }
+    std::string opt_p(const std::string &s) { Pagebreaks = true; return s; }
+    std::string opt_P(const std::string &s) { AnsiOpt = false;   return s; }
+    std::string opt_e(const std::string &s) { PreScan = false; Sorting = ""; return s; }
+    std::string opt_o(const std::string &s) { Sorting = s; return ""; }
+    std::string opt_F(const std::string &s) { DateForm = s; return ""; }
+    std::string opt_f(const std::string &s) { FieldOrder = s; return ""; }
+    std::string opt_vc(const std::string& s) { VerticalColumns = true; return s; }
+    std::string opt_V(const std::string &)
     {
         printf(VERSIONSTR, VERSION);
         exit(0);
     }
-    string opt_a(const string &s)
+    std::string opt_a(const std::string &s)
     {
         const char *q = s.c_str();
         const char *p = q;
@@ -1106,14 +1108,14 @@ private:
         }
         return s.substr(p-q);
     }
-    string opt_al(const string &s)
+    std::string opt_al(const std::string &s)
     {
         FieldOrder = ".a1_.h__.o_.g_.s_.d_.f";
         DateForm = "%u";
         Inodemap.enable();
         return s;
     }
-    string opt_m(const string &s)
+    std::string opt_m(const std::string &s)
     {
         const char *q = s.c_str();
         const char *p = q;
@@ -1128,14 +1130,14 @@ private:
         }
         return s.substr(p-q);
     }
-    string opt_M(const string &s)
+    std::string opt_M(const std::string &s)
     {
-        string q = opt_m(s);
+        std::string q = opt_m(s);
         if(!q.size())argerror(s);
         if(q == "_") TotalSep = ' '; else TotalSep = q[0];
         return q.substr(1);
     }
-    string opt_w(const string &s)
+    std::string opt_w(const std::string &s)
     {
         Compact = 1;
         Totals = true;
@@ -1149,12 +1151,12 @@ private:
         VerticalColumns = true;
         return s;
     }
-    string opt_A(const string &s)
+    std::string opt_A(const std::string &s)
     {
         ShowDotFiles = true;
         return s;
     }
-    string opt_W(const string &s)
+    std::string opt_W(const std::string &s)
     {
         Compact = 1;
         Totals = true;
@@ -1259,7 +1261,7 @@ public:
 
         parse();
     }
-    virtual void defarg(const string &s)
+    virtual void defarg(const std::string &s)
     {
         FilesToList_FromCommandline.push_back(s);
         Files = true;

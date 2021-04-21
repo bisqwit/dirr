@@ -7,7 +7,7 @@ static const char DigitBufUp[16] = {'0','1','2','3','4','5','6','7','8','9','A',
 static const char DigitBufLo[16] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
 
 template<typename CT>
-void PrintfFormatter::MakeFrom(const std::basic_string<CT>& format)
+void PrintfFormatter::MakeFrom(std::basic_string_view<CT> format)
 {
     for(std::size_t b = format.size(), a = 0; a < b; )
     {
@@ -99,213 +99,15 @@ void PrintfFormatter::Execute(PrintfFormatter::State& state)
 
 namespace
 {
-    template<typename T, bool Signed = std::is_signed<T>::value>
-    struct IsNegative
-    {
-        static bool Test(T value) { return value < 0; }
-    };
+    // Use this function instead of "value < 0"
+    // to avoid a compiler warning about expression being always false
+    // due to limited datatype (when instantiated for unsigned types).
     template<typename T>
-    struct IsNegative<T, false>
+    static bool IsNegative(T&& value)
     {
-        static bool Test(T) { return false; }
-    };
-
-    template<typename T, bool IsIntegral = std::is_integral<T>::value,
-                         bool IsFloat    = std::is_floating_point<T>::value>
-    class Categorize { };//: public std::integral_constant<int,0> { };
-
-    // 1 = integers
-    template<typename T> class Categorize<T,true,false>: public std::integral_constant<int,1> { };
-
-    // 2 = floats
-    template<typename T> class Categorize<T,false,true>: public std::integral_constant<int,2> { };
-
-    // 3 = character pointers
-    template<> class Categorize<const char*,false,false>: public std::integral_constant<int,3> { };
-    template<> class Categorize<const wchar_t*,false,false>: public std::integral_constant<int,3> { };
-    template<> class Categorize<const char16_t*,false,false>: public std::integral_constant<int,3> { };
-    template<> class Categorize<const char32_t*,false,false>: public std::integral_constant<int,3> { };
-    template<> class Categorize<const signed char*,false,false>: public std::integral_constant<int,3> { };
-    template<> class Categorize<const unsigned char*,false,false>: public std::integral_constant<int,3> { };
-
-    // 4 = strings
-    template<typename T> class Categorize<std::basic_string<T>,false,false>: public std::integral_constant<int,4> { };
-
-    template<typename T, int category = Categorize<std::decay_t<T>>::value>
-    struct PrintfFormatDo { };
-
-    template<typename T>
-    struct PrintfFormatDo<T, 1> // ints
-    {
-        static void Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t> & result, T part);
-        static T IntValue(T part) { return part; }
-    };
-    template<typename T>
-    struct PrintfFormatDo<T, 2> // floats
-    {
-        static void Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t> & result, T part);
-        static long long IntValue(T part) { return part; }
-    };
-    template<typename T>
-    struct PrintfFormatDo<T, 3> // char-pointers
-    {
-        typedef std::decay_t<decltype(*(T()))> ctype;
-        static void Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t> & result, T part);
-        static void DoString(PrintfFormatter::argsmall& arg, std::basic_string<char32_t> & result, T part, std::size_t length);
-        static long long IntValue(T part);
-    };
-    template<typename T>
-    struct PrintfFormatDo<T, 4> // strings
-    {
-        using ctype = typename T::value_type;
-
-        static void Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t> & result, const T& part);
-        static long long IntValue(const T& part);
-    };
-
-    template<typename T>
-    void PrintfFormatDo<T,1>::Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t> & result, T part)
-    {
-        // "part" is an integer type
-        switch(arg.format)
-        {
-            case PrintfFormatter::argsmall::as_char:
-            {
-                // Interpret as character
-                char32_t n = part;
-                PrintfFormatDo<const char32_t*>::DoString(arg, result, &n, 1);
-                break;
-            }
-
-            case PrintfFormatter::argsmall::as_string:
-            case PrintfFormatter::argsmall::as_int:
-            case PrintfFormatter::argsmall::as_float:
-                std::string s;
-                // Use this contrived expression rather than "part < 0"
-                // to avoid a compiler warning about expression being always false
-                // due to limited datatype (when instantiated for unsigned types)
-                if(IsNegative<T>::Test(part))
-                                  { s += '-'; part = -part; }
-                else if(arg.sign)   s += '+';
-
-                std::string digitbuf;
-
-                const char* digits = (arg.base & 64) ? DigitBufUp : DigitBufLo;
-                int base = arg.base & ~64;
-                while(part != 0)
-                {
-                    digitbuf += digits[ part % base ];
-                    part /= base;
-                }
-
-                // Append the digits in reverse order
-                for(std::size_t a = digitbuf.size(); a--; )
-                    s += digitbuf[a];
-                if(digitbuf.empty())
-                    s += '0';
-
-                // Delegate the width-formatting
-                arg.max_width = ~0u;
-                PrintfFormatDo<const char*>::DoString(arg, result, s.data(), s.size());
-                break;
-        }
-    }
-
-    template<typename T>
-    void PrintfFormatDo<T,2>::Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t> & result, T part)
-    {
-        // "part" is a float
-        switch(arg.format)
-        {
-            case PrintfFormatter::argsmall::as_char:
-            {
-                // Cast into integer, and interpret as character
-                char32_t n = part;
-                PrintfFormatDo<const char32_t*>::DoString(arg, result, &n, 1);
-                break;
-            }
-            case PrintfFormatter::argsmall::as_int:
-                // Cast into integer, and interpret
-                PrintfFormatDo<long long>::Do(
-                    arg, result,
-                    (long long)(part) );
-                break;
-
-            case PrintfFormatter::argsmall::as_string:
-            case PrintfFormatter::argsmall::as_float:
-                // Print float
-                // TODO: Handle different formatting styles (exponents, automatic precisions etc.)
-                //       better than this.
-                std::stringstream s;
-                if(arg.sign) s << std::showpos;
-                if(arg.base == PrintfFormatter::arg::hex) s << std::setbase(16);
-                if(arg.base == PrintfFormatter::arg::oct) s << std::setbase(8);
-                if(arg.base == PrintfFormatter::arg::bin) s << std::setbase(2);
-                s << std::setprecision( arg.max_width);
-                s << std::fixed;
-                s << part;
-                arg.max_width = ~0u;
-                std::string s2 = s.str();
-                PrintfFormatDo<const char*>::DoString(arg, result, s2.data(), s2.size());
-                break;
-        }
-    }
-
-    template<typename T>
-    void PrintfFormatDo<T,3>::Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t> & result, T part)
-    {
-        // "part" is a character pointer
-        std::size_t length = 0;
-        for(const ctype* p = part; *p; ++p) ++length;
-
-        switch(arg.format)
-        {
-            case PrintfFormatter::argsmall::as_char:
-            case PrintfFormatter::argsmall::as_string:
-                // Do with a common function for char* and basic_string
-                DoString(arg, result, part, length);
-                break;
-
-            case PrintfFormatter::argsmall::as_int:
-            case PrintfFormatter::argsmall::as_float:
-                // Cast string into integer!
-                // Delegate it...
-                PrintfFormatDo<std::basic_string<ctype>>::Do(
-                    arg, result,
-                    std::basic_string<ctype>(part, length) );
-                break;
-        }
-    }
-
-    template<typename T>
-    void PrintfFormatDo<T,3>::DoString(
-        PrintfFormatter::argsmall& arg,
-        std::basic_string<char32_t> & result,
-        T part,
-        std::size_t length)
-    {
-        // Character pointer version
-        if(length > arg.max_width) length = arg.max_width;
-
-        result.reserve( result.size() + (length < arg.min_width ? arg.min_width : length) );
-
-        char32_t pad = arg.zeropad ? L'0' : L' ';
-
-        if(length < arg.min_width && !arg.leftalign)
-            result.append( std::size_t(arg.min_width-length), pad );
-
-        for( std::size_t a=0; a<length; ++a)
-            result.push_back( char32_t( part[a] ) );
-
-        if(length < arg.min_width && arg.leftalign)
-            result.append( std::size_t(arg.min_width-length), pad );
-    }
-
-    template<typename T>
-    long long PrintfFormatDo<T,3>::IntValue(T part)
-    {
-        // Delegate it
-        return PrintfFormatDo<std::basic_string<ctype>>::IntValue( std::basic_string<ctype>(part) );
+        if constexpr(std::is_signed_v<std::remove_cvref_t<T>>)
+            return value < 0;
+        return false;
     }
 
     // XXX: This is required with clang++'s libc++
@@ -314,114 +116,259 @@ namespace
         for(char c: part)
             o << c;
     }
-
-    template<typename T>
-    void PrintfFormatDo<T,4>::Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t> & result, const T& part)
+    static void operator << (std::basic_stringstream<char>& o, std::basic_string_view<char32_t> part)
     {
-        // "part" is a string
-        switch(arg.format)
+        for(char c: part)
+            o << c;
+    }
+    struct PrintfFormatDo
+    {
+        template<typename CT>
+        static void DoString(
+            PrintfFormatter::argsmall& arg,
+            std::basic_string<char32_t> & result,
+            std::basic_string_view<CT> part)
         {
-            case PrintfFormatter::argsmall::as_char:
-            case PrintfFormatter::argsmall::as_string:
-                // Do with a common function for char* and basic_string
-                PrintfFormatDo<const ctype*>::DoString(arg, result, part.data(), part.size() );
-                break;
+            std::size_t length = std::min<std::size_t>(part.size(), arg.max_width);
 
-            case PrintfFormatter::argsmall::as_int:
-                // Cast string into integer!
-                PrintfFormatDo<long long>::Do(arg, result, IntValue(part));
-                break;
+            std::size_t pad       = (length < arg.min_width) ? arg.min_width-length : 0;
+            std::size_t pad_left  = arg.leftalign ? 0 : pad;
+            std::size_t pad_right = arg.leftalign ? pad : 0;
+            /*fprintf(stderr, "Pad=%zu (size=%zu, length=%zu, min=%u, max=%u)\n",
+                pad,
+                part.size(), length, arg.min_width, arg.max_width);*/
 
-            case PrintfFormatter::argsmall::as_float:;
-                // Cast string into float!
+            result.reserve(result.size() + length + pad);
+
+            char32_t padding = arg.zeropad ? L'0' : L' ';
+
+            result.append(pad_left, padding);
+            result.insert(result.end(), part.begin(), part.begin() + length);
+            result.append(pad_right, padding);
+        }
+
+        template<typename FT> requires std::is_arithmetic_v<FT>
+        static void DoString(
+            PrintfFormatter::argsmall& arg,
+            std::basic_string<char32_t> & result,
+            FT part)
+        {
+            // Print float or int as string
+            // TODO: Handle different formatting styles (exponents, automatic precisions etc.)
+            //       better than this.
+            std::stringstream s;
+            if(arg.sign) s << std::showpos;
+            if(arg.base == PrintfFormatter::arg::hex) s << std::setbase(16);
+            if(arg.base == PrintfFormatter::arg::oct) s << std::setbase(8);
+            if(arg.base == PrintfFormatter::arg::bin) s << std::setbase(2);
+            s << std::setprecision( arg.max_width);
+            s << std::fixed;
+            if constexpr(std::is_integral_v<FT>)
+                s << MakeInt(part); // This deals with char16_t, char32_t which are deleted
+            else
+                s << part;
+            arg.max_width = ~0u;
+
+            // Use view() once GCC supports it
+            //DoString(arg, result, s.rdbuf()->view());
+            DoString(arg, result, std::string_view(s.rdbuf()->str()));
+        }
+
+        template<typename T>
+        static void Do(PrintfFormatter::argsmall& arg, std::basic_string<char32_t>& result, T&& part)
+        {
+            using TT = std::remove_cvref_t<T>;
+            switch(arg.format)
+            {
+                case PrintfFormatter::argsmall::as_char:
+                {
+                    // If int or float, interpret as character.
+                    if constexpr(std::is_arithmetic_v<TT>)
+                    {
+                        //fprintf(stderr, "Formatting arith as char\n");
+                        char32_t n = part;
+                        DoString(arg, result, std::basic_string_view<char32_t>(&n, 1));
+                        return;
+                    }
+                    else
+                    {
+                        using CT = std::remove_cvref_t<decltype(part[0])>;
+                        //fprintf(stderr, "Formatting string as char\n");
+                        DoString(arg, result, std::basic_string_view<CT>(part));
+                    }
+                    return;
+                }
+                case PrintfFormatter::argsmall::as_int:
+                case PrintfFormatter::argsmall::as_float:
+                {
+                    if constexpr(std::is_floating_point_v<T>)
+                    {
+                        // If float, cast into integer, and reinterpret
+                        Do(arg, result, (long long)(part));
+                        return;
+                    }
+                    else if constexpr(!std::is_arithmetic_v<T>)
+                    {
+                        // If not integer, process as string
+                        using CT = std::remove_cvref_t<decltype(part[0])>;
+                        //fprintf(stderr, "Formatting string as arith\n");
+                        DoString(arg, result, std::basic_string_view<CT>(part));
+                    }
+                    else if constexpr(std::is_integral_v<T> && std::is_signed_v<T> && !std::is_same_v<T, long long>)
+                    {
+                        // Convert into long long to reduce duplicated code
+                        Do(arg, result, (long long)(part));
+                        return;
+                    }
+                    else if constexpr(std::is_integral_v<T> && !std::is_signed_v<T> && !std::is_same_v<T, unsigned long long>)
+                    {
+                        // Convert into long long to reduce duplicated code
+                        Do(arg, result, (unsigned long long)(part));
+                        return;
+                    }
+                    else
+                    {
+                        //fprintf(stderr, "Formatting arith\n");
+                        // Is integer type
+                        std::string s;
+                        std::make_unsigned_t<T> upart = part;
+
+                        if(IsNegative(part))
+                                          { s += '-'; upart = -part; }
+                        else if(arg.sign)   s += '+';
+
+                        std::string digitbuf;
+
+                        const char* digits = (arg.base & 64) ? DigitBufUp : DigitBufLo;
+                        unsigned base = arg.base & ~64;
+                        while(upart != 0)
+                        {
+                            digitbuf += digits[ upart % base ];
+                            upart /= base;
+                        }
+
+                        // Append the digits in reverse order
+                        for(std::size_t a = digitbuf.size(); a--; )
+                            s += digitbuf[a];
+                        if(digitbuf.empty())
+                            s += '0';
+
+                        // Process the rest as a string (deals with width)
+                        arg.max_width = ~0u;
+                        DoString(arg, result, std::string_view(s));
+                    }
+                    break;
+                }
+
+                case PrintfFormatter::argsmall::as_string:
+                {
+                    if constexpr(std::is_arithmetic_v<TT>)
+                    {
+                        //fprintf(stderr, "Formatting num as string\n");
+                        DoString(arg, result, std::forward<T>(part));
+                    }
+                    else
+                    {
+                        using CT = std::remove_cvref_t<decltype(part[0])>;
+                        //fprintf(stderr, "Formatting string as string\n");
+                        DoString(arg, result, std::basic_string_view<CT>(part));
+                    }
+                    break;
+                }
+            }
+        }
+
+        template<typename T>
+        static auto MakeInt(T&& part)
+        {
+            using TT = std::remove_cvref_t<T>;
+
+            if constexpr(std::is_integral_v<TT> && !std::is_same_v<TT, wchar_t>
+                                                && !std::is_same_v<TT, char8_t>
+                                                && !std::is_same_v<TT, char16_t>
+                                                && !std::is_same_v<TT, char32_t>)
+                return part;
+            else if constexpr(std::is_arithmetic_v<TT>)
+                return (long long) part; // Also converts floats to long long
+            else
+            {
+                // Delegate it
                 // XXX: Doesn't work with clang++'s libc++
                 std::basic_stringstream<char> s;
-                double d = 0.;
+                long long l = 0;
                 s << part;
-                s >> d;
-                // Cannot use std::stod(), because it is only
-                // defined for basic_string<char>.
-                PrintfFormatDo<double>::Do(arg, result, d);
-                break;
+                s >> l;
+                return l;
+                //return std::stoll(part); // Doesn't work with char32_t
+                //                            Neither does std::from_chars.
+            }
         }
-    }
-
-    template<typename T>
-    long long PrintfFormatDo<T,4>::IntValue(const T& part)
-    {
-        // Delegate it
-        // XXX: Doesn't work with clang++'s libc++
-        std::basic_stringstream<char> s;
-        long long l = 0;
-        s << part;
-        s >> l;
-        return l;
-        //return std::stoll(part); // Doesn't work with char32_t
-    }
+    };
 }
 
 template<typename T>
-void PrintfFormatter::ExecutePart(PrintfFormatter::State& state, T part)
+void PrintfFormatter::ExecutePart(PrintfFormatter::State& state, T part) /* Note: T is explicitly specified */
 {
     std::size_t position = state.position, pos = position / 4,  subpos = position % 4;
     if(pos >= formats.size()) return;
 
-    using TT = std::decay_t<T>;
-
-    if(subpos == 0)
+    switch(subpos)
     {
-        state.result    += formats[pos].before;
-        state.minwidth  = formats[pos].min_width;
-        state.maxwidth  = formats[pos].max_width;
-        state.leftalign = formats[pos].leftalign;
-    }
-
-    if(subpos == 0)
-    {
-        if(formats[pos].param_minwidth)
-        {
-            // This param should be an integer.
-            auto p = PrintfFormatDo<TT>::IntValue(part);
-            // Use this contrived expression rather than "p < 0"
-            // to avoid a compiler warning about expression being always false
-            // due to limited datatype (when instantiated for unsigned types)
-            if(IsNegative<decltype(p)>::Test(p))
+        case 0:
+            state.result   += formats[pos].before;
+            state.minwidth  = formats[pos].min_width;
+            state.maxwidth  = formats[pos].max_width;
+            state.leftalign = formats[pos].leftalign;
+            //
+            if(formats[pos].param_minwidth)
             {
-                state.leftalign = true;
-                state.minwidth  = -p;
+                // This param should be an integer.
+                auto p = PrintfFormatDo::MakeInt(std::move(part));
+                //fprintf(stderr, "minwidth=%lld\n", (long long)p);
+                // Use this contrived expression rather than "p < 0"
+                // to avoid a compiler warning about expression being always false
+                // due to limited datatype (when instantiated for unsigned types)
+                if(IsNegative(p))
+                {
+                    state.leftalign = true;
+                    state.minwidth  = -p;
+                }
+                else
+                    state.minwidth = p;
+
+                state.position = pos*4 + 1;
+                return;
             }
-            else
-                state.minwidth = p;
+            [[fallthrough]];
+        case 1:
+            if(formats[pos].param_maxwidth)
+            {
+                // This param should be an integer.
+                auto p = PrintfFormatDo::MakeInt(std::move(part));
+                //fprintf(stderr, "maxwidth=%lld\n", (long long)p);
+                state.maxwidth = p;
+                state.position = pos*4 + 2;
+                return;
+            }
+            [[fallthrough]];
+        case 2: default:
+            /*{ std::stringstream temp;
+              if constexpr(std::is_integral_v<std::remove_cvref_t<T>>)
+                   temp << PrintfFormatDo::MakeInt(part);
+              else temp << part;
+              fprintf(stderr, "Formatting this param: <%s> (%zu)\n", temp.str().c_str(), temp.str().size());
+            }*/
+            argsmall a { state.minwidth,
+                         state.maxwidth,
+                         state.leftalign,
+                         formats[pos].sign,
+                         formats[pos].zeropad,
+                         formats[pos].base,
+                         formats[pos].format };
+            PrintfFormatDo::Do(a, state.result, std::move(part));
 
-            state.position = pos*4 + 1;
-            return;
-        }
-        goto pos1;
+            state.position = (pos+1)*4; // Sets subpos as 0
     }
-    if(subpos == 1) pos1:
-    {
-        if(formats[pos].param_maxwidth)
-        {
-            // This param should be an integer.
-            state.maxwidth = PrintfFormatDo<TT>::IntValue(part);
-            state.position = pos*4 + 2;
-            return;
-        }
-        //goto pos2;
-    }
-    //if(subpos == 2) pos2:
-    //{
-    argsmall a { state.minwidth,
-                 state.maxwidth,
-                 state.leftalign,
-                 formats[pos].sign,
-                 formats[pos].zeropad,
-                 formats[pos].base,
-                 formats[pos].format };
-    PrintfFormatDo<TT>::Do(a, state.result, part);
-
-    state.position = (pos+1)*4;
-    //}
 }
 
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, char);
@@ -444,15 +391,15 @@ template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, const char*)
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, const std::string&);
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, const std::basic_string<char32_t>&);
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, signed char);
+template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, std::basic_string_view<char>);
+template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, std::basic_string_view<char32_t>);
 
-template void PrintfFormatter::MakeFrom(const std::basic_string<char>&);
-template void PrintfFormatter::MakeFrom(const std::basic_string<char32_t>&);
+template void PrintfFormatter::MakeFrom(std::basic_string_view<char>);
+template void PrintfFormatter::MakeFrom(std::basic_string_view<char32_t>);
 
-PrintfProxy operator ""_f(const char* format, std::size_t num)
+PrintfProxy::PrintfProxy(std::basic_string_view<char> fmt) : PrintfProxy()
 {
-    PrintfProxy p;
-    p.data->first.MakeFrom( std::basic_string<char>{format,num} );
-    return p;
+    data->first.MakeFrom(fmt);
 }
 
 PrintfProxy PrintfProxy::operator+ (PrintfProxy&& b) &&
@@ -467,12 +414,12 @@ PrintfProxy PrintfProxy::operator+ (PrintfProxy&& b) &&
 }
 
 
-PrintfProxy PrintfProxy::operator %(PrintfProxy&& arg) &&
+PrintfProxy& PrintfProxy::operator %= (PrintfProxy&& arg)
 {
     // Finish their string
     arg.data->first.Execute(arg.data->second);
     // Execute their outcome as a parameter to our printf
     data->first.ExecutePart<const std::basic_string<char32_t>&>
         (data->second, arg.data->second.result);
-    return std::move(*this);
+    return *this;
 }

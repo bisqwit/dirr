@@ -370,12 +370,12 @@ int Gputch(int x)
 
 int ColorNums = -1;
 
-std::size_t Gwrite(const std::string& s)
+std::size_t Gwrite(std::string_view s)
 {
     return WidthPrintHelper<true>( ~std::size_t(), s, false );
 }
 
-std::size_t Gwrite(const std::string& s, std::size_t pad)
+std::size_t Gwrite(std::string_view s, std::size_t pad)
 {
     return WidthPrintHelper<true>( pad, s, true );
 }

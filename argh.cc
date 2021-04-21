@@ -20,7 +20,7 @@ arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
 {
     const char *q;
 
-    q = strrchr(argv[0], '/');
+    q = std::strrchr(argv[0], '/');
     a0 = q ? q+1 : argv[0];
 
     if(defopts)
@@ -28,9 +28,9 @@ arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
         q = defopts;
         while(*q)
         {
-            const char *p = strchr(q, ' ');
+            const char *p = std::strchr(q, ' ');
             if(!p)break;
-            args.push_back(string(q, p-q));
+            args.emplace_back(q, p-q);
             q = p+1;
         }
         args.push_back(q);
@@ -38,7 +38,7 @@ arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
     bool terminated = false;
 
     /* If you have 5 parameters and want to skip 2 parameters
-     * at th ebeginning, specify argc as: (2-argc)*MAX_ARGC-2
+     * at the beginning, specify argc as: (2-argc)*MAX_ARGC-2
      */
     if(argc < 0)
     {
@@ -49,17 +49,17 @@ arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
     while(--argc)
     {
         q = *++argv;
-        if(!strcmp(q, "--"))
+        if(!std::strcmp(q, "--"))
             terminated = true;
         else if(!terminated)
         {
-            if(!strncmp(q, "--", 2))
+            if(!std::strncmp(q, "--", 2))
             {
-                const char *p = strchr(q, '=');
+                const char *p = std::strchr(q, '=');
                 if(p)
                 {
-                    string tmp(q, p-q);
-                    args.push_back(tmp);
+                    std::string tmp(q, p-q);
+                    args.push_back(std::move(tmp));
                     args.push_back(p+1);
                     continue;
                 }
@@ -71,24 +71,22 @@ arghandler::arghandler(const char *defopts, int argc, const char *const *argv)
 
 arghandler::~arghandler()
 {
-    for(vector<option>::iterator i=options.begin(); i!=options.end(); ++i)
-        delete i->handler;
+    for(auto& o: options) delete o.handler;
 }
 
-void arghandler::subadd(const char *Short, const char *Long, const string &Descr, argfun handler)
+void arghandler::subadd(const char *Short, const char *Long, const std::string &Descr, argfun handler)
 {
-    options.push_back(option(Short ? Short+1 : "",
-                             Long ? Long+2 : "",
-                             Descr, handler));
+    options.emplace_back(Short ? Short+1 : "",
+                         Long ? Long+2 : "",
+                         Descr, handler);
 }
 
 void arghandler::parse()
 {
     bool terminated = false;
-    unsigned a, b=args.size();
-    for(a=0; a<b; ++a)
+    for(std::size_t a=0, b=args.size(); a<b; ++a)
     {
-        string s = args[a];
+        std::string s = args[a];
         if(s.size() > 1 && !terminated && s[0] == '-')
         {
             if(s == "--")
@@ -96,48 +94,57 @@ void arghandler::parse()
             else if(s[1] == '-')
             {
                 s.erase(0, 2);
-                vector<option>::iterator i;
 
-                for(i=options.begin(); i!=options.end(); ++i)
-                    if(*i->Long && s == i->Long)
+                bool ok = false;
+                for(auto& o: options)
+                    if(o.Long && s == o.Long)
+                    {
+                        unsigned c = a+1;
+                        if(c == b) --c; // Don't access out of bounds
+                        s = args[c];
+                        s = o.handler->CallBack(this, s);
+                        if(s.empty())
+                        {
+                            // It consumed the long parameter's option
+                            a = c;
+                        }
+                        else if(s != args[c])
+                        {
+                            // It partially consumed the option. This is an error
+                            argerror(args[a]);
+                            return;
+                        }
+                        else
+                        {
+                            // It didn't use the long parameter's option.
+                        }
+                        ok = true;
                         break;
-
-                if(i == options.end())
+                    }
+                if(!ok)
                 {
                     argerror(s, false);
                     return;
                 }
-                unsigned c = a+1;
-                if(c == b)--c;
-                s = args[c];
-                s = i->handler->CallBack(this, s);
-                if(s.size())
-                {
-                    if(s != args[c])
-                    {
-                        argerror(args[a]);
-                        return;
-                    }
-                }
-                else
-                    a = c;
             }
             else
             {
                 s.erase(0, 1);
-                vector<option>::iterator i;
-
-                while(s.size())
+                while(!s.empty())
                 {
-                       for(i=options.begin(); i!=options.end(); ++i)
-                           if(s.substr(0, strlen(i->Short)) == i->Short)
-                               break;
-                       if(i == options.end())
-                       {
-                           argerror(s[0]);
-                           return;
-                       }
-                       s = i->handler->CallBack(this, s.substr(strlen(i->Short)));
+                    bool ok = false;
+                    for(auto& o: options)
+                        if(s.substr(0, std::strlen(o.Short)) == o.Short)
+                        {
+                            s = o.handler->CallBack(this, s.substr(std::strlen(o.Short)));
+                            ok = true;
+                            break;
+                        }
+                    if(!ok)
+                    {
+                        argerror(s[0]);
+                        return;
+                    }
                 }
             }
         }
@@ -153,13 +160,13 @@ void arghandler::argerror(char c)
     exit(1);
 }
 
-void arghandler::argerror(const string &s, bool param)
+void arghandler::argerror(const std::string &s, bool param)
 {
     Gprintf(GPRINTF_ARGS "%s: %s%s'\n",
         a0,
         param ? "invalid parameter `" : "unrecognized option `--",
         s);
-    if(!param)suggesthelp();
+    if(!param) suggesthelp();
     exit(1);
 }
 
@@ -170,20 +177,19 @@ void arghandler::suggesthelp()
 
 void arghandler::listoptions()
 {
-    vector<option>::const_iterator i;
     unsigned longestshort=0, longestlong=0;
-    for(i=options.begin(); i!=options.end(); ++i)
+    for(auto& o: options)
     {
-        unsigned slen = strlen(i->Short);
-        if(slen > longestshort)longestshort = slen;
-        unsigned llen = strlen(i->Long);
-        if(llen > longestlong)longestlong = llen;
+        unsigned slen = std::strlen(o.Short);
+        if(slen > longestshort) longestshort = slen;
+        unsigned llen = std::strlen(o.Long);
+        if(llen > longestlong) longestlong = llen;
     }
     unsigned space = longestshort + longestlong+1;
-    for(i=options.begin(); i!=options.end(); ++i)
+    for(auto& o: options)
     {
-        const char *s = i->Short;
-        const char *l = i->Long;
+        const char *s = o.Short;
+        const char *l = o.Long;
 
         SetAttr(*s ? 3 : 0);
         Gprintf(GPRINTF_ARGS "  -");
@@ -195,11 +201,11 @@ void arghandler::listoptions()
         SetAttr(DEFAULTATTR);
         Gprintf(GPRINTF_ARGS "%s", l);
 
-        Gprintf(GPRINTF_ARGS "%*s", space-(strlen(s) + strlen(l)), "");
+        Gprintf(GPRINTF_ARGS "%*s", space-(std::strlen(s) + std::strlen(l)), "");
 
         SetAttr(DEFAULTATTR);
 
-        const char *q = i->Descr.c_str();
+        const char *q = o.Descr.c_str();
         bool needspace = false;
         bool needeol = true;
         for(; *q; ++q)

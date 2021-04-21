@@ -5,9 +5,7 @@
 
 #include "stat.h"
 
-using std::string;
-
-extern int GetNameAttr(const StatType &Stat, const string &fn);
+extern int GetNameAttr(const StatType &Stat, std::string_view fn);
 
 // Case of Attrs:
 //    0: AHSR
