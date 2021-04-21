@@ -218,7 +218,7 @@ namespace PrintfPrivate
                 arg.max_width = ~0u;
 
                 // Use view(), if the STL has support for it
-            #if !defined(__GNUC__) || __GNUC__ >= 10
+            #if defined(HAVE_CONCEPTS) && (!defined(__GNUC__) || __GNUC__ >= 10)
                 if constexpr(requires() { s.rdbuf()->view(); })
                 {
                     DoString(arg, result, s.rdbuf()->view());
