@@ -10,6 +10,8 @@ fi
 
 cat >config.h <<EOF
 // These settings can be changed by user.
+#ifndef bqtDirrConfigHH
+#define bqtDirrConfigHH
 
 // Set this to 1 if your passwd file is quick to load.
 #define PRELOAD_UIDGID 0
@@ -88,6 +90,9 @@ select_tool CC  gcc cc clang `(IFS=':'; for s in $PATH;do cd "$s"&&echo gcc-*;do
 #select_tool CXX g++
 #select_tool CPP g++
 #select_tool CC gcc
+#select_tool CXX clang++
+#select_tool CPP clang++
+#select_tool CC clang
 do_echo ""
 
 do_echo -n "Checking if the determined compiler works... "
@@ -273,6 +278,25 @@ if cc_check '<type_traits>' "$CPPFLAGS" 'std::remove_cvref_t<int&> i = 5; return
 else
   do_echo No
   echo "#undef HAVE_REMOVE_CVREF"    >> config.h
+  cat >> config.h <<EOF
+#include <type_traits>
+namespace std
+{
+  template<typename T>
+  struct remove_cvref { using type = typename std::remove_cv<typename std::remove_reference<T>::type>::type; };
+  template<typename T>
+  using remove_cvref_t = typename remove_cvref<T>::type;
+}
+EOF
+fi
+
+do_echo -n "Checking for std::is_trivially_copyable... "
+if cc_check '<type_traits>' "$CPPFLAGS" 'return std::is_trivially_copyable_v<int>;'; then
+  do_echo Yes
+  echo "#define HAVE_IS_TRIVIALLY_COPYABLE"   >> config.h
+else
+  do_echo No
+  echo "#undef HAVE_IS_TRIVIALLY_COPYABLE"    >> config.h
 fi
 
 do_echo -n "Checking for charconv... "
@@ -287,9 +311,12 @@ fi
 do_echo -n "Checking for std::string_view... "
 if cc_check '<string_view>' "$CPPFLAGS" 'std::string_view test("kissa",5);'; then
   do_echo Yes
+  echo "#define HAVE_STRINGVIEW" >> config.h
 else
   do_echo No
   do_echo "Error: You need a compiler that supports c++17 std::string_view."
+  echo "#undef HAVE_STRINGVIEW" >> config.h
+  CPPFLAGS="$CPPFLAGS -Iworkaround"
 fi
 
 do_echo -n "Checking for -Ofast... "
@@ -448,7 +475,7 @@ for dir in . lib util; do
   rm $dir/.depend $dir/.libdepend; make -C $dir .depend
 done &> /dev/null
 
-
+echo '#endif' >> config.h
 
 
 

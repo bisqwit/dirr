@@ -55,7 +55,8 @@ ARCHFILES=main.cc COPYING ChangeLog README dirrsets.hh config.h \
           Makefile.sets.in \
           Makefile.sets \
           dfa_match.cc \
-          dfa_match.hh
+          dfa_match.hh \
+          workaround/string_view
 
 INSTALLPROGS=$(PROG)
 

@@ -1,4 +1,6 @@
 // These settings can be changed by user.
+#ifndef bqtDirrConfigHH
+#define bqtDirrConfigHH
 
 // Set this to 1 if your passwd file is quick to load.
 #define PRELOAD_UIDGID 0
@@ -50,4 +52,7 @@
 #endif
 #define HAVE_CHAR8_T
 #define HAVE_REMOVE_CVREF
+#define HAVE_IS_TRIVIALLY_COPYABLE
 #define HAVE_CHARCONV
+#define HAVE_STRINGVIEW
+#endif

@@ -2,6 +2,7 @@
 #define dirr3_setfun_hh
 
 #include <string>
+#include <string_view>
 
 #define ColorDescrs(o) o(TEXT,"txt") o(OWNER,"owner") o(GROUP,"group") o(NRLINK,"nrlink") \
                        o(DATE,"date") o(NUM,"num") o(DESCR,"descr") o(SIZE,"size")

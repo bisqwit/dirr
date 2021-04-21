@@ -1,0 +1,83 @@
+#ifndef bqtStringViewHH
+#define bqtStringViewHH
+
+#include <string>
+#include <cstring>
+#include <algorithm>
+namespace std
+{
+    template<typename CharT>
+    class basic_string_view
+    {
+    	const CharT* ptr;
+    	size_t  length;
+    public:
+        static constexpr size_t npos = ~size_t{};
+
+    	basic_string_view() : ptr(nullptr), length(0) {}
+        basic_string_view(const basic_string<CharT>& s) : ptr(s.c_str()), length(s.size())
+        {
+        }
+        basic_string_view(const CharT* p, size_t n): ptr(p), length(n)
+        {
+        }
+        basic_string_view(const CharT* p): ptr(p), length(strlen(p))
+        {
+        }
+        void remove_prefix(size_t n) { ptr += n; length -= n; }
+        void remove_suffix(size_t n) { length -= n; }
+        const CharT* data() const { return ptr; }
+        size_t       size() const { return length; }
+        bool        empty() const { return !length; }
+        const CharT* begin() const { return ptr; }
+        const CharT* end() const   { return ptr+length; }
+
+        CharT operator[](size_t n) const { return ptr[n]; }
+
+        operator basic_string<CharT>() const { return basic_string<CharT>(ptr, length); }
+        bool operator==(basic_string_view<CharT> b) const
+        {
+            return length==b.length && equal(ptr, ptr+length, b.ptr);
+        }
+        bool operator!=(basic_string_view<CharT> b) const { return !operator==(b); }
+
+        std::size_t find(CharT c) const
+        {
+            for(std::size_t p=0; p<length; ++p)
+                if(ptr[p] == c)
+                    return p;
+            return npos;
+        }
+        std::size_t rfind(CharT c) const
+        {
+            for(std::size_t p=0; p<length; ++p)
+                if(ptr[length-(p+1)] == c)
+                    return length-(p+1);
+            return npos;
+        }
+    };
+    using string_view = basic_string_view<char>;
+    
+    template<typename CharT>
+    bool operator==(const basic_string<CharT>& a, const basic_string_view<CharT>& b)
+    {
+    	return basic_string_view<CharT>(a.c_str(), a.size()) == b;
+    }
+    template<typename CharT>
+    bool operator==(const basic_string_view<CharT>& a, const basic_string<CharT>& b)
+    {
+    	return b==a;
+    }
+    template<typename CharT>
+    bool operator!=(const basic_string_view<CharT>& a, const basic_string<CharT>& b)
+    {
+    	return !(a==b);
+    }
+    template<typename CharT>
+    bool operator!=(const basic_string<CharT>& a, const basic_string_view<CharT>& b)
+    {
+    	return !(a==b);
+    }
+}
+
+#endif

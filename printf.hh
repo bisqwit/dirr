@@ -9,15 +9,6 @@
 #include <memory>
 #include "config.h"
 
-#ifndef HAVE_REMOVE_CVREF
-namespace std
-{
-  template<typename T>
-  struct remove_cvref { using type = typename std::remove_cv<typename std::remove_reference<T>::type>::type; };
-  template<typename T>
-  using remove_cvref_t = typename remove_cvref<T>::type;
-}
-#endif
 namespace PrintfPrivate
 {
   #ifdef HAVE_CONCEPTS
@@ -40,9 +31,14 @@ namespace PrintfPrivate
     template<typename T>
     concept IsString = IsString_s<T>::value;
   #endif
+  #ifdef HAVE_IS_TRIVIALLY_COPYABLE
     template<typename T>
     concept PassAsCopy = (std::is_trivially_copyable_v<T> && sizeof(T) <= (2*sizeof(long long)))
                       || IsStringView<std::remove_cvref_t<T>>;
+  #else
+    template<typename T>
+    concept PassAsCopy = std::is_pod<T>::value || IsStringView<std::remove_cvref_t<T>>;
+  #endif
 
     struct Postpone{};
     struct PrintfFormatDo;
