@@ -28,8 +28,8 @@ LDFLAGS=-g
 CC=gcc
 CPP=g++
 CXX=g++
-OPTIM +=  -Ofast -minline-stringops-dynamically -ffunction-cse -ffunction-sections -fdata-sections
-CPPFLAGS +=  -std=c++20
+OPTIM +=  -Ofast -ffunction-sections -fdata-sections
+CPPFLAGS +=  -std=c++2a
 LDFLAGS +=  -Wl,--gc-sections
 WARNINGS +=  -Wall -Wundef -Wcast-qual -Wpointer-arith -Wconversion -Wwrite-strings -Wsign-compare -Wredundant-decls -Winit-self -Wextra -Wparentheses -Wcast-align -Wformat -Wno-conversion
 CWARNINGS +=  -Waggregate-return -Wshadow -Winline -Wstrict-prototypes -Wmissing-prototypes
