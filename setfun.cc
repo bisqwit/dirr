@@ -99,6 +99,7 @@ static int ColorDescrFromName(const std::string& m)
 static class Settings
 {
     std::unordered_multimap<std::string/*key*/, std::string/*value*/> sets{};
+    bool delete_byext = true;
 
 public:
     // Key: int(ModeDescr) - contains a sorted-by-char vector of colors
@@ -121,8 +122,8 @@ public:
             const char* var = getenv("DIRR_COLORS");
             if(var)
             {
-                auto i = find_range("byext");
-                sets.erase(i.first, i.second);
+                // if a new byext is provided, delete the defaults
+                delete_byext = true;
                 Load(var);
             }
             Parse();
@@ -186,6 +187,14 @@ private:
             std::size_t key_end = parens_pos;
             while(key_end > pos && std::isspace(s[key_end-1])) --key_end;
             std::string key = s.substr(pos, key_end-pos);
+
+            if (key != "byext") {
+                sets.erase(key);
+            } else if (delete_byext) {
+                sets.erase(key);
+                delete_byext = false;
+            }
+
             if(parens_pos == s.size())
             {
                 sets.emplace(std::move(key), std::string{});
@@ -213,7 +222,7 @@ private:
         {
             if(s.first == "mode" || s.first == "type" || s.first == "info")
             {
-                // Parse "txt", "mode" and "info".
+                // Parse "type", "mode" and "info".
                 // These strings in DIRR_COLORS have the format: text(sC,...)
                 // Where s is the character key
                 // and   C is the color code.
@@ -266,7 +275,7 @@ private:
             }
             else
             {
-                // Parse "txt", "owner", "group", "nrlink", "date", or "num".
+                // Parse "txt", "owner", "group", "nrlink", "date", "num", "descr", or "size".
                 // These strings in DIRR_COLORS have the format: text(color,...)
                 int m = ColorDescrFromName(s.first);
                 if(m == -1)
