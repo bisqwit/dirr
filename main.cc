@@ -457,7 +457,7 @@ static void TellMe(const StatType &Stat, std::string&& Name
         //fprintf(stderr, "ItemLen=%zu, RowLen becomes %zu\n", ItemLen, RowLen+ItemLen);
         RowLen += ItemLen;
         // Make a newline if the _next_ item of the same width would not fit
-        if(!MultiColumn || int(RowLen + ItemLen) >= int(COLS))
+        if(!MultiColumn || (!VerticalColumns && int(RowLen + ItemLen) >= int(COLS)))
         {
             Gputch('\n');
             RowLen = 0;
