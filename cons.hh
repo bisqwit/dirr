@@ -179,6 +179,10 @@ std::size_t WidthPrintHelper(std::size_t maxlen, std::string_view buf, bool fill
                 // Also, no single-byte character is double-wide.
                 goto invalid_unicode_char;
             }
+            // If a doublewide character would be too many columns,
+            // end the loop now.
+            if (column == maxlen-1 && is_doublewide(seq))
+                break;
             // But print it byte by byte.
             if(print)
                 for(unsigned n=0; n<length; ++n)
