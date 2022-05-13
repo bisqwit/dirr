@@ -27,6 +27,7 @@ int GetName(std::string fn /* modified, so operate on a copy */,
     bool estimating = (Space == 0);
     bool maysublink = true;
     bool wasinvalid = false;
+    bool showedtype = false;
 
     std::string fn_print = nameonly ? std::string(NameOnly(fn)) : fn;
 #ifdef S_ISLNK
@@ -48,6 +49,10 @@ Redo:
     };
     auto PutSet = [&](char ch)
     {
+        if (showedtype)
+            return;
+        showedtype = true;
+
         if(estimating)
             ++Len;
         else if(Space)
@@ -138,6 +143,7 @@ Redo:
 
         maysublink = false;
         wasinvalid = false;
+        showedtype = false;
 
         goto Redo;
     }
