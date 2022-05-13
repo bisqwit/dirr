@@ -48,6 +48,7 @@ For xterm-256color formats:
      * ? for links whose destinations does not exist
      *
      * Note: Colour 0 disables the character being printed.
+     * (However, space will still be used.)
      *
      **************************************************************/
     "info(/1,*2,@3,=5,|8,?C,&F)"
