@@ -349,19 +349,41 @@ namespace PrintfPrivate
 
 using namespace PrintfPrivate;
 
-template<typename T>
-void PrintfFormatter::ExecutePart(PrintfFormatter::State& state, T part) /* Note: T is explicitly specified */
+namespace PrintfPrivate
 {
-    std::size_t position = state.position, pos = position / 4,  subpos = position % 4;
-    if(pos >= formats.size()) return;
-
-    switch(subpos)
+    static auto Progress(PrintfFormatter::State& state, std::vector<PrintfFormatter::arg>& formats)
     {
-        case 0: LIKELY
+        std::size_t position = state.position, pos = position / 4;
+        unsigned subpos = position % 4;
+        if(subpos == 0 && pos < formats.size()) LIKELY
+        {
             state.result   += formats[pos].before;
             state.minwidth  = formats[pos].min_width;
             state.maxwidth  = formats[pos].max_width;
             state.leftalign = formats[pos].leftalign;
+        }
+        return std::pair(pos, subpos);
+    }
+    static auto MakeArg(PrintfFormatter::State& state, std::vector<PrintfFormatter::arg>& formats, std::size_t pos)
+    {
+        return PrintfFormatter::argsmall
+           { state.minwidth,
+             state.maxwidth,
+             state.leftalign,
+             formats[pos].sign,
+             formats[pos].zeropad,
+             formats[pos].base,
+             formats[pos].format };
+    }
+}
+
+template<typename T>
+void PrintfFormatter::ExecutePart(PrintfFormatter::State& state, T part) /* Note: T is explicitly specified */
+{
+    auto[pos,subpos] = Progress(state, formats);
+    switch(subpos)
+    {
+        case 0: LIKELY
             //
             if(formats[pos].param_minwidth) UNLIKELY
             {
@@ -401,13 +423,7 @@ void PrintfFormatter::ExecutePart(PrintfFormatter::State& state, T part) /* Note
               else temp << part;
               fprintf(stderr, "Formatting this param: <%s> (%zu)\n", temp.str().c_str(), temp.str().size());
             }*/
-            argsmall a { state.minwidth,
-                         state.maxwidth,
-                         state.leftalign,
-                         formats[pos].sign,
-                         formats[pos].zeropad,
-                         formats[pos].base,
-                         formats[pos].format };
+            auto a = MakeArg(state,formats,pos);
             Do(a, state.result, std::move(part));
 
             state.position = (pos+1)*4; // Sets subpos as 0
@@ -420,6 +436,7 @@ template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, char8_t);
 #endif
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, char16_t);
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, char32_t);
+template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, wchar_t);
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, short);
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, int);
 template void PrintfFormatter::ExecutePart(PrintfFormatter::State&, long);
