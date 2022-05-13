@@ -120,6 +120,7 @@ For xterm-256color formats:
      * of it. If it has 'i', the file name patterns are case insensitive.
      *
      * There may be multiple byext() definitions.
+     * Use 'byext()' to clear existing definitions.
      *
      * Wildcards recognized:
      *    ?     Matches any byte

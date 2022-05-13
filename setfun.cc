@@ -99,7 +99,6 @@ static int ColorDescrFromName(const std::string& m)
 static class Settings
 {
     std::unordered_multimap<std::string/*key*/, std::string/*value*/> sets{};
-    bool delete_byext = true;
 
 public:
     // Key: int(ModeDescr) - contains a sorted-by-char vector of colors
@@ -122,8 +121,6 @@ public:
             const char* var = getenv("DIRR_COLORS");
             if(var)
             {
-                // if a new byext is provided, delete the defaults
-                delete_byext = true;
                 Load(var);
             }
             Parse();
@@ -188,11 +185,9 @@ private:
             while(key_end > pos && std::isspace(s[key_end-1])) --key_end;
             std::string key = s.substr(pos, key_end-pos);
 
+            // Replace previous entries, except for byext()
             if (key != "byext") {
                 sets.erase(key);
-            } else if (delete_byext) {
-                sets.erase(key);
-                delete_byext = false;
             }
 
             if(parens_pos == s.size())
@@ -210,7 +205,12 @@ private:
             std::size_t value_end = end_parens_pos;
             while(value_end > value_begin && std::isspace(s[value_end-1])) --value_end;
 
-            sets.emplace(std::move(key), s.substr(value_begin, value_end-value_begin));
+            // Allow "byext()" to clear all previous byext entries
+            if (value_end == value_begin && key == "byext") {
+                sets.erase(key);
+            } else {
+                sets.emplace(std::move(key), s.substr(value_begin, value_end-value_begin));
+            }
             pos = end_parens_pos+1;
         }
     }
