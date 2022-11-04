@@ -18,6 +18,7 @@ runwith g++-8 gcc-8 gcc-8
 runwith g++-9 gcc-9 gcc-9
 runwith g++-10 gcc-10 gcc-10
 runwith g++-11 gcc-11 gcc-11
+runwith g++-12 gcc-12 gcc-12
 runwith clang++-9 clang-9 clang-9
 runwith clang++-10 clang-10 clang-10
 runwith clang++-11 clang-11 clang-11

@@ -50,7 +50,7 @@ void PrintSums()
 
     if(!Totals)
     {
-        if(Colors)Gwrite("\r \r"); /* Ensure color */
+        if(Colors) { Gputch('\r'); Gputch(' '); Gputch('\r'); } /* Ensure color */
         return;
     }
 

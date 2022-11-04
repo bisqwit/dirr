@@ -194,7 +194,7 @@ std::size_t WidthPrintHelper(std::size_t maxlen, std::string_view buf, bool fill
             /*fprintf(stderr, "not valid %02X\n", c);*/
             if(print)
             {
-                if((c >= 32 && c < 0x7F) || (c >= 0xA0) || c == '\n')
+                if((c >= 32 && c < 0x7F) || (c >= 0xA0) || c == '\n' || c == '\r')
                     Gputch(c);
                 else
                     Gputch('?');
