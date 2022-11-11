@@ -268,8 +268,10 @@ void SetAttr(int newattr)
 static int Line;
 int Gputch(int x)
 {
-    // When background color = foreground color, print only blanks
-    if(BackgroundOf(TextAttr) == ForegroundOf(TextAttr) && x > ' ') x = ' ';
+    // When characters would be invisible, print only blanks
+    if(BackgroundOf(TextAttr) == ForegroundOf(TextAttr) &&
+       !BoldOf(TextAttr) && !BlinkOf(TextAttr) && x > ' ')
+        x = ' ';
 
     // When printing a newline, always do that with default background color
     if(x=='\n' && BackgroundOf(TextAttr) != 0) GetDescrColor(ColorDescr::TEXT, 1);

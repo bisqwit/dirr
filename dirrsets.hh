@@ -48,6 +48,7 @@ For xterm-256color formats:
      * ? for links whose destinations does not exist
      *
      * Note: Colour 0 disables the character being printed.
+     * (However, space will still be used.)
      *
      **************************************************************/
     "info(/1,*2,@3,=5,|8,?C,&F)"
@@ -120,6 +121,7 @@ For xterm-256color formats:
      * of it. If it has 'i', the file name patterns are case insensitive.
      *
      * There may be multiple byext() definitions.
+     * Use 'byext()' to clear existing definitions.
      *
      * Wildcards recognized:
      *    ?     Matches any byte

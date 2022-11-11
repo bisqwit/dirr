@@ -121,8 +121,6 @@ public:
             const char* var = getenv("DIRR_COLORS");
             if(var)
             {
-                auto i = find_range("byext");
-                sets.erase(i.first, i.second);
                 Load(var);
             }
             Parse();
@@ -186,6 +184,12 @@ private:
             std::size_t key_end = parens_pos;
             while(key_end > pos && std::isspace(s[key_end-1])) --key_end;
             std::string key = s.substr(pos, key_end-pos);
+
+            // Replace previous entries, except for byext()
+            if (key != "byext") {
+                sets.erase(key);
+            }
+
             if(parens_pos == s.size())
             {
                 sets.emplace(std::move(key), std::string{});
@@ -201,7 +205,12 @@ private:
             std::size_t value_end = end_parens_pos;
             while(value_end > value_begin && std::isspace(s[value_end-1])) --value_end;
 
-            sets.emplace(std::move(key), s.substr(value_begin, value_end-value_begin));
+            // Allow "byext()" to clear all previous byext entries
+            if (value_end == value_begin && key == "byext") {
+                sets.erase(key);
+            } else {
+                sets.emplace(std::move(key), s.substr(value_begin, value_end-value_begin));
+            }
             pos = end_parens_pos+1;
         }
     }
@@ -213,7 +222,7 @@ private:
         {
             if(s.first == "mode" || s.first == "type" || s.first == "info")
             {
-                // Parse "txt", "mode" and "info".
+                // Parse "type", "mode" and "info".
                 // These strings in DIRR_COLORS have the format: text(sC,...)
                 // Where s is the character key
                 // and   C is the color code.
@@ -266,7 +275,7 @@ private:
             }
             else
             {
-                // Parse "txt", "owner", "group", "nrlink", "date", or "num".
+                // Parse "txt", "owner", "group", "nrlink", "date", "num", "descr", or "size".
                 // These strings in DIRR_COLORS have the format: text(color,...)
                 int m = ColorDescrFromName(s.first);
                 if(m == -1)
